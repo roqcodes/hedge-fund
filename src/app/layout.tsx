@@ -11,9 +11,12 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: 'HEDGE — Capital Management Platform',
+  title: 'AIBAK — Capital Management Platform',
   description:
     'Multi-branch capital allocation, fund transfers, daily financial reporting, and full money-flow traceability.',
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

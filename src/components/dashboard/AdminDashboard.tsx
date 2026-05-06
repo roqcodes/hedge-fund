@@ -408,109 +408,101 @@ export default function AdminDashboard() {
             </p>
           </div>
         </div>
-        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
-          <Link href="/funds" className={`${btnPrimary} w-full text-center no-underline sm:w-auto`}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-              <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-            <span>Transfer Funds</span>
-          </Link>
-        </div>
       </div>
 
       <div>
         <p className={sectionEyebrow}>Portfolio overview</p>
         <div className={kpiGrid}>
-        <KPICard
-          label="Total Capital"
-          value={formatINR(totalCapital)}
-          trend={{ value: '+2.4%', isUp: true }}
-          subValue="vs last month"
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-              <line x1="6" y1="6" x2="6.01" y2="6" />
-              <line x1="6" y1="18" x2="6.01" y2="18" />
-            </svg>
-          }
-          color="var(--accent)"
-          bgColor="var(--accent-light)"
-        />
-        <KPICard
-          label="Net P&L"
-          value={`${netPL >= 0 ? '+' : ''}${formatINR(netPL)}`}
-          trend={{ value: `${plPct}%`, isUp: netPL >= 0 }}
-          subValue="Performance today"
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-              <polyline points="16 7 22 7 22 13" />
-            </svg>
-          }
-          color={netPL >= 0 ? 'var(--profit)' : 'var(--loss)'}
-          bgColor={netPL >= 0 ? 'var(--profit-light)' : 'var(--loss-light)'}
-        />
-        <KPICard
-          label="Cash in Bank"
-          value={formatINR(cashInBank)}
-          subValue="65.6% Liquidity"
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M3 21h18" />
-              <path d="M3 10h18" />
-              <path d="M5 6l7-3 7 3" />
-              <path d="M4 10v11" />
-              <path d="M20 10v11" />
-              <path d="M8 14v3" />
-              <path d="M12 14v3" />
-              <path d="M16 14v3" />
-            </svg>
-          }
-          color="var(--info)"
-          bgColor="var(--info-light)"
-        />
-        <KPICard
-          label="Active Branches"
-          value={`${activeBranches} / ${branches.length}`}
-          subValue="All operational"
-          icon={
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <line x1="3" y1="9" x2="21" y2="9" />
-              <line x1="9" y1="21" x2="9" y2="9" />
-            </svg>
-          }
-          color="#8B5CF6"
-          bgColor="rgba(139, 92, 246, 0.1)"
-          onClick={() => router.push('/branches')}
-        />
+          <KPICard
+            label="Total Capital"
+            value={formatINR(totalCapital)}
+            trend={{ value: '+2.4%', isUp: true }}
+            subValue="vs last month"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+            }
+            color="var(--accent)"
+            bgColor="var(--accent-light)"
+          />
+          <KPICard
+            label="Net P&L"
+            value={`${netPL >= 0 ? '+' : ''}${formatINR(netPL)}`}
+            trend={{ value: `${plPct}%`, isUp: netPL >= 0 }}
+            subValue="Performance today"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                <polyline points="16 7 22 7 22 13" />
+              </svg>
+            }
+            color={netPL >= 0 ? 'var(--profit)' : 'var(--loss)'}
+            bgColor={netPL >= 0 ? 'var(--profit-light)' : 'var(--loss-light)'}
+          />
+          <KPICard
+            label="Cash in Bank"
+            value={formatINR(cashInBank)}
+            subValue="65.6% Liquidity"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 21h18" />
+                <path d="M3 10h18" />
+                <path d="M5 6l7-3 7 3" />
+                <path d="M4 10v11" />
+                <path d="M20 10v11" />
+                <path d="M8 14v3" />
+                <path d="M12 14v3" />
+                <path d="M16 14v3" />
+              </svg>
+            }
+            color="var(--info)"
+            bgColor="var(--info-light)"
+          />
+          <KPICard
+            label="Active Branches"
+            value={`${activeBranches} / ${branches.length}`}
+            subValue="All operational"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+                <line x1="9" y1="21" x2="9" y2="9" />
+              </svg>
+            }
+            color="#8B5CF6"
+            bgColor="rgba(139, 92, 246, 0.1)"
+            onClick={() => router.push('/branches')}
+          />
         </div>
       </div>
 
       <div>
         <p className={sectionEyebrow}>Analytics</p>
         <div className={chartGrid}>
-        <Card title="P&L Trend" extra={<span className={badgeClass('profit')}>Live</span>}>
-          <div className={chartArea}>
-            <canvas ref={plChartRef} className="size-full" />
-          </div>
-        </Card>
-        <Card title="Revenue vs Expense">
-          <div className={chartArea}>
-            <canvas ref={revExpRef} className="size-full" />
-          </div>
-        </Card>
-        <Card title="Capital Distribution">
-          <div className={chartArea}>
-            <canvas ref={donutRef} className="size-full" />
-          </div>
-        </Card>
-        <Card title="Branch Income">
-          <div className={chartArea}>
-            <canvas ref={incomePieRef} className="size-full" />
-          </div>
-        </Card>
+          <Card title="P&L Trend" extra={<span className={badgeClass('profit')}>Live</span>}>
+            <div className={chartArea}>
+              <canvas ref={plChartRef} className="size-full" />
+            </div>
+          </Card>
+          <Card title="Revenue vs Expense">
+            <div className={chartArea}>
+              <canvas ref={revExpRef} className="size-full" />
+            </div>
+          </Card>
+          <Card title="Capital Distribution">
+            <div className={chartArea}>
+              <canvas ref={donutRef} className="size-full" />
+            </div>
+          </Card>
+          <Card title="Branch Income">
+            <div className={chartArea}>
+              <canvas ref={incomePieRef} className="size-full" />
+            </div>
+          </Card>
         </div>
       </div>
 
@@ -542,9 +534,8 @@ export default function AdminDashboard() {
                       {formatINR(b.closingBalance)}
                     </td>
                     <td
-                      className={`border-y border-black/5 bg-white px-2 py-2.5 font-mono text-xs font-bold tabular-nums sm:px-3 sm:py-3 sm:text-sm ${
-                        b.dailyPL >= 0 ? 'text-emerald-600' : 'text-red-600'
-                      }`}
+                      className={`border-y border-black/5 bg-white px-2 py-2.5 font-mono text-xs font-bold tabular-nums sm:px-3 sm:py-3 sm:text-sm ${b.dailyPL >= 0 ? 'text-emerald-600' : 'text-red-600'
+                        }`}
                     >
                       {b.dailyPL >= 0 ? '+' : ''}
                       {formatINR(b.dailyPL)}

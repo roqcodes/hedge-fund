@@ -53,11 +53,11 @@ export default function LoginPage() {
 
       <div className="relative z-[1] w-full max-w-[440px] animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-surface transition-[transform,box-shadow] duration-500 motion-safe:hover:-translate-y-2 motion-safe:hover:shadow-surface-hover">
         <div className="bg-gradient-to-b from-accent/5 to-white px-8 pb-6 pt-10 text-center sm:px-12 sm:pt-12">
-          <div className="relative mx-auto mb-6 flex size-16 items-center justify-center rounded-[20px] border border-accent/15 bg-white text-[28px] font-extrabold text-accent transition duration-300 [box-shadow:0_0_0_1px_rgba(209,20,57,0.08)]">
-            <span>H</span>
+          <div className="relative mx-auto mb-6 flex size-16 items-center justify-center rounded-[20px] border border-accent/15 bg-white transition duration-300 [box-shadow:0_0_0_1px_rgba(209,20,57,0.08)]">
+            <img src="/logo.png" alt="AIBAK Logo" className="size-11 object-contain" />
           </div>
           <h2 className="mb-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px]">Welcome Back</h2>
-          <p className="text-[15px] font-medium text-slate-500">Sign in to the HEDGE terminal</p>
+          <p className="text-[15px] font-medium text-slate-500">Sign in to the AIBAK terminal</p>
         </div>
 
         <form className="space-y-6 px-6 pb-10 sm:px-12 sm:pb-12" onSubmit={handleSubmit}>
@@ -68,7 +68,7 @@ export default function LoginPage() {
             <input
               id="login-email"
               type="email"
-              placeholder="admin@hedge.capital"
+              placeholder="admin@aibak.capital"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required

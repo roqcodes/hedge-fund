@@ -16,7 +16,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div
         className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-out ${
-          sidebarOpen ? 'lg:ml-[88px]' : 'lg:ml-[272px]'
+          sidebarOpen ? 'lg:ml-[80px]' : 'lg:ml-[240px]'
         }`}
       >
         <Topbar />

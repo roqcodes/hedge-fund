@@ -28,22 +28,6 @@ export default function ReportsPage() {
           <h2 className={pageTitle}>Financial Reports</h2>
           <p className={pageSubtitle}>Consolidated branch performance reporting</p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-          <button type="button" className={`${btnSecondary} ${btnSm} w-full sm:w-auto`} onClick={() => handleExport('pdf')} id="export-pdf">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
-            </svg>
-            Export PDF
-          </button>
-          <button type="button" className={`${btnSecondary} ${btnSm} w-full sm:w-auto`} onClick={() => handleExport('excel')} id="export-excel">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M3 15h18M9 3v18" />
-            </svg>
-            Export Excel
-          </button>
-        </div>
       </div>
 
       <div className={filtersBar}>
@@ -60,7 +44,7 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div className={kpiCard}>
           <div className="text-[11px] font-semibold text-slate-600 sm:text-xs">Opening Balance</div>
           <div className="mt-1 truncate text-base font-extrabold tabular-nums tracking-tight text-slate-900 sm:text-lg" title={formatINR(totalOpening)}>
@@ -127,7 +111,44 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 motion-safe:hover:shadow-surface-hover">
+      <div className="mb-10 animate-[fade-in-up_0.55s_0.2s_cubic-bezier(0.16,1,0.3,1)_both]">
+        <h3 className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Available Reports</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { id: 'daily', title: 'Daily Performance', desc: 'Detailed branch operations for today.', icon: '📅' },
+            { id: 'pnl', title: 'Monthly P&L', desc: 'Consolidated profit/loss statement.', icon: '📊' },
+            { id: 'expense', title: 'Expense Analysis', desc: 'In-depth spend categorization.', icon: '💸' },
+            { id: 'capital', title: 'Capital Summary', desc: 'Liquidity and fund distribution.', icon: '🏦' },
+            { id: 'audit', title: 'Transaction Audit', desc: 'Full historical movement logs.', icon: '📝' },
+          ].map((report) => (
+            <div
+              key={report.id}
+              className="group flex items-start gap-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-surface-xs transition-all duration-300 hover:border-accent/15 hover:shadow-surface sm:p-6"
+            >
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-2xl transition-transform duration-300 group-hover:scale-110 group-hover:bg-accent/5">
+                {report.icon}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-[15px] font-bold text-slate-900">{report.title}</h4>
+                <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500">{report.desc}</p>
+                <button
+                  type="button"
+                  onClick={() => handleExport('pdf')}
+                  className="mt-4 flex items-center gap-1.5 text-xs font-bold text-accent transition-all hover:gap-2 active:scale-95"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                  </svg>
+                  Export Report
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="animate-[fade-in-up_0.55s_0.3s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 motion-safe:hover:shadow-surface-hover">
         <div className="border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
           <h3 className="text-sm font-bold text-slate-900 sm:text-base">
             Branch-wise Breakdown —{' '}
