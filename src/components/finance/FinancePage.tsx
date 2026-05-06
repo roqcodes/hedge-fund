@@ -108,8 +108,25 @@ function AddExpenseModal({ open, onClose, branches, addExpense }: { open: boolea
 
   const handleSubmit = () => {
     if (!branchId || !category || !desc || !amount) return;
-    const branch = branches.find((b: Branch) => b.id === branchId);
-    addExpense({ date: new Date().toISOString().split('T')[0], branchId, branchName: branch?.name || '', type, category, description: desc, amount: Number(amount) });
+    
+    let branchName = '';
+    if (branchId === 'HQ_TREASURY') {
+      branchName = 'HQ Treasury';
+    } else {
+      const branch = branches.find((b: Branch) => b.id === branchId);
+      branchName = branch?.name || '';
+    }
+
+    addExpense({ 
+      date: new Date().toISOString().split('T')[0], 
+      branchId, 
+      branchName, 
+      type, 
+      category, 
+      description: desc, 
+      amount: Number(amount) 
+    });
+    
     setBranchId(''); setCategory(''); setDesc(''); setAmount('');
     onClose();
   };
@@ -117,16 +134,26 @@ function AddExpenseModal({ open, onClose, branches, addExpense }: { open: boolea
   return (
     <div className={`modal-overlay ${open ? 'open' : ''}`} onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><h3>Record New Expenditure</h3><button className="modal-close" onClick={onClose}>×</button></div>
+        <div className="modal-header">
+          <h3>Record New Expenditure</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
         <div className="modal-body">
           <div className="form-row">
-            <div className="form-group"><label className="form-label">Branch</label>
+            <div className="form-group">
+              <label className="form-label">Spending Entity</label>
               <select className="form-select" value={branchId} onChange={e => setBranchId(e.target.value)}>
-                <option value="">Select branch</option>
-                {branches.map((b: Branch) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <option value="">Select entity</option>
+                <optgroup label="Central Treasury">
+                  <option value="HQ_TREASURY">HQ Treasury (Corporate)</option>
+                </optgroup>
+                <optgroup label="Branch Network">
+                  {branches.map((b: Branch) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </optgroup>
               </select>
             </div>
-            <div className="form-group"><label className="form-label">Expense Class</label>
+            <div className="form-group">
+              <label className="form-label">Expense Class</label>
               <select className="form-select" value={type} onChange={e => setType(e.target.value as ExpenseType)}>
                 <option value="opex">Operating (OPEX)</option>
                 <option value="capex">Capital (CAPEX)</option>
@@ -137,10 +164,19 @@ function AddExpenseModal({ open, onClose, branches, addExpense }: { open: boolea
             <label className="form-label">Category</label>
             <input className="form-input" placeholder={type === 'capex' ? "e.g. Infrastructure, Servers, Vehicles" : "e.g. Salaries, Utilities, Rent"} value={category} onChange={e => setCategory(e.target.value)} />
           </div>
-          <div className="form-group"><label className="form-label">Description</label><input className="form-input" placeholder="What was the purpose of this spend?" value={desc} onChange={e => setDesc(e.target.value)} /></div>
-          <div className="form-group"><label className="form-label">Amount (₹)</label><input className="form-input" type="number" placeholder="Enter transaction value" value={amount} onChange={e => setAmount(e.target.value)} /></div>
+          <div className="form-group">
+            <label className="form-label">Description</label>
+            <input className="form-input" placeholder="What was the purpose of this spend?" value={desc} onChange={e => setDesc(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Amount (₹)</label>
+            <input className="form-input" type="number" placeholder="Enter transaction value" value={amount} onChange={e => setAmount(e.target.value)} />
+          </div>
         </div>
-        <div className="modal-footer"><button className="btn btn-secondary" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={handleSubmit}>Commit Expense</button></div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit}>Commit Expense</button>
+        </div>
       </div>
     </div>
   );

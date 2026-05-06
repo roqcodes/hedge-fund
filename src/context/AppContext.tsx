@@ -183,8 +183,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addExpense = useCallback((exp: Omit<Expense, 'id'>) => {
     const newExp: Expense = { ...exp, id: mock.generateId('EXP') };
-    setState(s => ({ ...s, expenses: [newExp, ...s.expenses] }));
-    showToast(`Expense of ₹${exp.amount.toLocaleString('en-IN')} recorded`);
+    
+    setState(s => {
+      let nextHqBalance = s.hqBalance;
+      const nextBranches = s.branches.map(b => {
+        if (b.id === exp.branchId) {
+          return { ...b, currentBalance: b.currentBalance - exp.amount, lastActivity: new Date().toISOString() };
+        }
+        return b;
+      });
+
+      if (exp.branchId === 'HQ_TREASURY') {
+        nextHqBalance -= exp.amount;
+      }
+
+      // Create a transaction record for this expense
+      const txn: Transaction = {
+        id: mock.generateId('TXN'),
+        date: new Date().toISOString(),
+        from: exp.branchName,
+        to: 'External (Expense)',
+        amount: exp.amount,
+        type: 'expense',
+        status: 'completed',
+        notes: `${exp.category}: ${exp.description}`,
+      };
+
+      return { 
+        ...s, 
+        expenses: [newExp, ...s.expenses], 
+        hqBalance: nextHqBalance, 
+        branches: nextBranches,
+        transactions: [txn, ...s.transactions]
+      };
+    });
+    
+    showToast(`Expense of ₹${exp.amount.toLocaleString('en-IN')} recorded against ${exp.branchName}`);
   }, [showToast]);
 
   const getTotalCapital = useCallback(() => state.branches.reduce((sum, b) => sum + b.currentBalance, 0) + state.hqBalance, [state.branches, state.hqBalance]);

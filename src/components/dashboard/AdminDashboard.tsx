@@ -4,9 +4,13 @@ import { useApp } from '@/context/AppContext';
 import { formatINR } from '@/data/mockData';
 import KPICard from '@/components/ui/KPICard';
 import Card from '@/components/ui/Card';
+import Link from 'next/link';
 import { plTrendData, fundDistribution, revenueExpenseData, recentActivities, dailyReports } from '@/data/mockData';
 
+import { useRouter } from 'next/navigation';
+
 export default function AdminDashboard() {
+  const router = useRouter();
   const { branches, getTotalCapital, getNetPL, selectBranch, setPage, sidebarOpen } = useApp();
   const totalCapital = getTotalCapital();
   const netPL = getNetPL();
@@ -314,8 +318,8 @@ export default function AdminDashboard() {
   }
 
   const handleBranchClick = (branchId: string) => {
-    setPage('branches');
-    setTimeout(() => selectBranch(branchId), 50);
+    selectBranch(branchId);
+    router.push('/branches');
   };
 
   // Sparkline generator for KPI cards
@@ -353,10 +357,10 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div className="header-actions">
-          <button className="btn btn-primary" onClick={() => setPage('funds')}>
+          <Link href="/funds" className="btn btn-primary" style={{ textDecoration: 'none' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
             <span>Transfer Funds</span>
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -395,7 +399,7 @@ export default function AdminDashboard() {
           icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>}
           color="#8B5CF6"
           bgColor="rgba(139, 92, 246, 0.1)"
-          onClick={() => setPage('branches')}
+          onClick={() => router.push('/branches')}
         />
       </div>
 
@@ -442,7 +446,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Recent Activities Timeline */}
-        <Card title="Recent Activity" extra={<button className="btn btn-ghost btn-sm" onClick={() => setPage('funds')}>View All →</button>}>
+        <Card title="Recent Activity" extra={<Link href="/funds" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>View All →</Link>}>
           <div className="timeline">
             {recentActivities.map(act => (
               <div key={act.id} className="timeline-item">
