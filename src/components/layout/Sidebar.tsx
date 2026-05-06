@@ -26,17 +26,15 @@ export default function Sidebar() {
   return (
     <>
       <div
-        className={`fixed inset-0 z-[90] bg-white/40 backdrop-blur-sm transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
-          sidebarOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
-        }`}
+        className={`fixed inset-0 z-[90] bg-white/40 backdrop-blur-sm transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${sidebarOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+          }`}
         onClick={toggleSidebar}
         aria-hidden
       />
       <aside
         data-collapsed={sidebarOpen ? 'true' : 'false'}
-        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:-translate-x-[105%] lg:translate-x-0 ${
-          sidebarOpen ? 'max-lg:translate-x-0 lg:w-[80px]' : 'lg:w-[240px]'
-        }`}
+        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:-translate-x-[105%] lg:translate-x-0 ${sidebarOpen ? 'max-lg:translate-x-0 lg:w-[80px]' : 'lg:w-[240px]'
+          }`}
       >
         <div className="flex flex-col items-center gap-2.5 px-4 py-8 sm:px-5 lg:data-[collapsed=true]:py-6">
           <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white shadow-surface-xs ring-1 ring-slate-200/80 transition-transform duration-300 motion-safe:hover:scale-105 sm:size-16">
@@ -61,11 +59,10 @@ export default function Sidebar() {
                 href={item.path}
                 id={`nav-${item.id}`}
                 onClick={closeMobile}
-                className={`relative flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-medium no-underline transition-[background-color,color,transform,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:active:scale-[0.99] lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 sm:text-sm ${
-                  isActive
-                    ? 'border-l-[3px] border-accent bg-gradient-to-r from-accent/[0.08] to-transparent font-semibold text-accent lg:data-[collapsed=true]:border-l-0 lg:data-[collapsed=true]:bg-accent/12'
-                    : 'border-l-[3px] border-transparent text-slate-600 motion-safe:hover:bg-slate-50 motion-safe:hover:text-slate-900 lg:data-[collapsed=true]:border-l-0'
-                }`}
+                className={`relative flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-medium no-underline transition-[background-color,color,transform,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:active:scale-[0.99] lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 sm:text-sm ${isActive
+                  ? 'border-l-[3px] border-accent bg-gradient-to-r from-accent/[0.08] to-transparent font-semibold text-accent lg:data-[collapsed=true]:border-l-0 lg:data-[collapsed=true]:bg-accent/12'
+                  : 'border-l-[3px] border-transparent text-slate-600 motion-safe:hover:bg-slate-50 motion-safe:hover:text-slate-900 lg:data-[collapsed=true]:border-l-0'
+                  }`}
               >
                 <svg
                   className={`size-[18px] shrink-0 sm:size-5 ${isActive ? 'text-accent' : 'text-slate-400'}`}
@@ -104,21 +101,6 @@ export default function Sidebar() {
           )}
         </div>
 
-        <div className="mt-auto hidden border-t border-slate-100 p-3 lg:flex">
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-slate-500 transition-[background-color,color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-slate-50 hover:text-slate-900 lg:data-[collapsed=true]:justify-center"
-            title={sidebarOpen ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            <div className={`flex size-5 shrink-0 items-center justify-center transition-transform duration-500 ${sidebarOpen ? 'rotate-180' : ''}`}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 17l-5-5 5-5m7 10l-5-5 5-5" />
-              </svg>
-            </div>
-            <span className="truncate text-[13px] font-semibold lg:data-[collapsed=true]:sr-only">Collapse Menu</span>
-          </button>
-        </div>
       </aside>
     </>
   );

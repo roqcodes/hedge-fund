@@ -24,24 +24,29 @@ export default function ReportsPage() {
   return (
     <div>
       <div className={pageHeader}>
-        <div>
-          <h2 className={pageTitle}>Financial Reports</h2>
-          <p className={pageSubtitle}>Consolidated branch performance reporting</p>
-        </div>
-      </div>
+        <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className={pageTitle}>Financial Reports</h2>
+            <p className={pageSubtitle}>Consolidated branch performance reporting</p>
+          </div>
 
-      <div className={filtersBar}>
-        <span className="text-xs font-semibold text-slate-500 sm:text-[13px]">Report Type:</span>
-        {(['daily', 'weekly', 'monthly'] as const).map(t => (
-          <button
-            key={t}
-            type="button"
-            className={`capitalize ${reportType === t ? filterChipActive : filterChip}`}
-            onClick={() => setReportType(t)}
-          >
-            {t}
-          </button>
-        ))}
+          <div className="flex self-start rounded-2xl border border-slate-100 bg-slate-50/50 p-1 shadow-surface-xs sm:self-center">
+            {(['daily', 'weekly', 'monthly'] as const).map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setReportType(t)}
+                className={`rounded-[14px] px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-300 ${
+                  reportType === t
+                    ? 'bg-white text-accent shadow-surface ring-1 ring-slate-200/50'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
