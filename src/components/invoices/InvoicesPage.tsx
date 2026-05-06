@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { formatINR, formatDate } from '@/data/mockData';
 import { Invoice, Branch } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
-import { btnPrimary, btnSecondary, filterChip, filterChipActive, formGroup, formInput, formLabel, formRow, formSelect, formTextarea, kpiGrid, pageHeader, pageTitle, tableWrap, dataTable } from '@/lib/ui';
+import { btnPrimary, btnSecondary, filterChip, filterChipActive, formGroup, formInput, formLabel, formRow, formSelect, formTextarea, kpiGrid, pageHeader, pageSubtitle, pageTitle, tableWrap, dataTable } from '@/lib/ui';
 
 export default function InvoicesPage() {
   const { invoices, branches, addInvoice } = useApp();
@@ -25,7 +25,7 @@ export default function InvoicesPage() {
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Invoice Management</h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className={pageSubtitle}>
               {invoices.length} total invoices — {invoices.filter(i => i.status === 'pending').length} pending collection
             </p>
           </div>
@@ -91,8 +91,8 @@ export default function InvoicesPage() {
           />
         </div>
 
-        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-black/[0.06] bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
-          <div className="flex flex-col gap-3 border-b border-black/[0.06] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
             <div className="min-w-0">
               <h3 className="text-base font-bold text-slate-900 sm:text-lg">Invoice register</h3>
               <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-xs">

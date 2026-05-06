@@ -40,43 +40,49 @@ export default function KPICard({
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       onKeyDown={e => onClick && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick())}
-      className={`group relative flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-3 shadow-surface transition-[transform,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] [transform:translateZ(0)] sm:p-3.5 [&_svg]:size-4 ${
+      className={`group relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 shadow-surface transition-[transform,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] [transform:translateZ(0)] sm:p-6 ${
         onClick
-          ? 'cursor-pointer motion-safe:hover:-translate-y-px motion-safe:hover:border-accent/20 motion-safe:hover:shadow-surface-hover motion-safe:active:translate-y-0 motion-safe:active:scale-[0.995] motion-safe:active:transition-[transform,box-shadow] motion-safe:active:duration-150'
-          : 'motion-safe:hover:-translate-y-px motion-safe:hover:border-black/10 motion-safe:hover:shadow-surface-hover'
+          ? 'cursor-pointer motion-safe:hover:-translate-y-1 motion-safe:hover:border-slate-200/90 motion-safe:hover:shadow-surface-hover motion-safe:active:translate-y-0 motion-safe:active:scale-[0.995] motion-safe:active:duration-150'
+          : 'motion-safe:hover:-translate-y-1 motion-safe:hover:border-slate-200/90 motion-safe:hover:shadow-surface-hover'
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:group-hover:scale-[1.03] motion-safe:group-hover:shadow-surface-xs sm:size-9"
-          style={{ backgroundColor: bgColor, color }}
-        >
-          {icon}
-        </div>
-        {trend && (
-          <div
-            className={`flex shrink-0 items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none sm:text-[11px] ${
-              trend.isUp ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'
-            }`}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="sm:size-3" aria-hidden>
-              <path d={trend.isUp ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-            </svg>
-            <span>{trend.value}</span>
-          </div>
-        )}
+      <div
+        className="absolute right-5 top-5 flex size-11 items-center justify-center rounded-2xl transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:group-hover:scale-[1.04] sm:right-6 sm:top-6 [&_svg]:size-[18px]"
+        style={{ backgroundColor: bgColor, color }}
+      >
+        {icon}
       </div>
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:text-[11px]">{label}</span>
+
+      <div className="flex min-w-0 items-center gap-2 pr-14 sm:pr-16">
+        <span className="size-2 shrink-0 rounded-full ring-2 ring-white" style={{ backgroundColor: color }} aria-hidden />
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px] sm:tracking-[0.16em]">{label}</span>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
         <h3
-          className="truncate text-base font-extrabold leading-tight tracking-tight text-slate-900 tabular-nums sm:text-lg"
+          className="min-w-0 max-w-full truncate text-2xl font-bold leading-none tracking-tight text-slate-900 tabular-nums sm:text-[1.75rem]"
           style={plColor ? { color: plColor } : undefined}
           title={String(value)}
         >
           {value}
         </h3>
-        {subValue && <p className="text-[11px] font-medium leading-snug text-slate-500 sm:text-xs">{subValue}</p>}
+        {trend && (
+          <div
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold leading-none ${
+              trend.isUp ? 'bg-emerald-500/[0.1] text-emerald-700' : 'bg-red-500/[0.1] text-red-700'
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+              <path d={trend.isUp ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+            </svg>
+            {trend.value}
+          </div>
+        )}
       </div>
+
+      {subValue && (
+        <p className="mt-3 text-sm font-medium leading-snug text-slate-500">{subValue}</p>
+      )}
     </div>
   );
 }

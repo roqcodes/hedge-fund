@@ -18,6 +18,7 @@ import {
   pageHeader,
   pageSubtitle,
   pageTitle,
+  sectionEyebrow,
   tableWrap,
   dataTable,
 } from '@/lib/ui';
@@ -378,7 +379,7 @@ export default function AdminDashboard() {
         </div>
         <div className={kpiGrid}>
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className={`h-28 ${skeletonBar}`} />
+            <div key={i} className={`h-36 rounded-3xl ${skeletonBar}`} />
           ))}
         </div>
         <div className={chartGrid}>
@@ -397,12 +398,12 @@ export default function AdminDashboard() {
       <div className={pageHeader}>
         <div>
           <h2 className={pageTitle}>Executive Dashboard</h2>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <span
-              className="size-1.5 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(15,169,88,0.5)] animate-[pulse-green_2s_infinite]"
+              className="size-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(15,169,88,0.45)] animate-[pulse-green_2s_infinite]"
               aria-hidden
             />
-            <p className={`${pageSubtitle} !mt-0 !normal-case !tracking-normal`}>
+            <p className={`${pageSubtitle} !mt-0`}>
               {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
@@ -417,7 +418,9 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className={kpiGrid}>
+      <div>
+        <p className={sectionEyebrow}>Portfolio overview</p>
+        <div className={kpiGrid}>
         <KPICard
           label="Total Capital"
           value={formatINR(totalCapital)}
@@ -482,9 +485,12 @@ export default function AdminDashboard() {
           bgColor="rgba(139, 92, 246, 0.1)"
           onClick={() => router.push('/branches')}
         />
+        </div>
       </div>
 
-      <div className={chartGrid}>
+      <div>
+        <p className={sectionEyebrow}>Analytics</p>
+        <div className={chartGrid}>
         <Card title="P&L Trend" extra={<span className={badgeClass('profit')}>Live</span>}>
           <div className={chartArea}>
             <canvas ref={plChartRef} className="size-full" />
@@ -505,9 +511,10 @@ export default function AdminDashboard() {
             <canvas ref={incomePieRef} className="size-full" />
           </div>
         </Card>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-6">
         <Card title="Branch Performance Summary" noPadding>
           <div className={tableWrap}>
             <table className={dataTable}>

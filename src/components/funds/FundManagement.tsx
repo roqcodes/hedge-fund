@@ -20,6 +20,7 @@ import {
   formError,
   kpiGrid,
   pageHeader,
+  pageSubtitle,
   pageTitle,
   tableWrap,
   dataTable,
@@ -55,7 +56,7 @@ export default function FundManagement() {
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Fund Management</h2>
-            <p className="mt-1 text-sm text-slate-500">Monitor capital flow and execute strategic transfers</p>
+            <p className={pageSubtitle}>Monitor capital flow and execute strategic transfers</p>
           </div>
           <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowTransfer(true)}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -117,8 +118,8 @@ export default function FundManagement() {
           />
         </div>
 
-        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-black/[0.06] bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
-          <div className="flex flex-col gap-3 border-b border-black/[0.06] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
             <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">Transaction History</h3>
             <div className="flex w-full min-w-0 flex-row flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
               <select

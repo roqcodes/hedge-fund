@@ -16,6 +16,7 @@ import {
   formSelect,
   kpiGrid,
   pageHeader,
+  pageSubtitle,
   pageTitle,
   tabBtn,
   tabBtnActive,
@@ -40,7 +41,7 @@ export default function FinancePage() {
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Financial Operations</h2>
-            <p className="mt-1 text-sm text-slate-500">Track capital and operating expenditures across branches</p>
+            <p className={pageSubtitle}>Track capital and operating expenditures across branches</p>
           </div>
           <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowAdd(true)} id="btn-add-expense">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -110,8 +111,8 @@ export default function FinancePage() {
           </button>
         </div>
 
-        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-black/[0.06] bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
-          <div className="border-b border-black/[0.06] px-5 py-5 sm:px-8 sm:py-6">
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
+          <div className="border-b border-slate-100 px-5 py-5 sm:px-8 sm:py-6">
             <h3 className="text-base font-bold text-slate-900 sm:text-lg">{tab === 'capex' ? 'Capital' : 'Operating'} Expense Ledger</h3>
           </div>
           <div className="p-0 sm:p-0">

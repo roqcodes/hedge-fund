@@ -1,5 +1,5 @@
 const base =
-  'inline-flex items-center gap-1 rounded-full border border-white/50 px-2 py-0.5 text-[10px] font-bold tracking-wide before:block before:size-1 before:shrink-0 before:rounded-full before:bg-current sm:text-[11px] sm:before:size-1.5';
+  'inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/60 px-2.5 py-0.5 text-[10px] font-bold tracking-wide before:block before:size-1 before:shrink-0 before:rounded-full before:bg-current sm:text-[11px] sm:before:size-1.5';
 
 const tones: Record<string, string> = {
   profit: 'bg-emerald-50 text-emerald-700',

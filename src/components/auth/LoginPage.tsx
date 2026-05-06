@@ -35,7 +35,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative z-[1] flex min-h-dvh w-full items-center justify-center overflow-hidden bg-white bg-[radial-gradient(circle_at_2px_2px,rgba(209,20,57,0.14)_1.5px,transparent_0)] bg-[length:50px_50px] px-4 py-8 font-sans sm:px-6">
+    <div className="relative z-[1] flex min-h-dvh w-full items-center justify-center overflow-hidden bg-slate-50 bg-[radial-gradient(circle_at_2px_2px,rgba(209,20,57,0.1)_1.5px,transparent_0)] bg-[length:48px_48px] px-4 py-8 font-sans sm:px-6">
       <div className="pointer-events-none absolute inset-0 z-0" aria-hidden>
         <svg
           viewBox="0 0 1000 1000"
@@ -51,7 +51,7 @@ export default function LoginPage() {
         </svg>
       </div>
 
-      <div className="relative z-[1] w-full max-w-[440px] animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-[32px] border border-black/[0.06] bg-white shadow-[0_40px_50px_-10px_rgba(0,0,0,0.08)] transition duration-500 hover:-translate-y-2 hover:shadow-[0_30px_60px_-12px_rgba(0,0,0,0.12)]">
+      <div className="relative z-[1] w-full max-w-[440px] animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-surface transition-[transform,box-shadow] duration-500 motion-safe:hover:-translate-y-2 motion-safe:hover:shadow-surface-hover">
         <div className="bg-gradient-to-b from-accent/5 to-white px-8 pb-6 pt-10 text-center sm:px-12 sm:pt-12">
           <div className="relative mx-auto mb-6 flex size-16 items-center justify-center rounded-[20px] border border-accent/15 bg-white text-[28px] font-extrabold text-accent transition duration-300 [box-shadow:0_0_0_1px_rgba(209,20,57,0.08)]">
             <span>H</span>

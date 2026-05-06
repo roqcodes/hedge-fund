@@ -16,11 +16,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div
         className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-out ${
-          sidebarOpen ? 'lg:ml-[88px]' : 'lg:ml-[280px]'
+          sidebarOpen ? 'lg:ml-[88px]' : 'lg:ml-[272px]'
         }`}
       >
         <Topbar />
-        <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6">{children}</main>
+        <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">{children}</main>
       </div>
       <div
         className="pointer-events-none fixed bottom-4 left-4 right-4 z-[500] flex flex-col gap-3 sm:left-auto sm:right-6 sm:max-w-sm"

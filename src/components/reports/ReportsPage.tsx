@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { formatINR } from '@/data/mockData';
 import { dailyReports } from '@/data/mockData';
-import { btnSecondary, btnSm, filtersBar, filterChip, filterChipActive, pageHeader, pageTitle, tableWrap, dataTable } from '@/lib/ui';
+import { btnSecondary, btnSm, filtersBar, filterChip, filterChipActive, pageHeader, pageSubtitle, pageTitle, tableWrap, dataTable } from '@/lib/ui';
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -19,14 +19,14 @@ export default function ReportsPage() {
   };
 
   const kpiCard =
-    'relative overflow-hidden rounded-2xl border border-black/[0.06] bg-white/90 p-3 shadow-sm backdrop-blur-sm transition hover:border-black/10 hover:shadow-md sm:p-3.5 animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]';
+    'relative overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-surface backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:border-slate-200/90 motion-safe:hover:shadow-surface-hover sm:p-5 animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]';
 
   return (
     <div>
       <div className={pageHeader}>
         <div>
           <h2 className={pageTitle}>Financial Reports</h2>
-          <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 sm:text-xs">Consolidated branch performance reporting</p>
+          <p className={pageSubtitle}>Consolidated branch performance reporting</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
           <button type="button" className={`${btnSecondary} ${btnSm} w-full sm:w-auto`} onClick={() => handleExport('pdf')} id="export-pdf">
@@ -127,8 +127,8 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
-        <div className="border-b border-black/[0.06] px-4 py-3 sm:px-5 sm:py-4">
+      <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 motion-safe:hover:shadow-surface-hover">
+        <div className="border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
           <h3 className="text-sm font-bold text-slate-900 sm:text-base">
             Branch-wise Breakdown —{' '}
             {reportType === 'daily' ? '03 May 2026' : reportType === 'weekly' ? 'Week 18, 2026' : 'May 2026'}

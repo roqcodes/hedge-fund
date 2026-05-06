@@ -26,7 +26,7 @@ export default function Sidebar() {
   return (
     <>
       <div
-        className={`fixed inset-0 z-[90] bg-slate-950/50 backdrop-blur-[2px] transition-opacity duration-300 lg:hidden ${
+        className={`fixed inset-0 z-[90] bg-white/30 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${
           sidebarOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={toggleSidebar}
@@ -34,20 +34,25 @@ export default function Sidebar() {
       />
       <aside
         data-collapsed={sidebarOpen ? 'true' : 'false'}
-        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,280px)] max-w-[calc(100vw-8px)] flex-col bg-gradient-to-b from-slate-900 to-slate-800 text-white shadow-dropdown transition-[transform,width,box-shadow] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-lg:-translate-x-full lg:translate-x-0 ${
-          sidebarOpen ? 'max-lg:translate-x-0 lg:w-[88px]' : 'lg:w-[280px]'
+        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,272px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-[transform,width,box-shadow] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-lg:-translate-x-full lg:translate-x-0 ${
+          sidebarOpen ? 'max-lg:translate-x-0 lg:w-[88px]' : 'lg:w-[272px]'
         }`}
       >
-        <div className="flex items-center gap-3 px-4 py-4 sm:px-5 sm:py-5 lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 lg:data-[collapsed=true]:py-6">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#D11439] to-[#f02852] text-base font-extrabold text-white shadow-primary transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:scale-[1.03] motion-safe:hover:shadow-primary-hover motion-safe:active:scale-[1.01] motion-safe:active:duration-150 sm:size-10 sm:text-lg">
+        <div className="flex items-center gap-3 px-4 py-5 sm:px-5 lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-3 lg:data-[collapsed=true]:py-6">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#D11439] to-[#f02852] text-lg font-extrabold text-white shadow-primary transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:scale-[1.03] motion-safe:hover:shadow-primary-hover motion-safe:active:scale-[1.01] motion-safe:active:duration-150">
             H
           </div>
           <div className="min-w-0 lg:data-[collapsed=true]:hidden">
-            <h1 className="text-lg font-extrabold tracking-tight sm:text-xl">HEDGE</h1>
-            <span className="mt-0.5 block text-[11px] font-medium text-slate-400">Capital Management</span>
+            <h1 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">HEDGE</h1>
+            <span className="mt-0.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-400">Capital</span>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-1 px-2.5 sm:px-3 lg:data-[collapsed=true]:px-2">
+
+        <div className="px-4 pb-2 lg:data-[collapsed=true]:hidden sm:px-5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Main menu</p>
+        </div>
+
+        <nav className="flex flex-1 flex-col gap-0.5 px-2.5 pb-4 sm:px-3 lg:data-[collapsed=true]:px-2">
           {navItems.map(item => {
             const isActive = pathname === item.path || (pathname === '/' && item.id === 'dashboard');
             return (
@@ -56,35 +61,46 @@ export default function Sidebar() {
                 href={item.path}
                 id={`nav-${item.id}`}
                 onClick={closeMobile}
-                className={`flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-semibold no-underline transition-[transform,background,box-shadow,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:active:scale-[0.99] max-lg:active:duration-150 lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 sm:text-sm ${
+                className={`relative flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-medium no-underline transition-[background-color,color,transform,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:active:scale-[0.99] lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 sm:text-sm ${
                   isActive
-                    ? 'bg-gradient-to-br from-[#D11439] to-[#f02852] text-white shadow-primary motion-safe:lg:translate-x-0'
-                    : 'text-slate-400 motion-safe:hover:bg-white/[0.07] motion-safe:hover:text-white motion-safe:lg:hover:translate-x-1'
+                    ? 'border-l-[3px] border-accent bg-gradient-to-r from-accent/[0.08] to-transparent font-semibold text-accent lg:data-[collapsed=true]:border-l-0 lg:data-[collapsed=true]:bg-accent/12'
+                    : 'border-l-[3px] border-transparent text-slate-600 motion-safe:hover:bg-slate-50 motion-safe:hover:text-slate-900 lg:data-[collapsed=true]:border-l-0'
                 }`}
               >
                 <svg
-                  className="size-[18px] shrink-0 sm:size-5"
+                  className={`size-[18px] shrink-0 sm:size-5 ${isActive ? 'text-accent' : 'text-slate-400'}`}
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="1.8"
+                  strokeWidth="1.85"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden
                 >
                   <path d={item.icon} />
                 </svg>
-                <span className="nav-label truncate">{item.label}</span>
+                <span className="nav-label truncate lg:data-[collapsed=true]:sr-only">{item.label}</span>
               </Link>
             );
           })}
         </nav>
-        <div className="mx-2.5 mb-3 mt-auto rounded-xl border-t border-white/5 bg-black/10 p-3.5 lg:mx-3 lg:data-[collapsed=true]:hidden">
+
+        <div className="mx-3 mb-4 mt-auto rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 shadow-surface-xs lg:mx-3 lg:data-[collapsed=true]:hidden">
           {user && (
-            <>
-              <div className="mb-0.5 text-xs font-semibold text-white sm:text-[13px]">{user.name}</div>
-              <div className="text-[11px] capitalize text-slate-400">{user.role.replace('_', ' ')}</div>
-            </>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-bold text-accent shadow-surface-xs ring-1 ring-slate-200/80">
+                {user.name
+                  .split(' ')
+                  .map(n => n[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-slate-900">{user.name}</div>
+                <div className="truncate text-[11px] font-medium capitalize text-slate-500">{user.role.replace('_', ' ')}</div>
+              </div>
+            </div>
           )}
         </div>
       </aside>
