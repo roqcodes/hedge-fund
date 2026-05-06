@@ -26,7 +26,7 @@ export default function Sidebar() {
   return (
     <>
       <div
-        className={`fixed inset-0 z-[90] bg-white/30 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${
+        className={`fixed inset-0 z-[90] bg-white/40 backdrop-blur-sm transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
           sidebarOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={toggleSidebar}
@@ -34,7 +34,7 @@ export default function Sidebar() {
       />
       <aside
         data-collapsed={sidebarOpen ? 'true' : 'false'}
-        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-[transform,width,box-shadow] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-lg:-translate-x-full lg:translate-x-0 ${
+        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:-translate-x-[105%] lg:translate-x-0 ${
           sidebarOpen ? 'max-lg:translate-x-0 lg:w-[80px]' : 'lg:w-[240px]'
         }`}
       >

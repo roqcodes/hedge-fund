@@ -25,7 +25,14 @@ import {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { branches, getTotalCapital, getNetPL, selectBranch, sidebarOpen } = useApp();
+  const { branches, getTotalCapital, getNetPL, selectBranch, sidebarOpen, dateRange, setDateRange } = useApp();
+
+  const dateOptions = [
+    { value: 'today', label: 'Today' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
+  ] as const;
+
   const totalCapital = getTotalCapital();
   const netPL = getNetPL();
   const cashInBank = Math.round(totalCapital * 0.656);
@@ -153,9 +160,9 @@ export default function AdminDashboard() {
     const w = rect.width,
       h = rect.height;
     const cx = w / 2,
-      cy = h / 2 - 20;
-    const radius = Math.min(w, h) / 2 - 40;
-    const innerR = radius * 0.7;
+      cy = h / 2;
+    const radius = Math.min(w, h) / 2 - 15;
+    const innerR = radius * 0.72;
     const total = fundDistribution.reduce((s, d) => s + d.amount, 0);
     let startAngle = -Math.PI / 2;
 
@@ -165,37 +172,9 @@ export default function AdminDashboard() {
       ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
       ctx.arc(cx, cy, innerR, startAngle + sliceAngle, startAngle, true);
       ctx.closePath();
-
       ctx.fillStyle = d.color;
-      ctx.shadowColor = 'rgba(0,0,0,0.1)';
-      ctx.shadowBlur = 10;
       ctx.fill();
-      ctx.shadowColor = 'transparent';
-
       startAngle += sliceAngle;
-    });
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = '800 20px Outfit, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(formatINR(total), cx, cy - 2);
-    ctx.fillStyle = '#64748B';
-    ctx.font = '500 12px Outfit, sans-serif';
-    ctx.fillText('Total Deployed', cx, cy + 18);
-
-    const legendY = h - 30;
-    const legendStartX = 15;
-    ctx.font = '600 11px Outfit, sans-serif';
-    ctx.textAlign = 'left';
-    fundDistribution.forEach((d, i) => {
-      const x = legendStartX + (i % 3) * (w / 3);
-      const y = legendY + Math.floor(i / 3) * 18;
-      ctx.beginPath();
-      ctx.arc(x + 4, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = d.color;
-      ctx.fill();
-      ctx.fillStyle = '#475569';
-      ctx.fillText(`${d.branch.split(' ')[0]}`, x + 16, y + 4);
     });
   }, []);
 
@@ -212,44 +191,24 @@ export default function AdminDashboard() {
     const w = rect.width,
       h = rect.height;
     const cx = w / 2,
-      cy = h / 2 - 20;
-    const radius = Math.min(w, h) / 2 - 40;
+      cy = h / 2;
+    const radius = Math.min(w, h) / 2 - 15;
+    const innerR = radius * 0.72; // Added inner radius for donut style
     const total = incomeData.reduce((s, d) => s + d.amount, 0);
     let startAngle = -Math.PI / 2;
 
     incomeData.forEach(d => {
       const sliceAngle = (d.amount / total) * 2 * Math.PI;
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+      ctx.arc(cx, cy, innerR, startAngle + sliceAngle, startAngle, true);
       ctx.closePath();
-
       ctx.fillStyle = d.color;
-      ctx.shadowColor = 'rgba(0,0,0,0.1)';
-      ctx.shadowBlur = 10;
       ctx.fill();
-      ctx.shadowColor = 'transparent';
-
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
-
       startAngle += sliceAngle;
-    });
-
-    const legendY = h - 30;
-    const legendStartX = 15;
-    ctx.font = '600 11px Outfit, sans-serif';
-    ctx.textAlign = 'left';
-    incomeData.forEach((d, i) => {
-      const x = legendStartX + (i % 3) * (w / 3);
-      const y = legendY + Math.floor(i / 3) * 18;
-      ctx.beginPath();
-      ctx.arc(x + 4, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = d.color;
-      ctx.fill();
-      ctx.fillStyle = '#475569';
-      ctx.fillText(`${d.branch.split(' ')[0]}`, x + 16, y + 4);
     });
   }, [incomeData]);
 
@@ -393,19 +352,39 @@ export default function AdminDashboard() {
     );
   }
 
+
+
   return (
     <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
       <div className={pageHeader}>
-        <div>
-          <h2 className={pageTitle}>Executive Dashboard</h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span
-              className="size-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(15,169,88,0.45)] animate-[pulse-green_2s_infinite]"
-              aria-hidden
-            />
-            <p className={`${pageSubtitle} !mt-0`}>
-              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
+        <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className={pageTitle}>Executive Dashboard</h2>
+            <div className="mt-1 flex items-center gap-2">
+              <span
+                className="size-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(15,169,88,0.45)] animate-[pulse-green_2s_infinite]"
+                aria-hidden
+              />
+              <p className={`${pageSubtitle} !mt-0`}>
+                {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex self-start rounded-2xl border border-slate-100 bg-slate-50/50 p-1 shadow-surface-xs sm:self-center">
+            {dateOptions.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setDateRange(opt.value)}
+                className={`rounded-[14px] px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-300 ${dateRange === opt.value
+                    ? 'bg-white text-accent shadow-surface ring-1 ring-slate-200/50'
+                    : 'text-slate-500 hover:text-slate-900'
+                  }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -493,14 +472,46 @@ export default function AdminDashboard() {
               <canvas ref={revExpRef} className="size-full" />
             </div>
           </Card>
-          <Card title="Capital Distribution">
-            <div className={chartArea}>
-              <canvas ref={donutRef} className="size-full" />
+          <Card title="Capital Distribution" noPadding>
+            <div className="flex flex-col p-5 pt-2">
+              <div className="relative mx-auto size-48 sm:size-56">
+                <canvas ref={donutRef} className="size-full" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                  <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+                    ₹{(fundDistribution.reduce((s, d) => s + d.amount, 0) / 100000).toFixed(1)}L
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Deployed</div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-50 pt-4">
+                {fundDistribution.map(d => (
+                  <div key={d.branch} className="flex items-center gap-2 min-w-0">
+                    <div className="size-2 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                    <span className="truncate text-[11px] font-bold text-slate-600">{d.branch.split(' ')[0]}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </Card>
-          <Card title="Branch Income">
-            <div className={chartArea}>
-              <canvas ref={incomePieRef} className="size-full" />
+          <Card title="Branch Income" noPadding>
+            <div className="flex flex-col p-5 pt-2">
+              <div className="relative mx-auto size-48 sm:size-56">
+                <canvas ref={incomePieRef} className="size-full" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                  <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+                    ₹{(incomeData.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Yield</div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-50 pt-4">
+                {incomeData.map(d => (
+                  <div key={d.branch} className="flex items-center gap-2 min-w-0">
+                    <div className="size-2 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                    <span className="truncate text-[11px] font-bold text-slate-600">{d.branch.split(' ')[0]}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </Card>
         </div>

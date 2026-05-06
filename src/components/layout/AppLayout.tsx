@@ -15,7 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-dvh">
       <Sidebar />
       <div
-        className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-out ${
+        className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           sidebarOpen ? 'lg:ml-[80px]' : 'lg:ml-[240px]'
         }`}
       >
