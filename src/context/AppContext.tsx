@@ -60,22 +60,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Load session from localStorage on mount
   React.useEffect(() => {
-    const savedSession = localStorage.getItem('hedge_session');
-    if (savedSession) {
-      try {
-        const { user, isAuthenticated } = JSON.parse(savedSession);
-        if (isAuthenticated && user) {
-          setState(s => ({ ...s, user, isAuthenticated: true, isInitialLoading: false }));
-        } else {
+    queueMicrotask(() => {
+      const savedSession = localStorage.getItem('hedge_session');
+      if (savedSession) {
+        try {
+          const { user, isAuthenticated } = JSON.parse(savedSession);
+          if (isAuthenticated && user) {
+            setState(s => ({ ...s, user, isAuthenticated: true, isInitialLoading: false }));
+          } else {
+            setState(s => ({ ...s, isInitialLoading: false }));
+          }
+        } catch (e) {
+          console.error('Failed to parse session', e);
           setState(s => ({ ...s, isInitialLoading: false }));
         }
-      } catch (e) {
-        console.error('Failed to parse session', e);
+      } else {
         setState(s => ({ ...s, isInitialLoading: false }));
       }
-    } else {
-      setState(s => ({ ...s, isInitialLoading: false }));
-    }
+    });
   }, []);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {

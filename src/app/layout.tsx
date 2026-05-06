@@ -1,17 +1,25 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { Outfit } from 'next/font/google';
 import { AppProvider } from '@/context/AppContext';
 import AppLayout from '@/components/layout/AppLayout';
 
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-outfit',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'HEDGE — Capital Management Platform',
-  description: 'Multi-branch capital allocation, fund transfers, daily financial reporting, and full money-flow traceability.',
+  description:
+    'Multi-branch capital allocation, fund transfers, daily financial reporting, and full money-flow traceability.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={outfit.variable}>
+      <body className="font-sans">
         <AppProvider>
           <AppLayout>{children}</AppLayout>
         </AppProvider>

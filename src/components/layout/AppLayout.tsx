@@ -8,20 +8,35 @@ import Topbar from '@/components/layout/Topbar';
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isInitialLoading, toasts, sidebarOpen } = useApp();
 
-  if (isInitialLoading) return null; // Or a professional loading spinner
+  if (isInitialLoading) return null;
   if (!isAuthenticated) return <LoginPage />;
 
   return (
-    <div className="app-layout">
+    <div className="flex min-h-dvh">
       <Sidebar />
-      <div className={`main-area ${sidebarOpen ? 'desktop-collapsed' : ''}`}>
+      <div
+        className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-out ${
+          sidebarOpen ? 'lg:ml-[88px]' : 'lg:ml-[280px]'
+        }`}
+      >
         <Topbar />
-        <main className="page-content">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] flex-1 px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6">{children}</main>
       </div>
-      {/* Toast notifications */}
-      <div className="toast-container">
+      <div
+        className="pointer-events-none fixed bottom-4 left-4 right-4 z-[500] flex flex-col gap-3 sm:left-auto sm:right-6 sm:max-w-sm"
+        aria-live="polite"
+      >
         {toasts.map(t => (
-          <div key={t.id} className={`toast ${t.type}`}>{t.message}</div>
+          <div
+            key={t.id}
+            className={`pointer-events-auto flex animate-[toast-in_0.4s_cubic-bezier(0.34,1.56,0.64,1)] items-center gap-3 rounded-2xl px-4 py-3.5 text-sm font-semibold text-white shadow-dropdown ${
+              t.type === 'success'
+                ? 'border-l-4 border-emerald-500 bg-emerald-950'
+                : 'border-l-4 border-red-500 bg-red-950'
+            }`}
+          >
+            {t.message}
+          </div>
         ))}
       </div>
     </div>
