@@ -92,7 +92,7 @@ export type PageId =
   | 'funds'
   | 'finance'
   | 'reports'
-  | 'invoices'
+  | 'usdt'
   | 'investors'
   | 'physical';
 

@@ -1,5 +1,5 @@
-import InvoicesPage from '@/components/invoices/InvoicesPage';
+import { redirect } from 'next/navigation';
 
 export default function Invoices() {
-  return <InvoicesPage />;
+  redirect('/usdt');
 }
