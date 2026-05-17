@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
-import { formatINR, formatDateTime } from '@/data/mockData';
+import { formatAED, formatDateTime } from '@/data/mockData';
 import { Branch, Transaction } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import {
@@ -69,7 +69,7 @@ export default function FundManagement() {
         <div className={kpiGrid}>
           <KPICard
             label="HQ Treasury Balance"
-            value={formatINR(hqBalance)}
+            value={formatAED(hqBalance)}
             subValue="Available for allocation"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -81,7 +81,7 @@ export default function FundManagement() {
           />
           <KPICard
             label="Total Fund Volume"
-            value={formatINR(totalVolume)}
+            value={formatAED(totalVolume)}
             subValue="Total transaction throughput"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -170,7 +170,7 @@ export default function FundManagement() {
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.from}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.to}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(t.amount)}
+                        {formatAED(t.amount)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
                         <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
@@ -236,7 +236,7 @@ function TransferFundsModal({
     }
     const amt = Number(amount);
     if (amt > availableBalance) {
-      setError(`Insufficient balance. Available: ${formatINR(availableBalance)}`);
+      setError(`Insufficient balance. Available: ${formatAED(availableBalance)}`);
       return;
     }
     if (amt <= 0) {
@@ -275,7 +275,7 @@ function TransferFundsModal({
           <select className={formSelect} value={from} onChange={e => setFrom(e.target.value)}>
             <option value="">Select source</option>
             <optgroup label="Central Treasury">
-              <option value="HQ_TREASURY">HQ Treasury — {formatINR(hqBalance)}</option>
+              <option value="HQ_TREASURY">HQ Treasury — {formatAED(hqBalance)}</option>
             </optgroup>
             <optgroup label="Branch Balances">
               {branches.map((b: Branch) => (
@@ -285,7 +285,7 @@ function TransferFundsModal({
               ))}
             </optgroup>
           </select>
-          {from ? <p className={formHint}>Available: {formatINR(availableBalance)}</p> : null}
+          {from ? <p className={formHint}>Available: {formatAED(availableBalance)}</p> : null}
         </div>
         <div className={formGroup}>
           <label className={formLabel}>Recipient Branch</label>
@@ -302,7 +302,7 @@ function TransferFundsModal({
         </div>
       </div>
       <div className={formGroup}>
-        <label className={formLabel}>Amount (₹)</label>
+        <label className={formLabel}>Amount (AED)</label>
         <input className={formInput} type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
       </div>
       <div className={formGroup}>

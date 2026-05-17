@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
-import { formatINR, formatDate } from '@/data/mockData';
+import { formatAED, formatDate } from '@/data/mockData';
 import { Invoice, Branch } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import { btnPrimary, btnSecondary, filterChip, filterChipActive, formGroup, formInput, formLabel, formRow, formSelect, formTextarea, kpiGrid, pageHeader, pageSubtitle, pageTitle, tableWrap, dataTable } from '@/lib/ui';
@@ -40,7 +40,7 @@ export default function InvoicesPage() {
         <div className={kpiGrid}>
           <KPICard
             label="Total Billed"
-            value={formatINR(totalValue)}
+            value={formatAED(totalValue)}
             subValue="Life-time invoice value"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -52,7 +52,7 @@ export default function InvoicesPage() {
           />
           <KPICard
             label="Paid Invoices"
-            value={formatINR(totalPaid)}
+            value={formatAED(totalPaid)}
             subValue="Successfully collected"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -65,7 +65,7 @@ export default function InvoicesPage() {
           />
           <KPICard
             label="Pending Payment"
-            value={formatINR(totalPending)}
+            value={formatAED(totalPending)}
             subValue="Current receivables"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -78,7 +78,7 @@ export default function InvoicesPage() {
           />
           <KPICard
             label="Overdue Amount"
-            value={formatINR(totalOverdue)}
+            value={formatAED(totalOverdue)}
             subValue="Requires immediate action"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -142,7 +142,7 @@ export default function InvoicesPage() {
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium sm:px-5 sm:py-4">{inv.clientName}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm text-slate-500 sm:px-5 sm:py-4">{inv.branchName}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(inv.amount)}
+                        {formatAED(inv.amount)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs sm:px-5 sm:py-4 sm:text-sm">{formatDate(inv.date)}</td>
                       <td className="max-w-[220px] border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
@@ -217,7 +217,7 @@ function CreateInvoiceModal({
     >
       <div className={formGroup}>
         <label className={formLabel}>Client Name</label>
-        <input className={formInput} placeholder="e.g. Tata Motors Ltd" value={client} onChange={e => setClient(e.target.value)} />
+        <input className={formInput} placeholder="e.g. Emirates Group" value={client} onChange={e => setClient(e.target.value)} />
       </div>
       <div className={formRow}>
         <div className={formGroup}>
@@ -232,7 +232,7 @@ function CreateInvoiceModal({
           </select>
         </div>
         <div className={formGroup}>
-          <label className={formLabel}>Amount (₹)</label>
+          <label className={formLabel}>Amount (AED)</label>
           <input className={formInput} type="number" placeholder="e.g. 75000" value={amount} onChange={e => setAmount(e.target.value)} />
         </div>
       </div>

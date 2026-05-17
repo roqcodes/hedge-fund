@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { formatINR, formatDate } from '@/data/mockData';
+import { formatAED, formatDate } from '@/data/mockData';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { Expense, ExpenseType, Branch } from '@/types';
@@ -54,7 +54,7 @@ export default function FinancePage() {
         <div className={kpiGrid}>
           <KPICard
             label="Total Expenditure"
-            value={formatINR(totalExpenses)}
+            value={formatAED(totalExpenses)}
             subValue="Consolidated spending"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -66,7 +66,7 @@ export default function FinancePage() {
           />
           <KPICard
             label="Capital Expenditure"
-            value={formatINR(totalCapex)}
+            value={formatAED(totalCapex)}
             subValue="Long-term investments (CAPEX)"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -78,7 +78,7 @@ export default function FinancePage() {
           />
           <KPICard
             label="Operating Expenses"
-            value={formatINR(totalOpex)}
+            value={formatAED(totalOpex)}
             subValue="Day-to-day costs (OPEX)"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -90,7 +90,7 @@ export default function FinancePage() {
           />
           <KPICard
             label="Burn Rate"
-            value={formatINR(Math.round(totalOpex / 30))}
+            value={formatAED(Math.round(totalOpex / 30))}
             subValue="Estimated daily average"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -138,7 +138,7 @@ export default function FinancePage() {
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium sm:px-5 sm:py-4">{e.category}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-[13px] text-slate-500 sm:px-5 sm:py-4">{e.description}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold text-red-600 sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(e.amount)}
+                        {formatAED(e.amount)}
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4">
                         <span className={badgeClass(e.type)}>{e.type.toUpperCase()}</span>
@@ -256,7 +256,7 @@ function AddExpenseModal({
         <input className={formInput} placeholder="What was the purpose of this spend?" value={desc} onChange={e => setDesc(e.target.value)} />
       </div>
       <div className={formGroup}>
-        <label className={formLabel}>Amount (₹)</label>
+        <label className={formLabel}>Amount (AED)</label>
         <input className={formInput} type="number" placeholder="Enter transaction value" value={amount} onChange={e => setAmount(e.target.value)} />
       </div>
     </Modal>

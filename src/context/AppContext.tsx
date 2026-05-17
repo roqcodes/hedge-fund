@@ -1,6 +1,18 @@
 'use client';
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { User, Branch, Transaction, Expense, Invoice, Notification, PageId, DateRange, UserRole } from '@/types';
+import {
+  User,
+  Branch,
+  Transaction,
+  Expense,
+  Invoice,
+  Notification,
+  Investor,
+  InvestorRiskProfile,
+  PageId,
+  DateRange,
+  UserRole,
+} from '@/types';
 import * as mock from '@/data/mockData';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
@@ -18,22 +30,45 @@ interface AppState {
   toasts: Toast[];
   sidebarOpen: boolean;
   selectedBranchId: string | null;
+  selectedInvestorId: string | null;
+  investors: Investor[];
   isInitialLoading: boolean;
   hqBalance: number;
 }
+
+export type AddInvestorInput = {
+  name: string;
+  email: string;
+  phone: string;
+  nationality: string;
+  emiratesId?: string;
+  passportNo?: string;
+  address: string;
+  city: string;
+  country: string;
+  cashDeposit: number;
+  goldDeposit: number;
+  goldWeightGrams: number;
+  riskProfile: InvestorRiskProfile;
+  preferredContact: 'email' | 'phone' | 'whatsapp';
+  assignedBranchId?: string;
+  notes?: string;
+};
 
 interface AppContextType extends AppState {
   login: (email: string, role: UserRole, branchId?: string) => void;
   logout: () => void;
   setPage: (page: PageId) => void;
   setDateRange: (range: DateRange) => void;
-  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL'>) => void;
+  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => void;
   transferFunds: (from: string, to: string, amount: number, notes: string) => void;
   addInvoice: (inv: Omit<Invoice, 'id' | 'status'>) => void;
   addExpense: (exp: Omit<Expense, 'id'>) => void;
   showToast: (message: string, type?: 'success' | 'error') => void;
   toggleSidebar: () => void;
   selectBranch: (id: string | null) => void;
+  selectInvestor: (id: string | null) => void;
+  addInvestor: (input: AddInvestorInput) => void;
   getTotalCapital: () => number;
   getNetPL: () => number;
 }
@@ -54,8 +89,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toasts: [],
     sidebarOpen: false,
     selectedBranchId: null,
+    selectedInvestorId: null,
+    investors: [...mock.investors],
     isInitialLoading: true,
-    hqBalance: 50000000, // 5 Cr initial treasury
+    hqBalance: 50000000, // 50M AED initial treasury
   });
 
   // Load session from localStorage on mount
@@ -90,8 +127,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const user: User = {
       email,
       role,
-      name: role === 'admin' ? 'John Doe' : 'Rajesh Sharma',
-      branchId: role === 'branch_manager' ? branchId || 'BR001' : undefined,
+      name: role === 'admin' ? 'John Doe' : 'Ahmed Al Maktoum',
+      branchId: role === 'branch_manager' ? branchId || 'BR014' : undefined,
     };
     setState(s => ({ ...s, user, isAuthenticated: true }));
     localStorage.setItem('hedge_session', JSON.stringify({ user, isAuthenticated: true }));
@@ -103,7 +140,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setPage = useCallback((page: PageId) => {
-    setState(s => ({ ...s, currentPage: page, selectedBranchId: null }));
+    setState(s => ({ ...s, currentPage: page, selectedBranchId: null, selectedInvestorId: null }));
   }, []);
 
   const setDateRange = useCallback((range: DateRange) => {
@@ -115,14 +152,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const selectBranch = useCallback((id: string | null) => {
-    setState(s => ({ ...s, selectedBranchId: id }));
+    setState(s => ({ ...s, selectedBranchId: id, selectedInvestorId: null }));
   }, []);
 
-  const addBranch = useCallback((b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL'>) => {
+  const selectInvestor = useCallback((id: string | null) => {
+    setState(s => ({ ...s, selectedInvestorId: id, selectedBranchId: null }));
+  }, []);
+
+  const addInvestor = useCallback((input: AddInvestorInput) => {
+    const branch = input.assignedBranchId
+      ? state.branches.find(b => b.id === input.assignedBranchId)
+      : undefined;
+    const now = new Date().toISOString();
+    const hasDeposits = input.cashDeposit > 0 || input.goldDeposit > 0;
+    const history = [];
+    if (input.cashDeposit > 0) {
+      history.push({
+        id: mock.generateId('DEP'),
+        date: now.slice(0, 10),
+        type: 'cash' as const,
+        amount: input.cashDeposit,
+        notes: 'Initial cash deposit',
+      });
+    }
+    if (input.goldDeposit > 0) {
+      history.push({
+        id: mock.generateId('DEP'),
+        date: now.slice(0, 10),
+        type: 'gold' as const,
+        amount: input.goldDeposit,
+        goldGrams: input.goldWeightGrams,
+        notes: 'Initial gold deposit',
+      });
+    }
+    const newInvestor: Investor = {
+      id: mock.generateId('INV'),
+      ...input,
+      status: hasDeposits ? 'active' : 'pending',
+      kycStatus: 'pending',
+      joinedDate: now.slice(0, 10),
+      lastActivity: now,
+      assignedBranchName: branch?.name,
+      depositHistory: history,
+    };
+    setState(s => ({ ...s, investors: [newInvestor, ...s.investors] }));
+    showToast(`Investor "${newInvestor.name}" added successfully`);
+  }, [showToast, state.branches]);
+
+  const addBranch = useCallback((b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => {
+    const total = b.openingBalance;
     const newBranch: Branch = {
       ...b,
       id: mock.generateId('BR'),
-      closingBalance: b.openingBalance,
+      cashBalance: total,
+      goldBalance: 0,
+      currentBalance: total,
+      closingBalance: total,
       dailyPL: 0,
       status: 'active',
       lastActivity: new Date().toISOString(),
@@ -143,7 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       branches: [...s.branches, newBranch],
       transactions: [txn, ...s.transactions],
     }));
-    showToast(`Branch "${newBranch.name}" created with ₹${b.openingBalance.toLocaleString('en-IN')} allocated`);
+    showToast(`Branch "${newBranch.name}" created with AED ${b.openingBalance.toLocaleString('en-AE')} allocated`);
   }, [showToast]);
 
   const transferFunds = useCallback((fromId: string, toId: string, amount: number, notes: string) => {
@@ -174,7 +259,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
       return { ...s, branches, hqBalance: nextHqBalance, transactions: [txn, ...s.transactions] };
     });
-    showToast(`₹${amount.toLocaleString('en-IN')} transferred successfully`);
+    showToast(`AED ${amount.toLocaleString('en-AE')} transferred successfully`);
   }, [showToast]);
 
   const addInvoice = useCallback((inv: Omit<Invoice, 'id' | 'status'>) => {
@@ -220,7 +305,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     });
     
-    showToast(`Expense of ₹${exp.amount.toLocaleString('en-IN')} recorded against ${exp.branchName}`);
+    showToast(`Expense of AED ${exp.amount.toLocaleString('en-AE')} recorded against ${exp.branchName}`);
   }, [showToast]);
 
   const getTotalCapital = useCallback(() => state.branches.reduce((sum, b) => sum + b.currentBalance, 0) + state.hqBalance, [state.branches, state.hqBalance]);
@@ -229,7 +314,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
-      addInvoice, addExpense, showToast, toggleSidebar, selectBranch, getTotalCapital, getNetPL,
+      addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
+      getTotalCapital, getNetPL,
     }}>
       {children}
     </AppContext.Provider>

@@ -25,8 +25,17 @@ export const pageSubtitle = 'mt-2 text-sm font-medium text-slate-500';
 export const sectionEyebrow =
   'mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 sm:text-[11px] sm:tracking-[0.22em]';
 
+/** Stat card shell — matches Reports page compact KPI styling */
+export const kpiCard =
+  `relative overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-surface backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ${easeSmooth} motion-safe:hover:border-slate-200/90 motion-safe:hover:shadow-surface-hover sm:p-5`;
+
+/** 4-up stat row (dashboard, finance, branches, funds, invoices) */
 export const kpiGrid =
-  'mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-6 [&>*]:motion-safe:animate-fade-in-up [&>*:nth-child(2)]:motion-safe:delay-75 [&>*:nth-child(3)]:motion-safe:delay-150 [&>*:nth-child(4)]:motion-safe:delay-200';
+  'mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 [&>*]:motion-safe:animate-fade-in-up [&>*:nth-child(2)]:motion-safe:delay-75 [&>*:nth-child(3)]:motion-safe:delay-150 [&>*:nth-child(4)]:motion-safe:delay-200';
+
+/** 5-up stat row (reports) */
+export const kpiGrid5 =
+  'mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 [&>*]:motion-safe:animate-fade-in-up [&>*:nth-child(2)]:motion-safe:delay-75 [&>*:nth-child(3)]:motion-safe:delay-150 [&>*:nth-child(4)]:motion-safe:delay-200 [&>*:nth-child(5)]:motion-safe:delay-[250ms]';
 
 /** Dashboard chart cards: 2×2 from sm up (wider cards = readable axes & legends) */
 export const chartGrid = 'mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:gap-6';

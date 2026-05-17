@@ -1,7 +1,7 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { formatINR } from '@/data/mockData';
+import { formatAED } from '@/data/mockData';
 import KPICard from '@/components/ui/KPICard';
 import Card from '@/components/ui/Card';
 import Link from 'next/link';
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
     for (let i = 0; i <= 4; i++) {
       const y = pad.top + (i / 4) * chartH;
       const val = maxV - (i / 4) * 2 * maxV;
-      ctx.fillText(`₹${(val / 1000).toFixed(0)}K`, pad.left - 12, y + 4);
+      ctx.fillText(`AED ${(val / 1000).toFixed(0)}K`, pad.left - 12, y + 4);
     }
   }, []);
 
@@ -274,7 +274,7 @@ export default function AdminDashboard() {
     for (let i = 0; i <= 4; i++) {
       const y = pad.top + (i / 4) * chartH;
       const val = maxV - (i / 4) * maxV;
-      ctx.fillText(`₹${(val / 1000).toFixed(0)}K`, pad.left - 12, y + 4);
+      ctx.fillText(`AED ${(val / 1000).toFixed(0)}K`, pad.left - 12, y + 4);
     }
   }, []);
 
@@ -338,7 +338,7 @@ export default function AdminDashboard() {
         </div>
         <div className={kpiGrid}>
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className={`h-36 rounded-3xl ${skeletonBar}`} />
+            <div key={i} className={`h-28 rounded-3xl ${skeletonBar}`} />
           ))}
         </div>
         <div className={chartGrid}>
@@ -366,7 +366,7 @@ export default function AdminDashboard() {
                 aria-hidden
               />
               <p className={`${pageSubtitle} !mt-0`}>
-                {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                {new Date().toLocaleDateString('en-AE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
             </div>
           </div>
@@ -394,7 +394,7 @@ export default function AdminDashboard() {
         <div className={kpiGrid}>
           <KPICard
             label="Total Capital"
-            value={formatINR(totalCapital)}
+            value={formatAED(totalCapital)}
             trend={{ value: '+2.4%', isUp: true }}
             subValue="vs last month"
             icon={
@@ -410,7 +410,7 @@ export default function AdminDashboard() {
           />
           <KPICard
             label="Net P&L"
-            value={`${netPL >= 0 ? '+' : ''}${formatINR(netPL)}`}
+            value={`${netPL >= 0 ? '+' : ''}${formatAED(netPL)}`}
             trend={{ value: `${plPct}%`, isUp: netPL >= 0 }}
             subValue="Performance today"
             icon={
@@ -424,7 +424,7 @@ export default function AdminDashboard() {
           />
           <KPICard
             label="Cash in Bank"
-            value={formatINR(cashInBank)}
+            value={formatAED(cashInBank)}
             subValue="65.6% Liquidity"
             icon={
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -478,7 +478,7 @@ export default function AdminDashboard() {
                 <canvas ref={donutRef} className="size-full" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                   <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
-                    ₹{(fundDistribution.reduce((s, d) => s + d.amount, 0) / 100000).toFixed(1)}L
+                    AED {(fundDistribution.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
                   </div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Deployed</div>
                 </div>
@@ -499,7 +499,7 @@ export default function AdminDashboard() {
                 <canvas ref={incomePieRef} className="size-full" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                   <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
-                    ₹{(incomeData.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
+                    AED {(incomeData.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
                   </div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Yield</div>
                 </div>
@@ -539,17 +539,17 @@ export default function AdminDashboard() {
                     </td>
                     <td className="border-y border-black/5 bg-white px-2 py-2.5 text-xs text-slate-600 sm:px-3 sm:py-3 sm:text-sm">{b.location}</td>
                     <td className="border-y border-black/5 bg-white px-2 py-2.5 font-mono text-xs font-bold tabular-nums text-slate-900 sm:px-3 sm:py-3 sm:text-sm">
-                      {formatINR(b.openingBalance)}
+                      {formatAED(b.openingBalance)}
                     </td>
                     <td className="border-y border-black/5 bg-white px-2 py-2.5 font-mono text-xs font-bold tabular-nums text-slate-900 sm:px-3 sm:py-3 sm:text-sm">
-                      {formatINR(b.closingBalance)}
+                      {formatAED(b.closingBalance)}
                     </td>
                     <td
                       className={`border-y border-black/5 bg-white px-2 py-2.5 font-mono text-xs font-bold tabular-nums sm:px-3 sm:py-3 sm:text-sm ${b.dailyPL >= 0 ? 'text-emerald-600' : 'text-red-600'
                         }`}
                     >
                       {b.dailyPL >= 0 ? '+' : ''}
-                      {formatINR(b.dailyPL)}
+                      {formatAED(b.dailyPL)}
                     </td>
                     <td className="border-y border-r border-black/5 bg-white px-2 py-2.5 last:rounded-xl sm:px-3 sm:py-3">
                       <span className={badgeClass(b.dailyPL >= 0 ? 'profit' : 'loss')}>{b.dailyPL >= 0 ? 'Profit' : 'Loss'}</span>

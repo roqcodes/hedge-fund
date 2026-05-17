@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
-import { formatINR, formatDateTime } from '@/data/mockData';
+import { formatAED, formatDateTime } from '@/data/mockData';
 import { Branch, Transaction } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import {
@@ -61,7 +61,7 @@ export default function BranchList() {
           <div className={kpiGrid}>
             <KPICard
               label="Opening Balance"
-              value={formatINR(b.openingBalance)}
+              value={formatAED(b.openingBalance)}
               subValue="Initial capital"
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -73,7 +73,7 @@ export default function BranchList() {
             />
             <KPICard
               label="Daily P&L"
-              value={`${b.dailyPL >= 0 ? '+' : ''}${formatINR(b.dailyPL)}`}
+              value={`${b.dailyPL >= 0 ? '+' : ''}${formatAED(b.dailyPL)}`}
               trend={{ value: `${((b.dailyPL / b.openingBalance) * 100).toFixed(1)}%`, isUp: b.dailyPL >= 0 }}
               subValue="Today's performance"
               icon={
@@ -86,7 +86,7 @@ export default function BranchList() {
             />
             <KPICard
               label="Current Balance"
-              value={formatINR(b.currentBalance)}
+              value={formatAED(b.currentBalance)}
               subValue="Total liquid capital"
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -98,7 +98,7 @@ export default function BranchList() {
             />
             <KPICard
               label="End Day projection"
-              value={formatINR(b.closingBalance)}
+              value={formatAED(b.closingBalance)}
               subValue="Est. final balance"
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -135,7 +135,7 @@ export default function BranchList() {
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">{t.from}</td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">{t.to}</td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                          {formatINR(t.amount)}
+                          {formatAED(t.amount)}
                         </td>
                         <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4">
                           <span className={badgeClass(t.type)}>{t.type}</span>
@@ -158,7 +158,7 @@ export default function BranchList() {
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Branch Management</h2>
-            <p className={pageSubtitle}>{branches.length} branches registered across India</p>
+            <p className={pageSubtitle}>{branches.length} entities in the global branch ledger</p>
           </div>
           <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowCreate(true)} id="btn-create-branch">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -171,7 +171,7 @@ export default function BranchList() {
         <div className={kpiGrid}>
           <KPICard
             label="Total Network Capital"
-            value={formatINR(totalBalance)}
+            value={formatAED(totalBalance)}
             subValue="Consolidated balance"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -183,7 +183,7 @@ export default function BranchList() {
           />
           <KPICard
             label="Combined P&L"
-            value={`${totalPL >= 0 ? '+' : ''}${formatINR(totalPL)}`}
+            value={`${totalPL >= 0 ? '+' : ''}${formatAED(totalPL)}`}
             trend={{ value: '12.4%', isUp: totalPL >= 0 }}
             subValue="All branches performance"
             icon={
@@ -248,7 +248,7 @@ export default function BranchList() {
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-[13px] text-slate-600 sm:px-5 sm:py-4">{b.location}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium sm:px-5 sm:py-4">{b.managerName}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(b.currentBalance)}
+                        {formatAED(b.currentBalance)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">{formatDateTime(b.lastActivity)}</td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
@@ -279,7 +279,7 @@ function CreateBranchModal({
 }: {
   open: boolean;
   onClose: () => void;
-  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL'>) => void;
+  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => void;
 }) {
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
@@ -292,7 +292,6 @@ function CreateBranchModal({
       name,
       location,
       managerName: manager,
-      currentBalance: Number(capital),
       openingBalance: Number(capital),
     });
     setName('');
@@ -320,18 +319,18 @@ function CreateBranchModal({
     >
       <div className={formGroup}>
         <label className={formLabel}>Branch Name</label>
-        <input className={formInput} placeholder="e.g. Pune West" value={name} onChange={e => setName(e.target.value)} />
+        <input className={formInput} placeholder="e.g. Fujairah West" value={name} onChange={e => setName(e.target.value)} />
       </div>
       <div className={formGroup}>
         <label className={formLabel}>Location</label>
-        <input className={formInput} placeholder="e.g. Pune, Maharashtra" value={location} onChange={e => setLocation(e.target.value)} />
+        <input className={formInput} placeholder="e.g. Fujairah, UAE" value={location} onChange={e => setLocation(e.target.value)} />
       </div>
       <div className={formGroup}>
         <label className={formLabel}>Manager Name</label>
-        <input className={formInput} placeholder="e.g. Amit Patel" value={manager} onChange={e => setManager(e.target.value)} />
+        <input className={formInput} placeholder="e.g. Hassan Al Marzouqi" value={manager} onChange={e => setManager(e.target.value)} />
       </div>
       <div className={formGroup}>
-        <label className={formLabel}>Initial Capital (₹)</label>
+        <label className={formLabel}>Initial Capital (AED)</label>
         <input className={formInput} type="number" placeholder="e.g. 250000" value={capital} onChange={e => setCapital(e.target.value)} />
         <p className={formHint}>This amount will be allocated from HQ Treasury</p>
       </div>

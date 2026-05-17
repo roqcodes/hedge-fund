@@ -1,8 +1,9 @@
 'use client';
 import React, { useState } from 'react';
-import { formatINR } from '@/data/mockData';
+import KPICard from '@/components/ui/KPICard';
+import { formatAED } from '@/data/mockData';
 import { dailyReports } from '@/data/mockData';
-import { btnSecondary, btnSm, filtersBar, filterChip, filterChipActive, pageHeader, pageSubtitle, pageTitle, tableWrap, dataTable } from '@/lib/ui';
+import { btnSecondary, btnSm, filtersBar, filterChip, filterChipActive, kpiGrid5, pageHeader, pageSubtitle, pageTitle, tableWrap, dataTable } from '@/lib/ui';
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -17,9 +18,6 @@ export default function ReportsPage() {
   const handleExport = (type: 'pdf' | 'excel') => {
     alert(`Export to ${type.toUpperCase()} — In production, this would generate a ${type.toUpperCase()} file with the current report data.`);
   };
-
-  const kpiCard =
-    'relative overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-surface backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:border-slate-200/90 motion-safe:hover:shadow-surface-hover sm:p-5 animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]';
 
   return (
     <div>
@@ -49,71 +47,50 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <div className={kpiCard}>
-          <div className="text-[11px] font-semibold text-slate-600 sm:text-xs">Opening Balance</div>
-          <div className="mt-1 truncate text-base font-extrabold tabular-nums tracking-tight text-slate-900 sm:text-lg" title={formatINR(totalOpening)}>
-            {formatINR(totalOpening)}
-          </div>
-          <div className="mt-1 text-[11px] font-medium text-slate-500">Start of period</div>
-          <div className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-base text-blue-600 sm:right-3.5 sm:top-3.5">
-            🏦
-          </div>
-        </div>
-        <div className={kpiCard}>
-          <div className="text-[11px] font-semibold text-slate-600 sm:text-xs">Total Profit</div>
-          <div className="mt-1 truncate text-base font-extrabold tabular-nums tracking-tight text-emerald-600 sm:text-lg">{formatINR(totalProfit)}</div>
-          <div className="mt-1 flex items-center gap-0.5 text-[11px] font-semibold text-emerald-600 sm:text-xs">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M5 15l7-7 7 7" />
-            </svg>
-            Gross profit
-          </div>
-          <div className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl bg-emerald-500/10 text-base text-emerald-600 sm:right-3.5 sm:top-3.5">
-            📈
-          </div>
-        </div>
-        <div className={kpiCard}>
-          <div className="text-[11px] font-semibold text-slate-600 sm:text-xs">Total Expense</div>
-          <div className="mt-1 truncate text-base font-extrabold tabular-nums tracking-tight text-red-600 sm:text-lg">{formatINR(totalExpense)}</div>
-          <div className="mt-1 flex items-center gap-0.5 text-[11px] font-semibold text-red-600 sm:text-xs">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M19 9l-7 7-7-7" />
-            </svg>
-            Total outflows
-          </div>
-          <div className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl bg-red-500/10 text-base text-red-600 sm:right-3.5 sm:top-3.5">
-            📉
-          </div>
-        </div>
-        <div className={kpiCard}>
-          <div className="text-[11px] font-semibold text-slate-600 sm:text-xs">Closing Balance</div>
-          <div className="mt-1 truncate text-base font-extrabold tabular-nums tracking-tight text-slate-900 sm:text-lg">{formatINR(totalClosing)}</div>
-          <div className="mt-1 text-[11px] font-medium text-slate-500">End of period</div>
-          <div className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-base text-blue-600 sm:right-3.5 sm:top-3.5">
-            💰
-          </div>
-        </div>
-        <div className={`${kpiCard} sm:col-span-2 lg:col-span-1 xl:col-span-1`}>
-          <div className="text-[11px] font-semibold text-slate-600 sm:text-xs">Net P&L</div>
-          <div className={`mt-1 truncate text-base font-extrabold tabular-nums tracking-tight sm:text-lg ${netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-            {netPL >= 0 ? '+' : ''}
-            {formatINR(netPL)}
-          </div>
-          <div className={`mt-1 flex items-center gap-0.5 text-[11px] font-semibold sm:text-xs ${netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d={netPL >= 0 ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-            </svg>
-            Realized profit/loss
-          </div>
-          <div
-            className={`absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl text-base shadow-inner sm:right-3.5 sm:top-3.5 ${
-              netPL >= 0 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'
-            }`}
-          >
-            📊
-          </div>
-        </div>
+      <div className={kpiGrid5}>
+        <KPICard
+          label="Opening Balance"
+          value={formatAED(totalOpening)}
+          subValue="Start of period"
+          icon={<span aria-hidden>🏦</span>}
+          color="#2563eb"
+          bgColor="rgba(37, 99, 235, 0.1)"
+        />
+        <KPICard
+          label="Total Profit"
+          value={formatAED(totalProfit)}
+          subValue="Gross profit"
+          valueClassName="text-emerald-600"
+          icon={<span aria-hidden>📈</span>}
+          color="#059669"
+          bgColor="rgba(5, 150, 105, 0.1)"
+        />
+        <KPICard
+          label="Total Expense"
+          value={formatAED(totalExpense)}
+          subValue="Total outflows"
+          valueClassName="text-red-600"
+          icon={<span aria-hidden>📉</span>}
+          color="#dc2626"
+          bgColor="rgba(220, 38, 38, 0.1)"
+        />
+        <KPICard
+          label="Closing Balance"
+          value={formatAED(totalClosing)}
+          subValue="End of period"
+          icon={<span aria-hidden>💰</span>}
+          color="#2563eb"
+          bgColor="rgba(37, 99, 235, 0.1)"
+        />
+        <KPICard
+          label="Net P&L"
+          value={`${netPL >= 0 ? '+' : ''}${formatAED(netPL)}`}
+          subValue="Realized profit/loss"
+          valueClassName={netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}
+          icon={<span aria-hidden>📊</span>}
+          color={netPL >= 0 ? '#059669' : '#dc2626'}
+          bgColor={netPL >= 0 ? 'rgba(5, 150, 105, 0.1)' : 'rgba(220, 38, 38, 0.1)'}
+        />
       </div>
 
       <div className="mb-10 animate-[fade-in-up_0.55s_0.2s_cubic-bezier(0.16,1,0.3,1)_both]">
@@ -182,16 +159,16 @@ export default function ReportsPage() {
                         {r.branchName}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(r.openingBalance)}
+                        {formatAED(r.openingBalance)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold text-emerald-600 sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(r.profit)}
+                        {formatAED(r.profit)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold text-red-600 sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(r.expense)}
+                        {formatAED(r.expense)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                        {formatINR(r.closingBalance)}
+                        {formatAED(r.closingBalance)}
                       </td>
                       <td
                         className={`border-y border-r border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold last:rounded-r-2xl sm:px-5 sm:py-4 sm:text-base ${
@@ -199,28 +176,28 @@ export default function ReportsPage() {
                         }`}
                       >
                         {pl >= 0 ? '+' : ''}
-                        {formatINR(pl)}
+                        {formatAED(pl)}
                       </td>
                     </tr>
                   );
                 })}
                 <tr className="bg-slate-50 font-bold">
                   <td className="border-y border-l border-black/5 px-3 py-3.5 text-sm first:rounded-l-2xl sm:px-5 sm:py-4">TOTAL</td>
-                  <td className="border-y border-black/5 px-3 py-3.5 font-mono text-sm sm:px-5 sm:py-4 sm:text-base">{formatINR(totalOpening)}</td>
+                  <td className="border-y border-black/5 px-3 py-3.5 font-mono text-sm sm:px-5 sm:py-4 sm:text-base">{formatAED(totalOpening)}</td>
                   <td className="border-y border-black/5 px-3 py-3.5 font-mono text-sm text-emerald-600 sm:px-5 sm:py-4 sm:text-base">
-                    {formatINR(totalProfit)}
+                    {formatAED(totalProfit)}
                   </td>
                   <td className="border-y border-black/5 px-3 py-3.5 font-mono text-sm text-red-600 sm:px-5 sm:py-4 sm:text-base">
-                    {formatINR(totalExpense)}
+                    {formatAED(totalExpense)}
                   </td>
-                  <td className="border-y border-black/5 px-3 py-3.5 font-mono text-sm sm:px-5 sm:py-4 sm:text-base">{formatINR(totalClosing)}</td>
+                  <td className="border-y border-black/5 px-3 py-3.5 font-mono text-sm sm:px-5 sm:py-4 sm:text-base">{formatAED(totalClosing)}</td>
                   <td
                     className={`border-y border-r border-black/5 px-3 py-3.5 font-mono text-sm last:rounded-r-2xl sm:px-5 sm:py-4 sm:text-base ${
                       netPL >= 0 ? 'text-emerald-600' : 'text-red-600'
                     }`}
                   >
                     {netPL >= 0 ? '+' : ''}
-                    {formatINR(netPL)}
+                    {formatAED(netPL)}
                   </td>
                 </tr>
               </tbody>

@@ -16,6 +16,8 @@ export interface Branch {
   name: string;
   location: string;
   managerName: string;
+  cashBalance: number;
+  goldBalance: number;
   currentBalance: number;
   openingBalance: number;
   closingBalance: number;
@@ -84,5 +86,53 @@ export interface Notification {
   type: 'transfer' | 'report' | 'alert' | 'info';
 }
 
-export type PageId = 'dashboard' | 'branches' | 'funds' | 'finance' | 'reports' | 'invoices';
+export type PageId =
+  | 'dashboard'
+  | 'branches'
+  | 'funds'
+  | 'finance'
+  | 'reports'
+  | 'invoices'
+  | 'investors'
+  | 'physical';
+
 export type DateRange = 'today' | 'weekly' | 'monthly';
+
+export type InvestorStatus = 'active' | 'inactive' | 'pending';
+export type InvestorRiskProfile = 'conservative' | 'balanced' | 'aggressive';
+export type InvestorKycStatus = 'verified' | 'pending' | 'expired';
+
+export interface InvestorDeposit {
+  id: string;
+  date: string;
+  type: 'cash' | 'gold';
+  amount: number;
+  goldGrams?: number;
+  notes?: string;
+}
+
+export interface Investor {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  nationality: string;
+  emiratesId?: string;
+  passportNo?: string;
+  address: string;
+  city: string;
+  country: string;
+  cashDeposit: number;
+  goldDeposit: number;
+  goldWeightGrams: number;
+  status: InvestorStatus;
+  riskProfile: InvestorRiskProfile;
+  kycStatus: InvestorKycStatus;
+  joinedDate: string;
+  lastActivity: string;
+  assignedBranchId?: string;
+  assignedBranchName?: string;
+  preferredContact: 'email' | 'phone' | 'whatsapp';
+  notes?: string;
+  depositHistory: InvestorDeposit[];
+}

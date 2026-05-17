@@ -41,7 +41,7 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">{children}</div>
-        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/90 p-4 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:py-4">
+        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/90 p-4 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:py-4 [&>button]:w-full sm:[&>button]:w-auto">
           {footer}
         </div>
       </div>
