@@ -12,6 +12,7 @@ import {
   DateRange,
   UserRole,
   Deal,
+  InvestorRiskProfile,
 } from '@/types';
 import * as mock from '@/data/mockData';
 
