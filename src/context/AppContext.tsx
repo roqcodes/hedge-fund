@@ -14,7 +14,7 @@ import {
   Deal,
   InvestorRiskProfile,
 } from '@/types';
-
+import * as mock from '@/data/mockData';
 import { getCurrentUserAction, logoutAction } from '@/app/actions/auth';
 import {
   fetchInitialDataAction,
@@ -98,17 +98,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isAuthenticated: false,
     currentPage: 'dashboard',
     dateRange: 'today',
-    branches: [],
-    transactions: [],
-    expenses: [],
-    invoices: [],
-    notifications: [],
+    branches: [...mock.branches],
+    transactions: [...mock.transactions],
+    expenses: [...mock.expenses],
+    invoices: [...mock.invoices],
+    notifications: [...mock.notifications],
     toasts: [],
     sidebarOpen: false,
     selectedBranchId: null,
     selectedInvestorId: null,
-    investors: [],
-    deals: [],
+    investors: [...mock.investors],
+    deals: [...mock.deals],
     isInitialLoading: true,
     hqBalance: 50000000, // 50M AED initial treasury
   });
@@ -133,7 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const dbRes = await fetchInitialDataAction();
-        if (dbRes.success && dbRes.data) {
+        if (dbRes.success && dbRes.data && !dbRes.isMockFallback) {
           const data = dbRes.data;
           setState(s => ({
             ...s,
@@ -150,14 +150,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             isInitialLoading: false,
           }));
           return;
-        } else {
-          console.error('Database query succeeded but returned false success or missing data.', dbRes.error);
         }
       } catch (e) {
-        console.error('Failed to fetch database data:', e);
+        console.error('Failed to fetch database data, falling back to mock data', e);
       }
 
-      // If database is not configured or fails, keep the arrays empty and end loading
+      // If database is not configured or fails, keep the default mock data initialized in state
       setState(s => ({
         ...s,
         user: currentUser,
@@ -165,7 +163,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isInitialLoading: false,
       }));
     }
-
     initApp();
   }, []);
 

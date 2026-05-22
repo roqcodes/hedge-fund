@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { Outfit } from 'next/font/google';
 import { AppProvider } from '@/context/AppContext';
 import AppLayout from '@/components/layout/AppLayout';
-import Providers from '@/components/Providers';
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -24,11 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={outfit.variable}>
       <body className="font-sans">
-        <Providers>
-          <AppProvider>
-            <AppLayout>{children}</AppLayout>
-          </AppProvider>
-        </Providers>
+        <AppProvider>
+          <AppLayout>{children}</AppLayout>
+        </AppProvider>
       </body>
     </html>
   );

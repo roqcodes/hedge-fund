@@ -1,37 +1,34 @@
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import pg from 'pg';
+import { Pool } from 'pg';
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const DATABASE_URL = process.env.DATABASE_URL;
 
-let prismaInstance: PrismaClient;
+let pool: Pool | null = null;
 
-if (globalForPrisma.prisma) {
-  prismaInstance = globalForPrisma.prisma;
+if (DATABASE_URL) {
+  const cleanConnectionString = DATABASE_URL.split('?')[0];
+  pool = new Pool({
+    connectionString: cleanConnectionString,
+    ssl: DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1')
+      ? false
+      : { rejectUnauthorized: false }, // Required for secure connections to AWS RDS
+  });
 } else {
-  let connectionString = process.env.DATABASE_URL;
-  const useSsl = connectionString?.includes('sslmode=require') || connectionString?.includes('rds.amazonaws.com');
-
-  if (connectionString) {
-    connectionString = connectionString.replace(/\?sslmode=[^&]+/, '').replace(/&sslmode=[^&]+/, '');
-  }
-
-  const poolConnection = new pg.Pool({
-    connectionString,
-    ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-  });
-
-  const adapter = new PrismaPg(poolConnection);
-
-  prismaInstance = new PrismaClient({
-    adapter,
-    log: ['query', 'info', 'warn', 'error'],
-  });
-
-  if (process.env.NODE_ENV !== 'production') {
-    globalForPrisma.prisma = prismaInstance;
-  }
+  console.warn(
+    'WARNING: DATABASE_URL environment variable is missing. Database operations will run in local mock fallback mode.'
+  );
 }
 
-export const prisma = prismaInstance;
-export { prisma as pool }; // keeping 'pool' for temporary backward compatibility if needed, though we will refactor dbActions
+/**
+ * Execute a query against the PostgreSQL database.
+ * If DATABASE_URL is not set, this will throw an error advising configuration.
+ */
+export async function query(text: string, params?: any[]) {
+  if (!pool) {
+    throw new Error(
+      'Database Connection Error: DATABASE_URL is not configured in your environment. Please configure it in your .env file.'
+    );
+  }
+  return pool.query(text, params);
+}
+
+export { pool };
