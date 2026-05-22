@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { loginAction } from '@/app/actions/auth';
 
 export default function LoginPage() {
   const { login } = useApp();
@@ -9,7 +10,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -21,17 +22,21 @@ export default function LoginPage() {
       setError('Password is required');
       return;
     }
-    if (password.length < 4) {
-      setError('Invalid credentials. Please try again.');
-      return;
-    }
 
     setLoading(true);
 
-    setTimeout(() => {
-      login(email, 'admin', '');
+    try {
+      const res = await loginAction(email, password);
+      if (res.success && res.data) {
+        login(res.data);
+      } else {
+        setError(res.error || 'Authentication failed. Please try again.');
+      }
+    } catch (e: any) {
+      setError('An unexpected error occurred. Please try again.');
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   return (

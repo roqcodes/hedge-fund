@@ -29,8 +29,9 @@ import {
 } from '@/lib/ui';
 
 export default function InvestorsPage() {
-  const { investors, branches, selectedInvestorId, selectInvestor, addInvestor } = useApp();
+  const { investors, branches, selectedInvestorId, selectInvestor, addInvestor, updateInvestor } = useApp();
   const [showCreate, setShowCreate] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | Investor['status']>('all');
   const [search, setSearch] = useState('');
 
@@ -56,10 +57,20 @@ export default function InvestorsPage() {
 
   if (selected) {
     return (
-      <InvestorProfile
-        investor={selected}
-        onBack={() => selectInvestor(null)}
-      />
+      <>
+        <InvestorProfile
+          investor={selected}
+          onBack={() => selectInvestor(null)}
+          onEdit={() => setShowEdit(true)}
+        />
+        <EditInvestorModal
+          open={showEdit}
+          onClose={() => setShowEdit(false)}
+          branches={branches}
+          investor={selected}
+          updateInvestor={updateInvestor}
+        />
+      </>
     );
   }
 
@@ -216,7 +227,15 @@ export default function InvestorsPage() {
   );
 }
 
-function InvestorProfile({ investor, onBack }: { investor: Investor; onBack: () => void }) {
+function InvestorProfile({
+  investor,
+  onBack,
+  onEdit,
+}: {
+  investor: Investor;
+  onBack: () => void;
+  onEdit: () => void;
+}) {
   const total = investorTotalExposure(investor);
 
   return (
@@ -232,30 +251,41 @@ function InvestorProfile({ investor, onBack }: { investor: Investor; onBack: () 
           </svg>
           Back to investors
         </button>
+        <button
+          type="button"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-surface-xs transition hover:bg-slate-50 sm:w-auto"
+          onClick={onEdit}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mr-1">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          Edit Profile
+        </button>
       </div>
 
       <div className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-surface sm:mb-8 sm:rounded-3xl sm:p-6 lg:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent/10 to-accent/5 text-xl font-black text-accent ring-1 ring-accent/10 sm:size-20 sm:text-2xl">
-          {investor.name
-            .split(' ')
-            .map(n => n[0])
-            .join('')
-            .slice(0, 2)
-            .toUpperCase()}
+            {investor.name
+              .split(' ')
+              .map(n => n[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl lg:text-3xl">{investor.name}</h2>
-          <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 sm:text-sm">
-            <span className="block">{investor.id}</span>
-            <span className="block">Joined {formatDate(investor.joinedDate)}</span>
-            <span className="block">Last activity {formatDateTime(investor.lastActivity)}</span>
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className={badgeClass(investor.status)}>{investor.status}</span>
-            <span className={badgeClass(investor.kycStatus)}>KYC {investor.kycStatus}</span>
-            <span className={badgeClass(investor.riskProfile)}>{investor.riskProfile} risk</span>
-          </div>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl lg:text-3xl">{investor.name}</h2>
+            <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 sm:text-sm">
+              <span className="block">{investor.id}</span>
+              <span className="block">Joined {formatDate(investor.joinedDate)}</span>
+              <span className="block">Last activity {formatDateTime(investor.lastActivity)}</span>
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={badgeClass(investor.status)}>{investor.status}</span>
+              <span className={badgeClass(investor.kycStatus)}>KYC {investor.kycStatus}</span>
+              <span className={badgeClass(investor.riskProfile)}>{investor.riskProfile} risk</span>
+            </div>
           </div>
         </div>
 
@@ -320,43 +350,43 @@ function InvestorProfile({ investor, onBack }: { investor: Investor; onBack: () 
                 ))}
               </div>
               <div className="hidden md:block">
-              <div className={tableWrap}>
-              <table className={`${dataTable} min-w-[560px]`}>
-                <thead>
-                  <tr>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Date</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Type</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Amount</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Gold (g)</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {investor.depositHistory.map(dep => (
-                    <tr key={dep.id} data-interactive-row>
-                      <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm first:rounded-l-2xl sm:px-5 sm:py-4">
-                        {formatDate(dep.date)}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <span className={badgeClass(dep.type === 'cash' ? 'allocation' : 'pending')}>
-                          {dep.type === 'cash' ? 'Cash' : 'Gold'}
-                        </span>
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                        {formatAED(dep.amount)}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">
-                        {dep.goldGrams ?? '—'}
-                      </td>
-                      <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-sm text-slate-600 last:rounded-r-2xl sm:px-5 sm:py-4">
-                        {dep.notes ?? '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            </div>
+                <div className={tableWrap}>
+                  <table className={`${dataTable} min-w-[560px]`}>
+                    <thead>
+                      <tr>
+                        <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Date</th>
+                        <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Type</th>
+                        <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Amount</th>
+                        <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Gold (g)</th>
+                        <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {investor.depositHistory.map(dep => (
+                        <tr key={dep.id} data-interactive-row>
+                          <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm first:rounded-l-2xl sm:px-5 sm:py-4">
+                            {formatDate(dep.date)}
+                          </td>
+                          <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                            <span className={badgeClass(dep.type === 'cash' ? 'allocation' : 'pending')}>
+                              {dep.type === 'cash' ? 'Cash' : 'Gold'}
+                            </span>
+                          </td>
+                          <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
+                            {formatAED(dep.amount)}
+                          </td>
+                          <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">
+                            {dep.goldGrams ?? '—'}
+                          </td>
+                          <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-sm text-slate-600 last:rounded-r-2xl sm:px-5 sm:py-4">
+                            {dep.notes ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -685,6 +715,230 @@ function AddInvestorModal({
           Internal notes
         </label>
         <textarea id="inv-notes" className={formTextarea} rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+function EditInvestorModal({
+  open,
+  onClose,
+  branches,
+  investor,
+  updateInvestor,
+}: {
+  open: boolean;
+  onClose: () => void;
+  branches: Branch[];
+  investor: Investor;
+  updateInvestor: (investor: Investor) => void;
+}) {
+  const [name, setName] = useState(investor.name);
+  const [email, setEmail] = useState(investor.email);
+  const [phone, setPhone] = useState(investor.phone);
+  const [nationality, setNationality] = useState(investor.nationality);
+  const [emiratesId, setEmiratesId] = useState(investor.emiratesId || '');
+  const [passportNo, setPassportNo] = useState(investor.passportNo || '');
+  const [address, setAddress] = useState(investor.address);
+  const [city, setCity] = useState(investor.city);
+  const [country, setCountry] = useState(investor.country);
+  const [status, setStatus] = useState<Investor['status']>(investor.status);
+  const [kycStatus, setKycStatus] = useState<Investor['kycStatus']>(investor.kycStatus);
+  const [riskProfile, setRiskProfile] = useState<Investor['riskProfile']>(investor.riskProfile);
+  const [preferredContact, setPreferredContact] = useState<'email' | 'phone' | 'whatsapp'>(investor.preferredContact);
+  const [branchId, setBranchId] = useState(investor.assignedBranchId || '');
+  const [notes, setNotes] = useState(investor.notes || '');
+
+  React.useEffect(() => {
+    if (open) {
+      setName(investor.name);
+      setEmail(investor.email);
+      setPhone(investor.phone);
+      setNationality(investor.nationality);
+      setEmiratesId(investor.emiratesId || '');
+      setPassportNo(investor.passportNo || '');
+      setAddress(investor.address);
+      setCity(investor.city);
+      setCountry(investor.country);
+      setStatus(investor.status);
+      setKycStatus(investor.kycStatus);
+      setRiskProfile(investor.riskProfile);
+      setPreferredContact(investor.preferredContact);
+      setBranchId(investor.assignedBranchId || '');
+      setNotes(investor.notes || '');
+    }
+  }, [open, investor]);
+
+  const handleSubmit = () => {
+    if (!name || !email || !phone || !nationality || !address || !city || !country) return;
+    updateInvestor({
+      ...investor,
+      name,
+      email,
+      phone,
+      nationality,
+      emiratesId: emiratesId || undefined,
+      passportNo: passportNo || undefined,
+      address,
+      city,
+      country,
+      status,
+      kycStatus,
+      riskProfile,
+      preferredContact,
+      assignedBranchId: branchId || undefined,
+      notes: notes || undefined,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Edit investor details"
+      footer={
+        <>
+          <button type="button" className={btnSecondary} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className={btnPrimary} onClick={handleSubmit}>
+            Save changes
+          </button>
+        </>
+      }
+    >
+      <p className="mb-5 text-sm font-medium text-slate-500">Modify the contact, identity, status, or portfolio assignment for this investor.</p>
+
+      <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Personal details</h4>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-name">
+            Full name *
+          </label>
+          <input id="edit-inv-name" className={formInput} value={name} onChange={e => setName(e.target.value)} />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-nationality">
+            Nationality *
+          </label>
+          <input id="edit-inv-nationality" className={formInput} value={nationality} onChange={e => setNationality(e.target.value)} />
+        </div>
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-emirates">
+            Emirates ID
+          </label>
+          <input id="edit-inv-emirates" className={formInput} value={emiratesId} onChange={e => setEmiratesId(e.target.value)} />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-passport">
+            Passport no.
+          </label>
+          <input id="edit-inv-passport" className={formInput} value={passportNo} onChange={e => setPassportNo(e.target.value)} />
+        </div>
+      </div>
+
+      <h4 className="mb-3 mt-6 text-xs font-bold uppercase tracking-wider text-slate-400">Contact</h4>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-email">
+            Email *
+          </label>
+          <input id="edit-inv-email" type="email" className={formInput} value={email} onChange={e => setEmail(e.target.value)} />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-phone">
+            Phone *
+          </label>
+          <input id="edit-inv-phone" className={formInput} value={phone} onChange={e => setPhone(e.target.value)} />
+        </div>
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel} htmlFor="edit-inv-pref">
+          Preferred contact
+        </label>
+        <select id="edit-inv-pref" className={formSelect} value={preferredContact} onChange={e => setPreferredContact(e.target.value as typeof preferredContact)}>
+          <option value="email">Email</option>
+          <option value="phone">Phone</option>
+          <option value="whatsapp">WhatsApp</option>
+        </select>
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel} htmlFor="edit-inv-address">
+          Street address *
+        </label>
+        <input id="edit-inv-address" className={formInput} value={address} onChange={e => setAddress(e.target.value)} />
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-city">
+            City *
+          </label>
+          <input id="edit-inv-city" className={formInput} value={city} onChange={e => setCity(e.target.value)} />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-country">
+            Country *
+          </label>
+          <input id="edit-inv-country" className={formInput} value={country} onChange={e => setCountry(e.target.value)} />
+        </div>
+      </div>
+
+      <h4 className="mb-3 mt-6 text-xs font-bold uppercase tracking-wider text-slate-400">Portfolio & Status</h4>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-status">
+            Status
+          </label>
+          <select id="edit-inv-status" className={formSelect} value={status} onChange={e => setStatus(e.target.value as Investor['status'])}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-kyc">
+            KYC Status
+          </label>
+          <select id="edit-inv-kyc" className={formSelect} value={kycStatus} onChange={e => setKycStatus(e.target.value as Investor['kycStatus'])}>
+            <option value="verified">Verified</option>
+            <option value="pending">Pending</option>
+            <option value="expired">Expired</option>
+          </select>
+        </div>
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-risk">
+            Risk profile
+          </label>
+          <select id="edit-inv-risk" className={formSelect} value={riskProfile} onChange={e => setRiskProfile(e.target.value as Investor['riskProfile'])}>
+            <option value="conservative">Conservative</option>
+            <option value="balanced">Balanced</option>
+            <option value="aggressive">Aggressive</option>
+          </select>
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="edit-inv-branch">
+            Assigned branch
+          </label>
+          <select id="edit-inv-branch" className={formSelect} value={branchId} onChange={e => setBranchId(e.target.value)}>
+            <option value="">— None —</option>
+            {branches.filter(b => b.status === 'active').map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel} htmlFor="edit-inv-notes">
+          Internal notes
+        </label>
+        <textarea id="edit-inv-notes" className={formTextarea} rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
     </Modal>
   );

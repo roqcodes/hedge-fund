@@ -1,14 +1,16 @@
 'use client';
-import React, { use } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatDateTime } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import KPICard from '@/components/ui/KPICard';
+import EditDealModal from './EditDealModal';
 import {
   pageHeader,
   pageSubtitle,
   pageTitle,
+  btnPrimary,
   btnSecondary,
   kpiGrid,
   tableWrap,
@@ -18,6 +20,7 @@ import {
 export default function DealDetails({ dealId }: { dealId: string }) {
   const { deals } = useApp();
   const router = useRouter();
+  const [showEdit, setShowEdit] = useState(false);
 
   const deal = deals.find(d => d.id === dealId);
 
@@ -35,27 +38,40 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const fundingPercentage = Math.min((deal.totalInvestment / deal.amount) * 100, 100);
 
   return (
-    <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
-      <div className={pageHeader}>
-        <div>
-          <div className="mb-2 flex items-center gap-3">
-            <button
-              onClick={() => router.push('/deals')}
-              className="group flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
-              aria-label="Back to Deals"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <h2 className={pageTitle}>{deal.name}</h2>
-            <span className={badgeClass(deal.status)}>{deal.status.toUpperCase()}</span>
+    <>
+      <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
+        <div className={pageHeader}>
+          <div>
+            <div className="mb-2 flex items-center gap-3">
+              <button
+                onClick={() => router.push('/deals')}
+                className="group flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
+                aria-label="Back to Deals"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h2 className={pageTitle}>{deal.name}</h2>
+              <span className={badgeClass(deal.status)}>{deal.status.toUpperCase()}</span>
+            </div>
+            <p className={pageSubtitle}>
+              Allocated to: <strong>{deal.toBranchName}</strong> • Created: {formatDateTime(deal.date)}
+            </p>
           </div>
-          <p className={pageSubtitle}>
-            Allocated to: <strong>{deal.toBranchName}</strong> • Created: {formatDateTime(deal.date)}
-          </p>
+          <button
+            type="button"
+            className={`${btnPrimary} w-full sm:w-auto flex items-center gap-2`}
+            onClick={() => setShowEdit(true)}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            Edit Deal
+          </button>
         </div>
-      </div>
+
 
       <div className={kpiGrid}>
         <KPICard
@@ -161,5 +177,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
         </div>
       </div>
     </div>
-  );
+    <EditDealModal open={showEdit} onClose={() => setShowEdit(false)} deal={deal} />
+  </>
+);
 }

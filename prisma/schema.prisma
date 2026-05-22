@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model hq_balance {
+  id     Int     @id @default(1)
+  amount Decimal @db.Decimal(18, 2)
+}
+
+model branches {
+  id              String   @id
+  name            String
+  location        String
+  manager_name    String
+  cash_balance    Decimal  @db.Decimal(18, 2)
+  gold_balance    Decimal  @db.Decimal(18, 2)
+  current_balance Decimal  @db.Decimal(18, 2)
+  opening_balance Decimal  @db.Decimal(18, 2)
+  closing_balance Decimal  @db.Decimal(18, 2)
+  daily_pl        Decimal  @db.Decimal(18, 2)
+  status          String
+  last_activity   DateTime @default(now())
+  created_at      DateTime @default(now())
+}
+
+model transactions {
+  id          String   @id
+  date        DateTime
+  from_entity String
+  to_entity   String
+  amount      Decimal  @db.Decimal(18, 2)
+  type        String
+  status      String
+  notes       String?
+  category    String?
+}
+
+model expenses {
+  id          String   @id
+  date        DateTime
+  branch_id   String
+  branch_name String
+  type        String
+  category    String
+  description String
+  amount      Decimal  @db.Decimal(18, 2)
+}
+
+model invoices {
+  id          String   @id
+  client_name String
+  branch_id   String
+  branch_name String
+  amount      Decimal  @db.Decimal(18, 2)
+  description String
+  date        DateTime
+  status      String
+}
+
+model notifications {
+  id         String   @id
+  message    String
+  time       String
+  read       Boolean  @default(false)
+  type       String
+  created_at DateTime @default(now())
+}
+
+model investors {
+  id                   String              @id
+  name                 String
+  email                String
+  phone                String
+  nationality          String
+  emirates_id          String?
+  passport_no          String?
+  address              String
+  city                 String
+  country              String
+  cash_deposit         Decimal             @db.Decimal(18, 2)
+  gold_deposit         Decimal             @db.Decimal(18, 2)
+  gold_weight_grams    Decimal             @db.Decimal(18, 2)
+  status               String
+  risk_profile         String
+  kyc_status           String
+  joined_date          DateTime            @default(now())
+  last_activity        DateTime            @default(now())
+  assigned_branch_id   String?
+  assigned_branch_name String?
+  preferred_contact    String
+  notes                String?
+  deposits             investor_deposits[]
+}
+
+model investor_deposits {
+  id          String    @id
+  investor_id String
+  date        DateTime  @default(now())
+  type        String
+  amount      Decimal   @db.Decimal(18, 2)
+  gold_grams  Decimal?  @db.Decimal(18, 2)
+  notes       String?
+  investor    investors @relation(fields: [investor_id], references: [id], onDelete: Cascade)
+}
+
+model deals {
+  id               String           @id
+  name             String
+  amount           Decimal          @db.Decimal(18, 2)
+  total_investment Decimal          @db.Decimal(18, 2)
+  balance          Decimal          @db.Decimal(18, 2)
+  to_branch_id     String
+  to_branch_name   String
+  status           String
+  date             DateTime         @default(now())
+  investors        deal_investors[]
+}
+
+model deal_investors {
+  deal_id       String
+  investor_id   String
+  investor_name String
+  amount        Decimal @db.Decimal(18, 2)
+  is_gold       Boolean @default(false)
+  deal          deals   @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+
+  @@id([deal_id, investor_id])
+}
