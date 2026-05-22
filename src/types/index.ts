@@ -93,6 +93,7 @@ export type PageId =
   | 'finance'
   | 'reports'
   | 'usdt'
+  | 'deals'
   | 'investors'
   | 'physical';
 
@@ -135,4 +136,26 @@ export interface Investor {
   preferredContact: 'email' | 'phone' | 'whatsapp';
   notes?: string;
   depositHistory: InvestorDeposit[];
+}
+
+export type DealStatus = 'active' | 'pending' | 'completed' | 'cancelled';
+
+export interface DealInvestor {
+  investorId: string;
+  investorName: string;
+  amount: number;
+  isGold: boolean; // True if the amount represents gold grams, false if AED cash
+}
+
+export interface Deal {
+  id: string;
+  name: string;
+  amount: number;
+  investors: DealInvestor[];
+  totalInvestment: number;
+  balance: number;
+  toBranchId: string;
+  toBranchName: string;
+  status: DealStatus;
+  date: string;
 }

@@ -3,7 +3,7 @@
 // CASH + GOLD positions per entity (AED)
 // ═══════════════════════════════════════════════════════════
 
-import { Branch, Transaction, Expense, DailyReport, Invoice, Notification, Investor } from '@/types';
+import { Branch, Transaction, Expense, DailyReport, Invoice, Notification, Investor, Deal } from '@/types';
 
 const REPORT_DATE = '2026-05-03';
 const BASE_ACTIVITY = '2026-05-03T10:00:00+04:00';
@@ -551,6 +551,39 @@ export function formatDateTime(dateStr: string): string {
 export function generateId(prefix: string): string {
   return `${prefix}${Date.now().toString(36).toUpperCase()}`;
 }
+
+// ─── DEALS ───────────────────────────────────────────────
+export const deals: Deal[] = [
+  {
+    id: 'DL001',
+    name: 'Real Estate Acquisition - Downtown',
+    amount: 15_000_000,
+    investors: [
+      { investorId: 'INV001', investorName: 'Khalid Al Mansoori', amount: 5_000_000, isGold: false },
+      { investorId: 'INV002', investorName: 'Fatima Al Hashimi', amount: 2_500_000, isGold: false },
+    ],
+    totalInvestment: 7_500_000,
+    balance: -7_500_000, // Underfunded
+    toBranchId: 'BR003',
+    toBranchName: 'BAB AL TAWASEL',
+    status: 'active',
+    date: '2026-05-01T10:00:00+04:00',
+  },
+  {
+    id: 'DL002',
+    name: 'Tech Startup Seed Funding',
+    amount: 2_000_000,
+    investors: [
+      { investorId: 'INV003', investorName: 'Rajesh Mehta', amount: 2_500_000, isGold: false },
+    ],
+    totalInvestment: 2_500_000,
+    balance: 500_000, // Overfunded
+    toBranchId: 'BR001',
+    toBranchName: 'AEROCITY',
+    status: 'completed',
+    date: '2026-04-15T14:30:00+04:00',
+  },
+];
 
 // ─── EXTENDED CHARTS & DATA ──────────────────────────────
 export const revenueExpenseData = {

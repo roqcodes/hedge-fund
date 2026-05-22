@@ -8,10 +8,10 @@ import {
   Invoice,
   Notification,
   Investor,
-  InvestorRiskProfile,
   PageId,
   DateRange,
   UserRole,
+  Deal,
 } from '@/types';
 import * as mock from '@/data/mockData';
 
@@ -32,6 +32,7 @@ interface AppState {
   selectedBranchId: string | null;
   selectedInvestorId: string | null;
   investors: Investor[];
+  deals: Deal[];
   isInitialLoading: boolean;
   hqBalance: number;
 }
@@ -69,6 +70,7 @@ interface AppContextType extends AppState {
   selectBranch: (id: string | null) => void;
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
+  addDeal: (deal: Omit<Deal, 'id' | 'date'>) => void;
   getTotalCapital: () => number;
   getNetPL: () => number;
 }
@@ -91,6 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectedBranchId: null,
     selectedInvestorId: null,
     investors: [...mock.investors],
+    deals: [...mock.deals],
     isInitialLoading: true,
     hqBalance: 50000000, // 50M AED initial treasury
   });
@@ -198,6 +201,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, investors: [newInvestor, ...s.investors] }));
     showToast(`Investor "${newInvestor.name}" added successfully`);
   }, [showToast, state.branches]);
+
+  const addDeal = useCallback((deal: Omit<Deal, 'id' | 'date'>) => {
+    const newDeal: Deal = {
+      ...deal,
+      id: mock.generateId('DL'),
+      date: new Date().toISOString(),
+    };
+    setState(s => ({ ...s, deals: [newDeal, ...s.deals] }));
+    showToast(`Deal "${newDeal.name}" created successfully`);
+  }, [showToast]);
 
   const addBranch = useCallback((b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => {
     const total = b.openingBalance;
@@ -315,7 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
-      getTotalCapital, getNetPL,
+      addDeal, getTotalCapital, getNetPL,
     }}>
       {children}
     </AppContext.Provider>
