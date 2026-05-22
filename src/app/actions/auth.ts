@@ -2,6 +2,7 @@
 
 import { authenticateWithCognito, createSession, deleteSession, getSessionUser } from '@/lib/auth';
 import { User } from '@/types';
+import { loginSchema } from '@/lib/validations';
 
 export interface AuthActionResult<T> {
   success: boolean;
@@ -14,16 +15,18 @@ export interface AuthActionResult<T> {
  */
 export async function loginAction(email: string, securityKey: string): Promise<AuthActionResult<User>> {
   try {
-    if (!email || !securityKey) {
-      return { success: false, error: 'Email and security key are required.' };
+    const validation = loginSchema.safeParse({ email, securityKey });
+    if (!validation.success) {
+      return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
     }
 
-    const user = await authenticateWithCognito(email, securityKey);
+    const user = await authenticateWithCognito(validation.data.email, validation.data.securityKey);
     await createSession(user);
     
     return { success: true, data: user };
-  } catch (error: any) {
-    return { success: false, error: error.message || 'An error occurred during authentication.' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An error occurred during authentication.';
+    return { success: false, error: message };
   }
 }
 
@@ -34,8 +37,9 @@ export async function logoutAction(): Promise<AuthActionResult<void>> {
   try {
     await deleteSession();
     return { success: true };
-  } catch (error: any) {
-    return { success: false, error: error.message || 'An error occurred during logout.' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An error occurred during logout.';
+    return { success: false, error: message };
   }
 }
 
@@ -46,7 +50,8 @@ export async function getCurrentUserAction(): Promise<AuthActionResult<User | nu
   try {
     const user = await getSessionUser();
     return { success: true, data: user };
-  } catch (error: any) {
-    return { success: false, error: error.message || 'An error occurred while fetching user session.' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'An error occurred while fetching user session.';
+    return { success: false, error: message };
   }
 }

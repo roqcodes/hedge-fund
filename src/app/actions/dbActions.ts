@@ -1,8 +1,24 @@
 'use server';
 
 import { query, pool } from '@/lib/db';
-import { Branch, Transaction, Expense, Invoice, Notification, Investor, Deal, UserRole } from '@/types';
-import { AddInvestorInput } from '@/context/AppContext';
+import {
+  Branch,
+  Transaction,
+  Expense,
+  Invoice,
+  Notification,
+  Investor,
+  Deal,
+} from '@/types';
+import {
+  addBranchSchema,
+  transferFundsSchema,
+  addInvoiceSchema,
+  addExpenseSchema,
+  addInvestorSchema,
+  addDealSchema,
+  updateDealSchema,
+} from '@/lib/validations';
 
 export interface DbActionResult<T> {
   success: boolean;
@@ -24,6 +40,8 @@ export interface InitialDataPayload {
 
 /**
  * Fetches all database records for initial dashboard hydration in a single step.
+ *
+ * Uses JOINs + json_agg for investors/deals to eliminate N+1 queries.
  */
 export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDataPayload>> {
   if (!pool) {
@@ -103,72 +121,112 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       type: r.type,
     }));
 
-    // 7. Fetch Investors & Deposits
-    const invResList = await query('SELECT * FROM investors ORDER BY joined_date DESC');
-    const investors: Investor[] = [];
-    for (const r of invResList.rows) {
-      const depRes = await query('SELECT * FROM investor_deposits WHERE investor_id = $1 ORDER BY date DESC', [r.id]);
-      const depositHistory = depRes.rows.map((d) => ({
+    // 7. Fetch Investors with deposits (single query via LEFT JOIN + json_agg)
+    const investorsRes = await query(`
+      SELECT
+        i.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', d.id,
+              'date', d.date,
+              'type', d.type,
+              'amount', d.amount,
+              'goldGrams', d.gold_grams,
+              'notes', d.notes
+            )
+          ) FILTER (WHERE d.id IS NOT NULL),
+          '[]'::json
+        ) AS deposits
+      FROM investors i
+      LEFT JOIN investor_deposits d ON d.investor_id = i.id
+      GROUP BY i.id
+      ORDER BY i.joined_date DESC
+    `);
+
+    const investors: Investor[] = investorsRes.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      nationality: r.nationality,
+      emiratesId: r.emirates_id || undefined,
+      passportNo: r.passport_no || undefined,
+      address: r.address,
+      city: r.city,
+      country: r.country,
+      cashDeposit: parseFloat(r.cash_deposit),
+      goldDeposit: parseFloat(r.gold_deposit),
+      goldWeightGrams: parseFloat(r.gold_weight_grams),
+      status: r.status,
+      riskProfile: r.risk_profile,
+      kycStatus: r.kyc_status,
+      joinedDate: new Date(r.joined_date).toISOString().slice(0, 10),
+      lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
+      assignedBranchId: r.assigned_branch_id || undefined,
+      assignedBranchName: r.assigned_branch_name || undefined,
+      preferredContact: r.preferred_contact,
+      notes: r.notes || undefined,
+      depositHistory: (r.deposits as Array<{
+        id: string;
+        date: string;
+        type: 'cash' | 'gold';
+        amount: string;
+        goldGrams: string | null;
+        notes: string | null;
+      }>).map((d) => ({
         id: d.id,
         date: new Date(d.date).toISOString().slice(0, 10),
-        type: d.type as 'cash' | 'gold',
+        type: d.type,
         amount: parseFloat(d.amount),
-        goldGrams: d.gold_grams ? parseFloat(d.gold_grams) : undefined,
+        goldGrams: d.goldGrams ? parseFloat(d.goldGrams) : undefined,
         notes: d.notes || undefined,
-      }));
+      })),
+    }));
 
-      investors.push({
-        id: r.id,
-        name: r.name,
-        email: r.email,
-        phone: r.phone,
-        nationality: r.nationality,
-        emiratesId: r.emirates_id || undefined,
-        passportNo: r.passport_no || undefined,
-        address: r.address,
-        city: r.city,
-        country: r.country,
-        cashDeposit: parseFloat(r.cash_deposit),
-        goldDeposit: parseFloat(r.gold_deposit),
-        goldWeightGrams: parseFloat(r.gold_weight_grams),
-        status: r.status,
-        riskProfile: r.risk_profile,
-        kycStatus: r.kyc_status,
-        joinedDate: new Date(r.joined_date).toISOString().slice(0, 10),
-        lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
-        assignedBranchId: r.assigned_branch_id || undefined,
-        assignedBranchName: r.assigned_branch_name || undefined,
-        preferredContact: r.preferred_contact,
-        notes: r.notes || undefined,
-        depositHistory,
-      });
-    }
+    // 8. Fetch Deals with investors (single query via LEFT JOIN + json_agg)
+    const dealsRes = await query(`
+      SELECT
+        dl.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'investorId', di.investor_id,
+              'investorName', di.investor_name,
+              'amount', di.amount,
+              'isGold', di.is_gold
+            )
+          ) FILTER (WHERE di.deal_id IS NOT NULL),
+          '[]'::json
+        ) AS deal_investors_json
+      FROM deals dl
+      LEFT JOIN deal_investors di ON di.deal_id = dl.id
+      GROUP BY dl.id
+      ORDER BY dl.date DESC
+    `);
 
-    // 8. Fetch Deals & Deal Investors
-    const dealsRes = await query('SELECT * FROM deals ORDER BY date DESC');
-    const deals: Deal[] = [];
-    for (const r of dealsRes.rows) {
-      const diRes = await query('SELECT * FROM deal_investors WHERE deal_id = $1', [r.id]);
-      const diList = diRes.rows.map((di) => ({
-        investorId: di.investor_id,
-        investorName: di.investor_name,
+    const deals: Deal[] = dealsRes.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      amount: parseFloat(r.amount),
+      investors: (r.deal_investors_json as Array<{
+        investorId: string;
+        investorName: string;
+        amount: string;
+        isGold: boolean;
+      }>).map((di) => ({
+        investorId: di.investorId,
+        investorName: di.investorName,
         amount: parseFloat(di.amount),
-        isGold: di.is_gold,
-      }));
-
-      deals.push({
-        id: r.id,
-        name: r.name,
-        amount: parseFloat(r.amount),
-        investors: diList,
-        totalInvestment: parseFloat(r.total_investment),
-        balance: parseFloat(r.balance),
-        toBranchId: r.to_branch_id,
-        toBranchName: r.to_branch_name,
-        status: r.status,
-        date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
-      });
-    }
+        isGold: di.isGold,
+      })),
+      totalInvestment: parseFloat(r.total_investment),
+      balance: parseFloat(r.balance),
+      toBranchId: r.to_branch_id,
+      toBranchName: r.to_branch_name,
+      status: r.status,
+      date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
+    }));
 
     return {
       success: true,
@@ -183,9 +241,10 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
         hqBalance,
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch dashboard data.';
     console.error('Failed to fetch initial data from Postgres:', error);
-    return { success: false, error: error.message || 'Failed to fetch dashboard data.' };
+    return { success: false, error: message };
   }
 }
 
@@ -197,6 +256,18 @@ export async function dbAddBranchAction(
   allocationTxn: Transaction
 ): Promise<DbActionResult<{ branch: Branch; transaction: Transaction }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  // Validate core fields
+  const validation = addBranchSchema.safeParse({
+    name: branch.name,
+    location: branch.location,
+    managerName: branch.managerName,
+    openingBalance: branch.openingBalance,
+  });
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -243,10 +314,11 @@ export async function dbAddBranchAction(
 
     await client.query('COMMIT');
     return { success: true, data: { branch, transaction: allocationTxn } };
-  } catch (error: any) {
+  } catch (error: unknown) {
     await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error occurred while adding branch.';
     console.error('Error adding branch to database:', error);
-    return { success: false, error: error.message || 'Database error occurred while adding branch.' };
+    return { success: false, error: message };
   } finally {
     client.release();
   }
@@ -265,6 +337,13 @@ export async function dbTransferFundsAction(
   txnId: string
 ): Promise<DbActionResult<{ transaction: Transaction; hqBalanceUpdate?: number }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  // Validate inputs
+  const validation = transferFundsSchema.safeParse({ fromId, toId, amount, notes });
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -317,10 +396,11 @@ export async function dbTransferFundsAction(
     };
 
     return { success: true, data: { transaction, hqBalanceUpdate: newHqBalance } };
-  } catch (error: any) {
+  } catch (error: unknown) {
     await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error occurred during transfer.';
     console.error('Error executing fund transfer:', error);
-    return { success: false, error: error.message || 'Database error occurred during transfer.' };
+    return { success: false, error: message };
   } finally {
     client.release();
   }
@@ -331,6 +411,20 @@ export async function dbTransferFundsAction(
  */
 export async function dbAddInvoiceAction(invoice: Invoice): Promise<DbActionResult<Invoice>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  // Validate
+  const validation = addInvoiceSchema.safeParse({
+    clientName: invoice.clientName,
+    branchId: invoice.branchId,
+    branchName: invoice.branchName,
+    amount: invoice.amount,
+    description: invoice.description,
+    date: invoice.date,
+  });
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
+  }
+
   try {
     await query(
       `INSERT INTO invoices (id, client_name, branch_id, branch_name, amount, description, date, status)
@@ -347,9 +441,10 @@ export async function dbAddInvoiceAction(invoice: Invoice): Promise<DbActionResu
       ]
     );
     return { success: true, data: invoice };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error.';
     console.error('Error adding invoice:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   }
 }
 
@@ -361,6 +456,21 @@ export async function dbAddExpenseAction(
   txn: Transaction
 ): Promise<DbActionResult<{ expense: Expense; transaction: Transaction; hqBalanceUpdate?: number }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  // Validate
+  const validation = addExpenseSchema.safeParse({
+    date: expense.date,
+    branchId: expense.branchId,
+    branchName: expense.branchName,
+    type: expense.type,
+    category: expense.category,
+    description: expense.description,
+    amount: expense.amount,
+  });
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -406,10 +516,11 @@ export async function dbAddExpenseAction(
 
     await client.query('COMMIT');
     return { success: true, data: { expense, transaction: txn, hqBalanceUpdate: newHqBalance } };
-  } catch (error: any) {
+  } catch (error: unknown) {
     await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
     console.error('Error adding expense:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   } finally {
     client.release();
   }
@@ -422,6 +533,30 @@ export async function dbAddInvestorAction(
   investor: Investor
 ): Promise<DbActionResult<Investor>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  // Validate
+  const validation = addInvestorSchema.safeParse({
+    name: investor.name,
+    email: investor.email,
+    phone: investor.phone,
+    nationality: investor.nationality,
+    emiratesId: investor.emiratesId,
+    passportNo: investor.passportNo,
+    address: investor.address,
+    city: investor.city,
+    country: investor.country,
+    cashDeposit: investor.cashDeposit,
+    goldDeposit: investor.goldDeposit,
+    goldWeightGrams: investor.goldWeightGrams,
+    riskProfile: investor.riskProfile,
+    preferredContact: investor.preferredContact,
+    assignedBranchId: investor.assignedBranchId,
+    notes: investor.notes,
+  });
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -469,10 +604,11 @@ export async function dbAddInvestorAction(
 
     await client.query('COMMIT');
     return { success: true, data: investor };
-  } catch (error: any) {
+  } catch (error: unknown) {
     await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
     console.error('Error adding investor:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   } finally {
     client.release();
   }
@@ -528,9 +664,10 @@ export async function dbUpdateInvestorAction(
       ]
     );
     return { success: true, data: investor };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error.';
     console.error('Error updating investor:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   }
 }
 
@@ -539,6 +676,22 @@ export async function dbUpdateInvestorAction(
  */
 export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  // Validate
+  const validation = addDealSchema.safeParse({
+    name: deal.name,
+    amount: deal.amount,
+    investors: deal.investors,
+    totalInvestment: deal.totalInvestment,
+    balance: deal.balance,
+    toBranchId: deal.toBranchId,
+    toBranchName: deal.toBranchName,
+    status: deal.status,
+  });
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -573,10 +726,11 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
 
     await client.query('COMMIT');
     return { success: true, data: deal };
-  } catch (error: any) {
+  } catch (error: unknown) {
     await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
     console.error('Error adding deal:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   } finally {
     client.release();
   }
@@ -587,6 +741,13 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
  */
 export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Deal>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  // Validate
+  const validation = updateDealSchema.safeParse(deal);
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -630,12 +791,12 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
 
     await client.query('COMMIT');
     return { success: true, data: deal };
-  } catch (error: any) {
+  } catch (error: unknown) {
     await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
     console.error('Error updating deal:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   } finally {
     client.release();
   }
 }
-

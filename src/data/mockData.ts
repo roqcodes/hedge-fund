@@ -150,7 +150,7 @@ export function formatAED(amount: number): string {
   return amount < 0 ? `-${formatted}` : formatted;
 }
 
-export const formatINR = formatAED;
+
 
 export function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-AE', {

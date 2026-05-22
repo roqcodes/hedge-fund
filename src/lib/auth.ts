@@ -3,18 +3,14 @@ import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/cli
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { User, UserRole } from '@/types';
+import { env } from '@/lib/env';
 
-// Fallback secret for local development if SESSION_SECRET is not set
-const SESSION_SECRET = process.env.SESSION_SECRET || 'secret-key-must-be-32-characters-long-default';
-const encodedKey = new TextEncoder().encode(SESSION_SECRET);
-
-const COGNITO_REGION = process.env.COGNITO_REGION;
-const COGNITO_CLIENT_ID = process.env.COGNITO_CLIENT_ID;
+const encodedKey = new TextEncoder().encode(env.SESSION_SECRET);
 
 // Initialise the AWS Cognito Client (optional config if env is present)
 let cognitoClient: CognitoIdentityProviderClient | null = null;
-if (COGNITO_REGION) {
-  cognitoClient = new CognitoIdentityProviderClient({ region: COGNITO_REGION });
+if (env.COGNITO_REGION) {
+  cognitoClient = new CognitoIdentityProviderClient({ region: env.COGNITO_REGION });
 }
 
 export interface SessionPayload {
@@ -29,7 +25,7 @@ export interface SessionPayload {
 /**
  * Encrypts a payload into a signed JWT string.
  */
-export async function encrypt(payload: any) {
+export async function encrypt(payload: Record<string, unknown>) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -108,7 +104,7 @@ function parseCognitoIdToken(idToken: string): User {
  */
 export async function authenticateWithCognito(email: string, securityKey: string): Promise<User> {
   // If Cognito variables are missing, run in Developer Mock Mode for easy setup/dev
-  if (!COGNITO_CLIENT_ID || !cognitoClient) {
+  if (!env.COGNITO_CLIENT_ID || !cognitoClient) {
     console.warn(
       'AWS Cognito client config missing. Running in developer mock mode. Configure COGNITO_CLIENT_ID and COGNITO_REGION to run dynamic AWS auth.'
     );
@@ -133,7 +129,7 @@ export async function authenticateWithCognito(email: string, securityKey: string
   try {
     const command = new InitiateAuthCommand({
       AuthFlow: 'USER_PASSWORD_AUTH',
-      ClientId: COGNITO_CLIENT_ID,
+      ClientId: env.COGNITO_CLIENT_ID,
       AuthParameters: {
         USERNAME: email,
         PASSWORD: securityKey,
@@ -164,27 +160,29 @@ export async function authenticateWithCognito(email: string, securityKey: string
     // Parse user properties from ID Token
     const user = parseCognitoIdToken(idToken);
     return user;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('AWS Cognito authentication error:', error);
-    if (error.name === 'ResourceNotFoundException') {
+    const err = error instanceof Error ? error : new Error('Authentication failed. Please try again.');
+    const errName = (error as { name?: string })?.name;
+    if (errName === 'ResourceNotFoundException') {
       throw new Error('Configuration Error: The authentication client does not exist. Please verify your COGNITO_CLIENT_ID and COGNITO_REGION settings in the .env file.');
     }
-    if (error.message && error.message.includes('USER_PASSWORD_AUTH')) {
+    if (err.message && err.message.includes('USER_PASSWORD_AUTH')) {
       throw new Error('Configuration Error: USER_PASSWORD_AUTH flow is not enabled on your AWS Cognito App Client. Please enable it under App Client advanced settings in your AWS console.');
     }
-    if (error.name === 'NotAuthorizedException') {
+    if (errName === 'NotAuthorizedException') {
       throw new Error('Invalid email or security key. Please check your credentials.');
     }
-    if (error.name === 'UserNotFoundException') {
+    if (errName === 'UserNotFoundException') {
       throw new Error('User account not found.');
     }
-    if (error.name === 'PasswordResetRequiredException') {
+    if (errName === 'PasswordResetRequiredException') {
       throw new Error('Password reset is required for this user pool account.');
     }
-    if (error.name === 'UserNotConfirmedException') {
+    if (errName === 'UserNotConfirmedException') {
       throw new Error('User account is not confirmed in Cognito user pool.');
     }
-    throw new Error(error.message || 'Authentication failed. Please try again.');
+    throw err;
   }
 }
 
