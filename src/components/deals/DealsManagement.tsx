@@ -7,6 +7,7 @@ import { formatAED, formatDateTime } from '@/data/mockData';
 import { Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import CreateDealModal from './CreateDealModal';
+import CurrencySwitcher from './CurrencySwitcher';
 import {
   btnPrimary,
   kpiGrid,
@@ -30,7 +31,7 @@ export default function DealsManagement() {
   const totalGoldGrams = deals.reduce((acc, deal) => {
     return acc + deal.investors.reduce((invAcc, inv) => invAcc + (inv.isGold ? inv.amount : 0), 0);
   }, 0);
-  const totalGoldKg = (totalGoldGrams / 1000).toFixed(2);
+  const totalGoldKg = (totalGoldGrams / 1000).toFixed(4);
 
   return (
     <>
@@ -40,17 +41,20 @@ export default function DealsManagement() {
             <h2 className={pageTitle}>Deals</h2>
             <p className={pageSubtitle}>Manage investments and track deal allocations</p>
           </div>
-          <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowCreate(true)}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Create New Deal
-          </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            <CurrencySwitcher />
+            <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowCreate(true)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Create New Deal
+            </button>
+          </div>
         </div>
 
         <div className={kpiGrid}>
           <KPICard
-            label="Total Deals"
+            label="Total Groups"
             value={totalDeals}
             subValue={`${activeDealsCount} active deals`}
             icon={
@@ -68,7 +72,7 @@ export default function DealsManagement() {
           <KPICard
             label="Total Capital"
             value={formatAED(totalDealAmount)}
-            subValue="Target capital for all deals"
+            subValue="Target capital for all Groups"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -105,7 +109,7 @@ export default function DealsManagement() {
 
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
-            <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">All Deals</h3>
+            <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">All Groups</h3>
           </div>
           <div className="p-0">
             <div className={tableWrap}>
@@ -113,63 +117,64 @@ export default function DealsManagement() {
                 <thead>
                   <tr>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Group Name</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Deal Name</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Branches</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Capital</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Invested</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Total P/L</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Volume Gold (g)</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Avg Cost</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Avg Expense</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
                     <th className="px-3 pb-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {deals.map((deal: Deal) => (
-                    <tr
-                      key={deal.id}
-                      data-interactive-row
-                      onClick={() => router.push(`/deals/${deal.id}`)}
-                      className="cursor-pointer"
-                    >
-                      <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
-                        {deal.groupName || '-'}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">
-                        {deal.name}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">
-                        {deal.toBranchName}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                        {formatAED(deal.amount)}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                        {formatAED(deal.totalInvestment)}
-                        <div className="text-[11px] font-medium text-slate-500">{deal.investors.length} Investors</div>
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                        <span className={(deal.totalPL || 0) > 0 ? 'text-green-600' : (deal.totalPL || 0) < 0 ? 'text-red-600' : ''}>
-                          {formatAED(deal.totalPL || 0, true)}
-                        </span>
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <span className={badgeClass(deal.status)}>{deal.status.toUpperCase()}</span>
-                      </td>
-                      <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-right last:rounded-r-2xl sm:px-5 sm:py-4">
-                        <button
-                          type="button"
-                          className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/deals/${deal.id}`);
-                          }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {deals.map((deal: Deal) => {
+                    const goldVolume = deal.investors.reduce((acc, inv) => acc + (inv.isGold ? inv.amount : 0), 0);
+                    const avgCost = goldVolume > 0 ? deal.totalInvestment / goldVolume : 0;
+                    const avgExpense = goldVolume > 0 ? (deal.expense || 0) / goldVolume : 0;
+                    return (
+                      <tr
+                        key={deal.id}
+                        data-interactive-row
+                        onClick={() => router.push(`/deals/${deal.id}`)}
+                        className="cursor-pointer"
+                      >
+                        <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
+                          {deal.groupName || '-'}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
+                          {formatAED(deal.amount)}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
+                          {goldVolume > 0 ? `${goldVolume.toFixed(4)}` : '-'}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
+                          {formatAED(avgCost)}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
+                          {formatAED(avgExpense)}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${deal.status === 'active' ? 'bg-green-500' : deal.status === 'pending' ? 'bg-amber-500' : deal.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'}`}></span>
+                            <span className="text-xs font-medium text-slate-600 capitalize">{deal.status}</span>
+                          </div>
+                        </td>
+                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-right last:rounded-r-2xl sm:px-5 sm:py-4">
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/deals/${deal.id}`);
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {deals.length === 0 && (
                     <tr>
                       <td colSpan={7} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">

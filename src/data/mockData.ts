@@ -142,27 +142,64 @@ export function investorTotalExposure(inv: Pick<Investor, 'cashDeposit' | 'goldD
 
 import React from 'react';
 
+export type Currency = 'AED' | 'USD' | 'INR';
+let globalCurrency: Currency = 'AED';
+
+export function getGlobalCurrency(): Currency {
+  return globalCurrency;
+}
+
+export function setGlobalCurrency(c: Currency) {
+  globalCurrency = c;
+}
+
+const RATES: Record<Currency, number> = {
+  AED: 1,
+  USD: 0.2723,
+  INR: 22.68,
+};
+
+const SYMBOLS: Record<Currency, string> = {
+  AED: '',
+  USD: '',
+  INR: '',
+};
+
 export function formatAED(amount: number, showPlus = false): React.ReactNode {
-  const absAmount = Math.abs(amount);
-  const numStr = absAmount.toLocaleString('en-AE', {
-    maximumFractionDigits: 0,
+  const currency = getGlobalCurrency();
+  const convertedAmount = amount * RATES[currency];
+  const absAmount = Math.abs(convertedAmount);
+  
+  const numStr = absAmount.toLocaleString('en-US', {
+    maximumFractionDigits: currency === 'USD' ? 2 : 0,
+    minimumFractionDigits: currency === 'USD' ? 2 : 0,
   });
+  
   const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
+  const symbol = SYMBOLS[currency];
+  
   return React.createElement(
     React.Fragment,
     null,
-    React.createElement('span', { className: 'text-[0.65em] font-medium leading-none mr-[3px]' }, sign ? `${sign} AED` : 'AED'),
+    symbol ? React.createElement('span', { className: 'text-[0.8em] font-bold leading-none mr-[2px]' }, sign ? `${sign}${symbol}` : symbol) : (sign ? `${sign}` : null),
     numStr
   );
 }
 
 export function formatAEDStr(amount: number, showPlus = false): string {
-  const absAmount = Math.abs(amount);
-  const numStr = absAmount.toLocaleString('en-AE', {
-    maximumFractionDigits: 0,
+  const currency = getGlobalCurrency();
+  const convertedAmount = amount * RATES[currency];
+  const absAmount = Math.abs(convertedAmount);
+  
+  const numStr = absAmount.toLocaleString('en-US', {
+    maximumFractionDigits: currency === 'USD' ? 2 : 0,
+    minimumFractionDigits: currency === 'USD' ? 2 : 0,
   });
+  
   const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
-  return `${sign ? sign + ' ' : ''}AED ${numStr}`;
+  const symbol = SYMBOLS[currency];
+  
+  return `${sign}${symbol}${numStr}`;
 }
 
 

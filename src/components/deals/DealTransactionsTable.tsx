@@ -9,7 +9,13 @@ import { DealTransaction, SPORTS_MOCK_DATA } from '@/data/mockTransactions';
 type SortField = keyof DealTransaction;
 type SortDirection = 'asc' | 'desc';
 
-export default function DealTransactionsTable({ dealName = '' }: { dealName?: string }) {
+export default function DealTransactionsTable({ 
+  dealName = '', 
+  transactions 
+}: { 
+  dealName?: string;
+  transactions?: DealTransaction[];
+}) {
   const router = useRouter();
   const params = useParams();
   const dealId = params?.id as string || '1';
@@ -28,7 +34,7 @@ export default function DealTransactionsTable({ dealName = '' }: { dealName?: st
   };
 
   const filteredAndSortedData = useMemo(() => {
-    const dataSource = dealName.toLowerCase() === 'sports' ? SPORTS_MOCK_DATA : [];
+    const dataSource = transactions || (dealName.toLowerCase() === 'sports' ? SPORTS_MOCK_DATA : []);
     let result = [...dataSource];
 
     // 1. Search Filtering
@@ -83,7 +89,7 @@ export default function DealTransactionsTable({ dealName = '' }: { dealName?: st
   return (
     <div className="mb-8 mt-8 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface">
       <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-lg font-bold text-slate-900">Transaction Details</h3>
+        <h3 className="text-lg font-bold text-slate-900">Deals</h3>
         <div className="flex items-center gap-3">
           <div className="relative">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -111,26 +117,23 @@ export default function DealTransactionsTable({ dealName = '' }: { dealName?: st
           <table className={`${dataTable} min-w-[900px]`}>
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
-                <th className={thClass} onClick={() => handleSort('date')}>
-                  <div className="flex items-center gap-2">Date <SortIcon field="date" /></div>
-                </th>
                 <th className={thClass} onClick={() => handleSort('deal')}>
-                  <div className="flex items-center gap-2">Deal <SortIcon field="deal" /></div>
+                  <div className="flex items-center gap-2">Deal Number <SortIcon field="deal" /></div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('weight')}>
-                  <div className="flex items-center gap-2">Weight <SortIcon field="weight" /></div>
+                  <div className="flex items-center gap-2">Volume <SortIcon field="weight" /></div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('pureCostAed')}>
-                  <div className="flex items-center gap-2">Pure Cost (AED) <SortIcon field="pureCostAed" /></div>
+                  <div className="flex items-center gap-2">Purchase (Pure Cost) <SortIcon field="pureCostAed" /></div>
+                </th>
+                <th className={thClass} onClick={() => handleSort('expenses')}>
+                  <div className="flex items-center gap-2">Expense <SortIcon field="expenses" /></div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('salesAed')}>
-                  <div className="flex items-center gap-2">Sales (AED) <SortIcon field="salesAed" /></div>
+                  <div className="flex items-center gap-2">Sales <SortIcon field="salesAed" /></div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('grossProfit')}>
-                  <div className="flex items-center gap-2">Gross Profit <SortIcon field="grossProfit" /></div>
-                </th>
-                <th className={thClass} onClick={() => handleSort('aibakProfit')}>
-                  <div className="flex items-center gap-2">Aibak Profit <SortIcon field="aibakProfit" /></div>
+                  <div className="flex items-center gap-2">P&L Gross <SortIcon field="grossProfit" /></div>
                 </th>
               </tr>
             </thead>
@@ -142,24 +145,23 @@ export default function DealTransactionsTable({ dealName = '' }: { dealName?: st
                     className="cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100"
                     onClick={() => router.push(`/deals/${dealId}/transactions/${row.id}`)}
                   >
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">{row.date}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{row.deal}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">{row.weight.toLocaleString()}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.pureCostAed)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.expenses)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.salesAed)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-emerald-600">{formatAED(row.grossProfit, true)}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-emerald-600">{formatAED(row.aibakProfit, true)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={6} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2">
                         <circle cx="11" cy="11" r="8" />
                         <path d="M21 21l-4.3-4.3" />
                       </svg>
-                      <p className="text-sm font-medium">No transactions found</p>
+                      <p className="text-sm font-medium">No deals found</p>
                       {searchTerm && <p className="text-xs">Try adjusting your search query</p>}
                     </div>
                   </td>

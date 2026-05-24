@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS deals (
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending', 'completed', 'cancelled')),
     total_pl DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     expense DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    manager_share DECIMAL(5, 2) NOT NULL DEFAULT 20.00,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

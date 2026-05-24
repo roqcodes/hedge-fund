@@ -48,6 +48,7 @@ interface AppState {
   deals: Deal[];
   isInitialLoading: boolean;
   hqBalance: number;
+  activeCurrency: 'AED' | 'USD' | 'INR';
 }
 
 export type AddInvestorInput = {
@@ -88,6 +89,7 @@ interface AppContextType extends AppState {
   updateDeal: (deal: Deal) => void;
   getTotalCapital: () => number;
   getNetPL: () => number;
+  setActiveCurrency: (c: 'AED' | 'USD' | 'INR') => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -111,6 +113,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     deals: [...mock.deals],
     isInitialLoading: true,
     hqBalance: 50000000, // 50M AED initial treasury
+    activeCurrency: 'AED',
   });
 
   // Load session and database data on mount
@@ -542,11 +545,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getTotalCapital = useCallback(() => state.branches.reduce((sum, b) => sum + b.currentBalance, 0) + state.hqBalance, [state.branches, state.hqBalance]);
   const getNetPL = useCallback(() => state.branches.reduce((sum, b) => sum + b.dailyPL, 0), [state.branches]);
 
+  const setActiveCurrency = useCallback((currency: 'AED' | 'USD' | 'INR') => {
+    mock.setGlobalCurrency(currency);
+    setState(s => ({ ...s, activeCurrency: currency }));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, addDeal, updateDeal, getTotalCapital, getNetPL,
+      updateInvestor, addDeal, updateDeal, getTotalCapital, getNetPL, setActiveCurrency,
     }}>
       {children}
     </AppContext.Provider>

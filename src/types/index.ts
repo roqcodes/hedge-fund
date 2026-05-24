@@ -161,4 +161,5 @@ export interface Deal {
   date: string;
   totalPL: number;
   expense: number;
+  managerShare: number;
 }

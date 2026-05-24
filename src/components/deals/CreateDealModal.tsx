@@ -31,6 +31,7 @@ export default function CreateDealModal({
   const [toBranchId, setToBranchId] = useState('');
   const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
   const [customEntity, setCustomEntity] = useState('');
+  const [managerShareStr, setManagerShareStr] = useState('20');
   const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string }[]>([
     { investorId: '', percentageStr: '' },
   ]);
@@ -67,6 +68,11 @@ export default function CreateDealModal({
 
     if (!name.trim()) return setError('Deal name is required.');
     if (dealAmount <= 0) return setError('Deal amount must be greater than zero.');
+
+    const parsedManagerShare = Number(managerShareStr);
+    if (isNaN(parsedManagerShare) || parsedManagerShare < 0 || parsedManagerShare > 100) {
+      return setError('Manager share must be between 0 and 100.');
+    }
 
     // Validate investors
     const validInvestors: DealInvestor[] = [];
@@ -111,6 +117,7 @@ export default function CreateDealModal({
       status: 'active',
       totalPL: 0,
       expense: 0,
+      managerShare: parsedManagerShare,
     });
 
     // Reset and close
@@ -120,6 +127,7 @@ export default function CreateDealModal({
     setToBranchId('');
     setTargetType('branch');
     setCustomEntity('');
+    setManagerShareStr('20');
     setDealInvestors([{ investorId: '', percentageStr: '' }]);
     setError('');
     onClose();
@@ -155,6 +163,18 @@ export default function CreateDealModal({
         <div className={formGroup}>
           <label className={formLabel}>Deal Amount (AED)</label>
           <input className={formInput} type="number" placeholder="0.00" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Manager Share (%)</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="20"
+            value={managerShareStr}
+            onChange={e => setManagerShareStr(e.target.value)}
+            min="0"
+            max="100"
+          />
         </div>
       </div>
 

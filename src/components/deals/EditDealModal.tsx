@@ -34,6 +34,7 @@ export default function EditDealModal({
   const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
   const [customEntity, setCustomEntity] = useState('');
   const [status, setStatus] = useState<DealStatus>('active');
+  const [managerShareStr, setManagerShareStr] = useState('20');
   const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string }[]>([]);
   const [error, setError] = useState('');
 
@@ -53,6 +54,7 @@ export default function EditDealModal({
         setCustomEntity('');
       }
       setStatus(deal.status);
+      setManagerShareStr(deal.managerShare?.toString() ?? '20');
       setDealInvestors(
         deal.investors.map(inv => ({
           investorId: inv.investorId,
@@ -93,10 +95,15 @@ export default function EditDealModal({
 
     if (!name.trim()) return setError('Deal name is required.');
     if (dealAmount <= 0) return setError('Deal amount must be greater than zero.');
-    
+
     const targetBranch = targetType === 'branch' ? branches.find(b => b.id === toBranchId) : null;
     if (targetType === 'branch' && !targetBranch) return setError('Selected branch not found.');
     if (targetType === 'custom' && !customEntity.trim()) return setError('Custom entity name is required.');
+
+    const parsedManagerShare = Number(managerShareStr);
+    if (isNaN(parsedManagerShare) || parsedManagerShare < 0 || parsedManagerShare > 100) {
+      return setError('Manager share must be between 0 and 100.');
+    }
 
     // Validate investors
     const validInvestors: DealInvestor[] = [];
@@ -138,6 +145,7 @@ export default function EditDealModal({
       toBranchId: targetType === 'branch' ? toBranchId : (deal.toBranchId.startsWith('custom-') ? deal.toBranchId : `custom-${Date.now()}`),
       toBranchName: targetType === 'branch' ? targetBranch!.name : customEntity.trim(),
       status,
+      managerShare: parsedManagerShare,
     });
 
     setError('');
@@ -148,7 +156,7 @@ export default function EditDealModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Edit Deal"
+      title="Edit Group"
       footer={
         <>
           <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose}>
@@ -193,54 +201,66 @@ export default function EditDealModal({
             onChange={e => setAmountStr(e.target.value)}
           />
         </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Manager Share (%)</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="20"
+            value={managerShareStr}
+            onChange={e => setManagerShareStr(e.target.value)}
+            min="0"
+            max="100"
+          />
+        </div>
       </div>
 
       <div className={formRow}>
         <div className={formGroup}>
-        <div className="mb-2 flex items-center justify-between">
-          <label className={formLabel}>Investment Target</label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'branch' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              onClick={() => setTargetType('branch')}
-            >
-              Internal Branch
-            </button>
-            <button
-              type="button"
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'custom' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              onClick={() => setTargetType('custom')}
-            >
-              Custom Entity
-            </button>
+          <div className="mb-2 flex items-center justify-between">
+            <label className={formLabel}>Investment Target</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'branch' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                onClick={() => setTargetType('branch')}
+              >
+                Internal Branch
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'custom' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                onClick={() => setTargetType('custom')}
+              >
+                Custom Entity
+              </button>
+            </div>
           </div>
-        </div>
 
-        {targetType === 'branch' ? (
-          <>
-            <select className={formSelect} value={toBranchId} onChange={e => setToBranchId(e.target.value)}>
-              <option value="">Select branch to allocate funds</option>
-              {branches.filter((b: Branch) => b.status === 'active' || b.id === deal.toBranchId).map((b: Branch) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            <p className={formHint}>The internal branch that will manage this deal's capital.</p>
-          </>
-        ) : (
-          <>
-            <input
-              type="text"
-              className={formInput}
-              placeholder="e.g. Apex Holdings LLC"
-              value={customEntity}
-              onChange={e => setCustomEntity(e.target.value)}
-            />
-            <p className={formHint}>The name of the external entity or partner managing this deal.</p>
-          </>
-        )}
+          {targetType === 'branch' ? (
+            <>
+              <select className={formSelect} value={toBranchId} onChange={e => setToBranchId(e.target.value)}>
+                <option value="">Select branch to allocate funds</option>
+                {branches.filter((b: Branch) => b.status === 'active' || b.id === deal.toBranchId).map((b: Branch) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              <p className={formHint}>The internal branch that will manage this deal's capital.</p>
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                className={formInput}
+                placeholder="e.g. Apex Holdings LLC"
+                value={customEntity}
+                onChange={e => setCustomEntity(e.target.value)}
+              />
+              <p className={formHint}>The name of the external entity or partner managing this deal.</p>
+            </>
+          )}
         </div>
         <div className={formGroup}>
           <label className={formLabel}>Deal Status</label>
