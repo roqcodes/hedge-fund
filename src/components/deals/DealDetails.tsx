@@ -6,6 +6,7 @@ import { formatAED, formatDateTime } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import KPICard from '@/components/ui/KPICard';
 import EditDealModal from './EditDealModal';
+import DealTransactionsTable from './DealTransactionsTable';
 import {
   pageHeader,
   pageSubtitle,
@@ -18,7 +19,7 @@ import {
 } from '@/lib/ui';
 
 export default function DealDetails({ dealId }: { dealId: string }) {
-  const { deals } = useApp();
+  const { deals, selectInvestor } = useApp();
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
 
@@ -36,6 +37,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   }
 
   const fundingPercentage = Math.min((deal.totalInvestment / deal.amount) * 100, 100);
+
+  const totalGoldGrams = deal.investors.reduce((acc, inv) => acc + (inv.isGold ? inv.amount : 0), 0);
+  const totalGoldKg = (totalGoldGrams / 1000).toFixed(2);
 
   return (
     <>
@@ -75,9 +79,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
       <div className={kpiGrid}>
         <KPICard
-          label="Deal Target Amount"
+          label="Capital"
           value={formatAED(deal.amount)}
-          subValue="Total capital required"
+          subValue="Total deal capital"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -87,95 +91,105 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           bgColor="var(--accent-light)"
         />
         <KPICard
-          label="Total Invested"
-          value={formatAED(deal.totalInvestment)}
-          subValue={`${deal.investors.length} Investors`}
+          label="Gold Volume"
+          value={`${totalGoldKg} kg`}
+          subValue="Gold backed investments"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8m12 4v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+              <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6z" />
             </svg>
           }
-          color="var(--success)"
-          bgColor="var(--success-light)"
+          color="var(--warning)"
+          bgColor="var(--warning-light)"
         />
         <KPICard
-          label="Funding Balance"
-          value={formatAED(Math.abs(deal.balance))}
-          subValue={deal.balance > 0 ? 'Overfunded' : deal.balance < 0 ? 'Underfunded (Remaining)' : 'Fully Funded'}
+          label="P&L"
+          value={formatAED(deal.totalPL || 0, true)}
+          subValue="Net Profit / Loss"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <circle cx="12" cy="12" r="10" />
-              <path d="M16 12H8M12 8v8" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           }
-          color={deal.balance >= 0 ? 'var(--success)' : 'var(--action)'}
-          bgColor={deal.balance >= 0 ? 'var(--success-light)' : 'var(--action-light)'}
+          color={(deal.totalPL || 0) >= 0 ? 'var(--success)' : 'var(--action)'}
+          bgColor={(deal.totalPL || 0) >= 0 ? 'var(--success-light)' : 'var(--action-light)'}
+        />
+        <KPICard
+          label="Expense"
+          value={formatAED(deal.expense || 0)}
+          subValue="Total operational costs"
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+          color="var(--action)"
+          bgColor="var(--action-light)"
         />
       </div>
 
-      <div className="mb-6 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h3 className="text-lg font-bold text-slate-900">Funding Progress</h3>
+      <div className="mb-6 mt-8">
+        <div className="mb-5 flex items-center justify-between px-2">
+          <h3 className="text-xl font-bold tracking-tight text-slate-900">Allocated Investors</h3>
+          <button 
+            type="button" 
+            className="group flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:bg-accent hover:shadow-lg hover:shadow-accent/25 active:scale-95"
+            onClick={() => setShowEdit(true)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-hover:rotate-90">
+              <path d="M12 5v14m-7-7h14" />
+            </svg>
+            Add Investor
+          </button>
         </div>
-        <div className="p-5">
-          <div className="mb-2 flex justify-between text-sm font-semibold">
-            <span className="text-slate-700">{formatAED(deal.totalInvestment)} Raised</span>
-            <span className="text-slate-400">{formatAED(deal.amount)} Goal</span>
+        
+        {deal.investors.length === 0 ? (
+          <div className="flex h-32 items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50">
+            <p className="text-sm font-medium text-slate-500">No investors allocated yet.</p>
           </div>
-          <div className="h-4 w-full overflow-hidden rounded-full bg-slate-100">
-            <div
-              className={`h-full rounded-full transition-all duration-1000 ${deal.balance >= 0 ? 'bg-green-500' : 'bg-accent'}`}
-              style={{ width: `${fundingPercentage}%` }}
-            />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {deal.investors.map((inv, idx) => {
+              const ratio = ((inv.amount / deal.amount) * 100).toFixed(1);
+              return (
+                <div 
+                  key={idx} 
+                  className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-surface-xs transition-all duration-300 hover:-translate-y-1 hover:border-accent/30 hover:shadow-xl hover:shadow-accent/10"
+                  onClick={() => {
+                    selectInvestor(inv.investorId);
+                    router.push('/investors');
+                  }}
+                >
+                  <div className="absolute right-0 top-0 -mr-4 -mt-4 size-24 rounded-full bg-slate-50 opacity-50 transition-transform duration-500 group-hover:scale-150 group-hover:bg-accent/5"></div>
+                  
+                  <div className="relative z-10 flex items-center gap-4">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-50 text-lg font-black text-slate-700 shadow-inner transition-colors duration-300 group-hover:from-accent group-hover:to-accent/80 group-hover:text-white">
+                      {inv.investorName.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-base font-bold text-slate-900 transition-colors group-hover:text-accent">{inv.investorName}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="relative z-10 mt-5 flex items-end justify-between border-t border-slate-50 pt-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Share</p>
+                      <p className="mt-1 font-mono text-lg font-black text-slate-900">{formatAED(inv.amount)}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 transition-colors group-hover:bg-accent/10 group-hover:text-accent">
+                        {ratio}% of Capital
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="mt-2 text-right text-xs font-medium text-slate-500">
-            {fundingPercentage.toFixed(1)}% Funded
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h3 className="text-lg font-bold text-slate-900">Participating Investors</h3>
-        </div>
-        <div className="p-0">
-          <div className={tableWrap}>
-            <table className={`${dataTable} min-w-[700px]`}>
-              <thead>
-                <tr>
-                  <th className="px-5 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Investor Name</th>
-                  <th className="px-5 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Investment Amount</th>
-                  <th className="px-5 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">% of Target</th>
-                  <th className="px-5 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Type</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deal.investors.map((inv, idx) => {
-                  const share = (inv.amount / deal.amount) * 100;
-                  return (
-                    <tr key={idx} className="group">
-                      <td className="border-y border-black/5 bg-white px-5 py-4 text-sm font-semibold text-slate-900">
-                        {inv.investorName}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-5 py-4 font-mono text-sm font-bold text-slate-900">
-                        {formatAED(inv.amount)}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-5 py-4 text-sm text-slate-600">
-                        {share.toFixed(1)}%
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-5 py-4">
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                          {inv.isGold ? 'Gold' : 'Cash AED'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <DealTransactionsTable dealName={deal.name} />
     </div>
     <EditDealModal open={showEdit} onClose={() => setShowEdit(false)} deal={deal} />
   </>

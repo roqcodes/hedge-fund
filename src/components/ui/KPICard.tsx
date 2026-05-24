@@ -4,7 +4,7 @@ import { kpiCard } from '@/lib/ui';
 
 interface KPICardProps {
   label: string;
-  value: string | number;
+  value: React.ReactNode;
   subValue?: string;
   trend?: {
     value: string;
@@ -30,9 +30,9 @@ export default function KPICard({
 }: KPICardProps) {
   const plColor =
     !valueClassName && label.toLowerCase().includes('p&l') && typeof value === 'string'
-      ? value.startsWith('+')
+      ? typeof value === 'string' && value.startsWith('+')
         ? 'var(--profit)'
-        : value.startsWith('-')
+        : typeof value === 'string' && value.startsWith('-')
           ? 'var(--loss)'
           : undefined
       : undefined;
@@ -51,7 +51,6 @@ export default function KPICard({
           valueClassName ?? (plColor ? '' : 'text-slate-900')
         }`}
         style={plColor ? { color: plColor } : undefined}
-        title={String(value)}
       >
         {value}
       </div>

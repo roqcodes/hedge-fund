@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
-import { formatAED, formatDateTime } from '@/data/mockData';
+import { formatAED, formatAEDStr, formatDateTime } from '@/data/mockData';
 import { Branch, Transaction } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import {
@@ -236,7 +236,7 @@ function TransferFundsModal({
     }
     const amt = Number(amount);
     if (amt > availableBalance) {
-      setError(`Insufficient balance. Available: ${formatAED(availableBalance)}`);
+      setError(`Insufficient balance. Available: ${formatAEDStr(availableBalance)}`);
       return;
     }
     if (amt <= 0) {
@@ -275,7 +275,7 @@ function TransferFundsModal({
           <select className={formSelect} value={from} onChange={e => setFrom(e.target.value)}>
             <option value="">Select source</option>
             <optgroup label="Central Treasury">
-              <option value="HQ_TREASURY">HQ Treasury — {formatAED(hqBalance)}</option>
+              <option value="HQ_TREASURY">HQ Treasury — {formatAEDStr(hqBalance)}</option>
             </optgroup>
             <optgroup label="Branch Balances">
               {branches.map((b: Branch) => (

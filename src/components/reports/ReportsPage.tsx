@@ -84,7 +84,7 @@ export default function ReportsPage() {
         />
         <KPICard
           label="Net P&L"
-          value={`${netPL >= 0 ? '+' : ''}${formatAED(netPL)}`}
+          value={formatAED(netPL, true)}
           subValue="Realized profit/loss"
           valueClassName={netPL >= 0 ? 'text-emerald-600' : 'text-red-600'}
           icon={<span aria-hidden>📊</span>}
@@ -175,8 +175,7 @@ export default function ReportsPage() {
                           pl >= 0 ? 'text-emerald-600' : 'text-red-600'
                         }`}
                       >
-                        {pl >= 0 ? '+' : ''}
-                        {formatAED(pl)}
+                        {formatAED(pl, true)}
                       </td>
                     </tr>
                   );
@@ -196,8 +195,7 @@ export default function ReportsPage() {
                       netPL >= 0 ? 'text-emerald-600' : 'text-red-600'
                     }`}
                   >
-                    {netPL >= 0 ? '+' : ''}
-                    {formatAED(netPL)}
+                    {formatAED(netPL, true)}
                   </td>
                 </tr>
               </tbody>

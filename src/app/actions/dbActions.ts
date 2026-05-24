@@ -224,6 +224,9 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       balance: parseFloat(r.balance),
       toBranchId: r.to_branch_id,
       toBranchName: r.to_branch_name,
+      groupName: r.group_name,
+      totalPL: parseFloat(r.total_pl),
+      expense: parseFloat(r.expense),
       status: r.status,
       date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
     }));
@@ -698,8 +701,8 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
 
     // 1. Insert deal
     await client.query(
-      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, group_name, total_pl, expense, date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         deal.id,
         deal.name,
@@ -709,6 +712,9 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
         deal.toBranchId,
         deal.toBranchName,
         deal.status,
+        deal.groupName || 'General',
+        deal.totalPL || 0,
+        deal.expense || 0,
         deal.date,
       ]
     );
@@ -761,8 +767,11 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         balance = $4, 
         to_branch_id = $5, 
         to_branch_name = $6, 
-        status = $7
-       WHERE id = $8`,
+        status = $7,
+        group_name = $8,
+        total_pl = $9,
+        expense = $10
+       WHERE id = $11`,
       [
         deal.name,
         deal.amount,
@@ -771,6 +780,9 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         deal.toBranchId,
         deal.toBranchName,
         deal.status,
+        deal.groupName || 'General',
+        deal.totalPL || 0,
+        deal.expense || 0,
         deal.id,
       ]
     );

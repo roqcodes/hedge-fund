@@ -27,12 +27,17 @@ export default function DealsManagement() {
   const totalDealAmount = deals.reduce((acc, d) => acc + d.amount, 0);
   const totalInvested = deals.reduce((acc, d) => acc + d.totalInvestment, 0);
 
+  const totalGoldGrams = deals.reduce((acc, deal) => {
+    return acc + deal.investors.reduce((invAcc, inv) => invAcc + (inv.isGold ? inv.amount : 0), 0);
+  }, 0);
+  const totalGoldKg = (totalGoldGrams / 1000).toFixed(2);
+
   return (
     <>
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
         <div className={pageHeader}>
           <div>
-            <h2 className={pageTitle}>Deals Pipeline</h2>
+            <h2 className={pageTitle}>Deals</h2>
             <p className={pageSubtitle}>Manage investments and track deal allocations</p>
           </div>
           <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowCreate(true)}>
@@ -61,7 +66,7 @@ export default function DealsManagement() {
             bgColor="var(--purple-light)"
           />
           <KPICard
-            label="Total Deal Amount"
+            label="Total Capital"
             value={formatAED(totalDealAmount)}
             subValue="Target capital for all deals"
             icon={
@@ -71,6 +76,18 @@ export default function DealsManagement() {
             }
             color="var(--accent)"
             bgColor="var(--accent-light)"
+          />
+          <KPICard
+            label="Total Gold Volume"
+            value={`${totalGoldKg} kg`}
+            subValue="Gold backed investments"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6z" />
+              </svg>
+            }
+            color="var(--warning)"
+            bgColor="var(--warning-light)"
           />
           <KPICard
             label="Total Invested"
@@ -84,20 +101,6 @@ export default function DealsManagement() {
             color="var(--success)"
             bgColor="var(--success-light)"
           />
-          <KPICard
-            label="Funding Gap"
-            value={formatAED(totalDealAmount - totalInvested)}
-            subValue="Remaining capital to raise"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-            }
-            color="var(--action)"
-            bgColor="var(--action-light)"
-          />
         </div>
 
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
@@ -109,11 +112,12 @@ export default function DealsManagement() {
               <table className={`${dataTable} min-w-[900px]`}>
                 <thead>
                   <tr>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Date</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Group Name</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Deal Name</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Amount</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Branches</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Capital</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Invested</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Balance</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Total P/L</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
                     <th className="px-3 pb-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
@@ -126,12 +130,14 @@ export default function DealsManagement() {
                       onClick={() => router.push(`/deals/${deal.id}`)}
                       className="cursor-pointer"
                     >
-                      <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
-                        {formatDateTime(deal.date).split(',')[0]}
+                      <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
+                        {deal.groupName || '-'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">
                         {deal.name}
-                        <div className="text-[11px] font-medium text-slate-500">To: {deal.toBranchName}</div>
+                      </td>
+                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">
+                        {deal.toBranchName}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
                         {formatAED(deal.amount)}
@@ -141,8 +147,8 @@ export default function DealsManagement() {
                         <div className="text-[11px] font-medium text-slate-500">{deal.investors.length} Investors</div>
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                        <span className={deal.balance > 0 ? 'text-green-600' : deal.balance < 0 ? 'text-red-600' : ''}>
-                          {formatAED(deal.balance)}
+                        <span className={(deal.totalPL || 0) > 0 ? 'text-green-600' : (deal.totalPL || 0) < 0 ? 'text-red-600' : ''}>
+                          {formatAED(deal.totalPL || 0, true)}
                         </span>
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">

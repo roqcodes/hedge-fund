@@ -410,7 +410,7 @@ export default function AdminDashboard() {
           />
           <KPICard
             label="Net P&L"
-            value={`${netPL >= 0 ? '+' : ''}${formatAED(netPL)}`}
+            value={formatAED(netPL, true)}
             trend={{ value: `${plPct}%`, isUp: netPL >= 0 }}
             subValue="Performance today"
             icon={
@@ -478,7 +478,7 @@ export default function AdminDashboard() {
                 <canvas ref={donutRef} className="size-full" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                   <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
-                    AED {(fundDistribution.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
+                    <span className="text-[0.65em] font-medium leading-none mr-[3px]">AED</span>{(fundDistribution.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
                   </div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Deployed</div>
                 </div>
@@ -499,7 +499,7 @@ export default function AdminDashboard() {
                 <canvas ref={incomePieRef} className="size-full" />
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                   <div className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
-                    AED {(incomeData.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
+                    <span className="text-[0.65em] font-medium leading-none mr-[3px]">AED</span>{(incomeData.reduce((s, d) => s + d.amount, 0) / 1000).toFixed(0)}K
                   </div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Yield</div>
                 </div>
@@ -548,8 +548,7 @@ export default function AdminDashboard() {
                       className={`border-y border-black/5 bg-white px-2 py-2.5 font-mono text-xs font-bold tabular-nums sm:px-3 sm:py-3 sm:text-sm ${b.dailyPL >= 0 ? 'text-emerald-600' : 'text-red-600'
                         }`}
                     >
-                      {b.dailyPL >= 0 ? '+' : ''}
-                      {formatAED(b.dailyPL)}
+                      {formatAED(b.dailyPL, true)}
                     </td>
                     <td className="border-y border-r border-black/5 bg-white px-2 py-2.5 last:rounded-xl sm:px-3 sm:py-3">
                       <span className={badgeClass(b.dailyPL >= 0 ? 'profit' : 'loss')}>{b.dailyPL >= 0 ? 'Profit' : 'Loss'}</span>

@@ -150,6 +150,7 @@ export interface DealInvestor {
 export interface Deal {
   id: string;
   name: string;
+  groupName: string;
   amount: number;
   investors: DealInvestor[];
   totalInvestment: number;
@@ -158,4 +159,6 @@ export interface Deal {
   toBranchName: string;
   status: DealStatus;
   date: string;
+  totalPL: number;
+  expense: number;
 }

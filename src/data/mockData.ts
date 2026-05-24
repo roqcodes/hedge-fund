@@ -140,14 +140,29 @@ export function investorTotalExposure(inv: Pick<Investor, 'cashDeposit' | 'goldD
   return inv.cashDeposit + inv.goldDeposit;
 }
 
-export function formatAED(amount: number): string {
+import React from 'react';
+
+export function formatAED(amount: number, showPlus = false): React.ReactNode {
   const absAmount = Math.abs(amount);
-  const formatted = absAmount.toLocaleString('en-AE', {
+  const numStr = absAmount.toLocaleString('en-AE', {
     maximumFractionDigits: 0,
-    style: 'currency',
-    currency: 'AED',
   });
-  return amount < 0 ? `-${formatted}` : formatted;
+  const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement('span', { className: 'text-[0.65em] font-medium leading-none mr-[3px]' }, sign ? `${sign} AED` : 'AED'),
+    numStr
+  );
+}
+
+export function formatAEDStr(amount: number, showPlus = false): string {
+  const absAmount = Math.abs(amount);
+  const numStr = absAmount.toLocaleString('en-AE', {
+    maximumFractionDigits: 0,
+  });
+  const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
+  return `${sign ? sign + ' ' : ''}AED ${numStr}`;
 }
 
 

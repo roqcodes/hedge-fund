@@ -117,12 +117,15 @@ CREATE TABLE IF NOT EXISTS investor_deposits (
 CREATE TABLE IF NOT EXISTS deals (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    group_name VARCHAR(255) DEFAULT 'General',
     amount DECIMAL(15, 2) NOT NULL,
     total_investment DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    to_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
+    to_branch_id VARCHAR(50), -- Removed FOREIGN KEY to support custom entities
     to_branch_name VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending', 'completed', 'cancelled')),
+    total_pl DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    expense DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -134,4 +137,29 @@ CREATE TABLE IF NOT EXISTS deal_investors (
     amount DECIMAL(15, 2) NOT NULL,
     is_gold BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (deal_id, investor_id)
+);
+
+-- 11. Deal Transactions (detailed CSV data)
+CREATE TABLE IF NOT EXISTS deal_transactions (
+    id VARCHAR(50) PRIMARY KEY,
+    date DATE NOT NULL,
+    deal_id VARCHAR(50) REFERENCES deals(id) ON DELETE CASCADE,
+    weight DECIMAL(15, 2) NOT NULL,
+    rate DECIMAL(15, 2) NOT NULL,
+    pure_cost_aed DECIMAL(15, 2) NOT NULL,
+    sales_value_inr DECIMAL(15, 2) NOT NULL,
+    rv_rate DECIMAL(15, 2) NOT NULL,
+    sales_aed DECIMAL(15, 2) NOT NULL,
+    expenses DECIMAL(15, 2) NOT NULL,
+    gross_profit DECIMAL(15, 2) NOT NULL,
+    n_p_per_gr DECIMAL(15, 2) NOT NULL,
+    t_profit DECIMAL(15, 2) NOT NULL,
+    mange DECIMAL(15, 2) NOT NULL,
+    y_net DECIMAL(15, 2) NOT NULL,
+    srk DECIMAL(15, 2) NOT NULL,
+    aibak_profit DECIMAL(15, 2) NOT NULL,
+    fix_or_unfix VARCHAR(20) NOT NULL,
+    margin_deposit DECIMAL(15, 2) NOT NULL,
+    premium_discount DECIMAL(15, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

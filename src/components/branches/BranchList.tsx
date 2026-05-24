@@ -73,7 +73,7 @@ export default function BranchList() {
             />
             <KPICard
               label="Daily P&L"
-              value={`${b.dailyPL >= 0 ? '+' : ''}${formatAED(b.dailyPL)}`}
+              value={formatAED(b.dailyPL, true)}
               trend={{ value: `${((b.dailyPL / b.openingBalance) * 100).toFixed(1)}%`, isUp: b.dailyPL >= 0 }}
               subValue="Today's performance"
               icon={
@@ -183,7 +183,7 @@ export default function BranchList() {
           />
           <KPICard
             label="Combined P&L"
-            value={`${totalPL >= 0 ? '+' : ''}${formatAED(totalPL)}`}
+            value={formatAED(totalPL, true)}
             trend={{ value: '12.4%', isUp: totalPL >= 0 }}
             subValue="All branches performance"
             icon={

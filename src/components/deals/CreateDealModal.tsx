@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
-import { formatAED } from '@/data/mockData';
+import { formatAED, formatAEDStr } from '@/data/mockData';
 import { Branch, Investor, DealInvestor } from '@/types';
 import {
   btnPrimary,
@@ -26,10 +26,13 @@ export default function CreateDealModal({
   const { branches, investors, addDeal } = useApp();
 
   const [name, setName] = useState('');
+  const [groupName, setGroupName] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [toBranchId, setToBranchId] = useState('');
-  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; amountStr: string }[]>([
-    { investorId: '', amountStr: '' },
+  const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
+  const [customEntity, setCustomEntity] = useState('');
+  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string }[]>([
+    { investorId: '', percentageStr: '' },
   ]);
   const [error, setError] = useState('');
 
@@ -37,13 +40,14 @@ export default function CreateDealModal({
 
   // Calculate total investment
   const totalInvestment = useMemo(() => {
-    return dealInvestors.reduce((acc, inv) => acc + (Number(inv.amountStr) || 0), 0);
-  }, [dealInvestors]);
+    const totalPercentage = dealInvestors.reduce((acc, inv) => acc + (Number(inv.percentageStr) || 0), 0);
+    return (totalPercentage / 100) * dealAmount;
+  }, [dealInvestors, dealAmount]);
 
   const balance = totalInvestment - dealAmount;
 
   const handleAddInvestorRow = () => {
-    setDealInvestors([...dealInvestors, { investorId: '', amountStr: '' }]);
+    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '' }]);
   };
 
   const handleRemoveInvestorRow = (index: number) => {
@@ -52,7 +56,7 @@ export default function CreateDealModal({
     setDealInvestors(newInvestors);
   };
 
-  const handleInvestorChange = (index: number, field: 'investorId' | 'amountStr', value: string) => {
+  const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr', value: string) => {
     const newInvestors = [...dealInvestors];
     newInvestors[index][field] = value;
     setDealInvestors(newInvestors);
@@ -63,15 +67,16 @@ export default function CreateDealModal({
 
     if (!name.trim()) return setError('Deal name is required.');
     if (dealAmount <= 0) return setError('Deal amount must be greater than zero.');
-    if (!toBranchId) return setError('Target branch is required.');
 
     // Validate investors
     const validInvestors: DealInvestor[] = [];
     for (let i = 0; i < dealInvestors.length; i++) {
-      const { investorId, amountStr } = dealInvestors[i];
+      const { investorId, percentageStr } = dealInvestors[i];
       if (!investorId) continue; // skip empty rows
-      const invAmount = Number(amountStr);
-      if (invAmount <= 0) return setError(`Amount for investor row ${i + 1} must be > 0.`);
+      const invPercentage = Number(percentageStr);
+      if (invPercentage <= 0 || invPercentage > 100) return setError(`Percentage for investor row ${i + 1} must be between 0 and 100.`);
+      
+      const invAmount = (invPercentage / 100) * dealAmount;
 
       const investor = investors.find(inv => inv.id === investorId);
       if (!investor) return setError(`Investor not found for row ${i + 1}.`);
@@ -90,25 +95,32 @@ export default function CreateDealModal({
     const uniqueIds = new Set(validInvestors.map(v => v.investorId));
     if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
 
-    const targetBranch = branches.find(b => b.id === toBranchId);
-    if (!targetBranch) return setError('Selected branch not found.');
+    const targetBranch = targetType === 'branch' ? branches.find(b => b.id === toBranchId) : null;
+    if (targetType === 'branch' && !targetBranch) return setError('Selected branch not found.');
+    if (targetType === 'custom' && !customEntity.trim()) return setError('Custom entity name is required.');
 
     addDeal({
       name: name.trim(),
+      groupName: groupName.trim() || 'General',
       amount: dealAmount,
       investors: validInvestors,
       totalInvestment,
       balance,
-      toBranchId,
-      toBranchName: targetBranch.name,
+      toBranchId: targetType === 'branch' ? toBranchId : `custom-${Date.now()}`,
+      toBranchName: targetType === 'branch' ? targetBranch!.name : customEntity.trim(),
       status: 'active',
+      totalPL: 0,
+      expense: 0,
     });
 
     // Reset and close
     setName('');
+    setGroupName('');
     setAmountStr('');
     setToBranchId('');
-    setDealInvestors([{ investorId: '', amountStr: '' }]);
+    setTargetType('branch');
+    setCustomEntity('');
+    setDealInvestors([{ investorId: '', percentageStr: '' }]);
     setError('');
     onClose();
   };
@@ -135,6 +147,12 @@ export default function CreateDealModal({
           <input className={formInput} type="text" placeholder="e.g. Real Estate Acquisition" value={name} onChange={e => setName(e.target.value)} />
         </div>
         <div className={formGroup}>
+          <label className={formLabel}>Group Name</label>
+          <input className={formInput} type="text" placeholder="e.g. Q3 Syndicate" value={groupName} onChange={e => setGroupName(e.target.value)} />
+        </div>
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
           <label className={formLabel}>Deal Amount (AED)</label>
           <input className={formInput} type="number" placeholder="0.00" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
         </div>
@@ -160,19 +178,24 @@ export default function CreateDealModal({
                   <option value="">Select Investor</option>
                   {investors.filter(i => i.status !== 'pending').map((i: Investor) => (
                     <option key={i.id} value={i.id}>
-                      {i.name} (Bal: {formatAED(i.cashDeposit)})
+                      {i.name} (Bal: {formatAEDStr(i.cashDeposit)})
                     </option>
                   ))}
                 </select>
               </div>
               <div className="flex-1 min-w-0">
-                <input
-                  className={formInput}
-                  type="number"
-                  placeholder="Invested Amount"
-                  value={inv.amountStr}
-                  onChange={e => handleInvestorChange(index, 'amountStr', e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    className={`${formInput} !pr-8`}
+                    type="number"
+                    placeholder="Share %"
+                    value={inv.percentageStr}
+                    onChange={e => handleInvestorChange(index, 'percentageStr', e.target.value)}
+                    max="100"
+                    min="0"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span>
+                </div>
               </div>
               {dealInvestors.length > 1 && (
                 <button
@@ -205,16 +228,50 @@ export default function CreateDealModal({
       </div>
 
       <div className={formGroup}>
-        <label className={formLabel}>To Branch</label>
-        <select className={formSelect} value={toBranchId} onChange={e => setToBranchId(e.target.value)}>
-          <option value="">Select branch to allocate funds</option>
-          {branches.filter((b: Branch) => b.status === 'active').map((b: Branch) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-        <p className={formHint}>The branch that will manage this deal's capital.</p>
+        <div className="mb-2 flex items-center justify-between">
+          <label className={formLabel}>Investment Target</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'branch' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              onClick={() => setTargetType('branch')}
+            >
+              Internal Branch
+            </button>
+            <button
+              type="button"
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'custom' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              onClick={() => setTargetType('custom')}
+            >
+              Custom Entity
+            </button>
+          </div>
+        </div>
+
+        {targetType === 'branch' ? (
+          <>
+            <select className={formSelect} value={toBranchId} onChange={e => setToBranchId(e.target.value)}>
+              <option value="">Select branch to allocate funds</option>
+              {branches.filter((b: Branch) => b.status === 'active').map((b: Branch) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            <p className={formHint}>The internal branch that will manage this deal's capital.</p>
+          </>
+        ) : (
+          <>
+            <input
+              type="text"
+              className={formInput}
+              placeholder="e.g. Apex Holdings LLC"
+              value={customEntity}
+              onChange={e => setCustomEntity(e.target.value)}
+            />
+            <p className={formHint}>The name of the external entity or partner managing this deal.</p>
+          </>
+        )}
       </div>
 
       {error ? <p className={`${formError} mb-4`}>{error}</p> : null}
