@@ -457,19 +457,19 @@ function ProfileStat({
   valueClassName = 'text-slate-900',
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   subValue?: string;
   valueClassName?: string;
 }) {
   return (
     <div className="min-w-0 rounded-xl bg-slate-50/90 px-3.5 py-3 sm:rounded-2xl sm:px-4 sm:py-3.5">
       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:text-[11px]">{label}</p>
-      <p
+      <div
         className={`mt-1 break-all font-mono text-xs font-extrabold tabular-nums leading-tight sm:text-sm md:break-normal md:truncate md:text-base lg:text-lg ${valueClassName}`}
-        title={value}
+        title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
       >
         {value}
-      </p>
+      </div>
       {subValue && <p className="mt-0.5 text-[11px] font-medium text-slate-500">{subValue}</p>}
     </div>
   );
