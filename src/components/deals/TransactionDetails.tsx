@@ -10,7 +10,7 @@ import { badgeClass } from '@/lib/badgeClass';
 import CurrencySwitcher from './CurrencySwitcher';
 import { pageHeader, pageTitle, pageSubtitle, tableWrap, dataTable } from '@/lib/ui';
 
-function KPICard({ label, value, colorClass, icon }: { label: string; value: string; colorClass: string; icon: React.ReactNode }) {
+function KPICard({ label, value, colorClass, icon }: { label: string; value: React.ReactNode; colorClass: string; icon: React.ReactNode }) {
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 shadow-surface-xs transition-all duration-300 hover:-translate-y-1 hover:border-accent/30 hover:shadow-xl hover:shadow-accent/10">
       <div className="flex items-center justify-between mb-3">
