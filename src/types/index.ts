@@ -162,4 +162,8 @@ export interface Deal {
   totalPL: number;
   expense: number;
   managerShare: number;
+  leadName?: string;
+  leadPhone?: string;
+  leadEmail?: string;
+  leadAddress?: string;
 }

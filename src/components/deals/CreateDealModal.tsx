@@ -32,6 +32,10 @@ export default function CreateDealModal({
   const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
   const [customEntity, setCustomEntity] = useState('');
   const [managerShareStr, setManagerShareStr] = useState('20');
+  const [leadName, setLeadName] = useState('');
+  const [leadPhone, setLeadPhone] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadAddress, setLeadAddress] = useState('');
   const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string }[]>([
     { investorId: '', percentageStr: '' },
   ]);
@@ -114,6 +118,10 @@ export default function CreateDealModal({
       totalPL: 0,
       expense: 0,
       managerShare: parsedManagerShare,
+      leadName: leadName.trim(),
+      leadPhone: leadPhone.trim(),
+      leadEmail: leadEmail.trim(),
+      leadAddress: leadAddress.trim(),
     });
 
     // Reset and close
@@ -124,6 +132,10 @@ export default function CreateDealModal({
     setTargetType('branch');
     setCustomEntity('');
     setManagerShareStr('20');
+    setLeadName('');
+    setLeadPhone('');
+    setLeadEmail('');
+    setLeadAddress('');
     setDealInvestors([{ investorId: '', percentageStr: '' }]);
     setError('');
     onClose();
@@ -133,14 +145,14 @@ export default function CreateDealModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Edit Group"
+      title="Create Group"
       footer={
         <>
           <button type="button" className={`${btnSecondary}`} onClick={onClose}>
             Cancel
           </button>
           <button type="button" className={`${btnPrimary}`} onClick={handleSubmit}>
-            Edit Group
+            Create Group
           </button>
         </>
       }
@@ -171,6 +183,30 @@ export default function CreateDealModal({
             min="0"
             max="100"
           />
+        </div>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+        <h4 className="mb-4 text-sm font-bold text-slate-800">Group Lead Information</h4>
+        <div className={formRow}>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Name</label>
+            <input className={formInput} type="text" placeholder="e.g. John Doe" value={leadName} onChange={e => setLeadName(e.target.value)} />
+          </div>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Phone</label>
+            <input className={formInput} type="tel" placeholder="+971..." value={leadPhone} onChange={e => setLeadPhone(e.target.value)} />
+          </div>
+        </div>
+        <div className={formRow}>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Email</label>
+            <input className={formInput} type="email" placeholder="john@example.com" value={leadEmail} onChange={e => setLeadEmail(e.target.value)} />
+          </div>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Address</label>
+            <input className={formInput} type="text" placeholder="Dubai, UAE" value={leadAddress} onChange={e => setLeadAddress(e.target.value)} />
+          </div>
         </div>
       </div>
 

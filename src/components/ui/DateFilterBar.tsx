@@ -134,8 +134,8 @@ export default function DateFilterBar({
       </div>
 
       {/* Desktop View */}
-      <div className="hidden sm:flex items-center justify-between gap-4 rounded-2xl bg-slate-50 py-2.5 px-4 border border-slate-100 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+      <div className="hidden sm:flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-slate-50 py-2.5 px-4 border border-slate-100">
+        <div className="flex flex-wrap items-center gap-1.5">
           {(
             [
               { id: 'all-time', label: 'All Time' },

@@ -35,12 +35,16 @@ export default function EditDealModal({
   const [customEntity, setCustomEntity] = useState('');
   const [status, setStatus] = useState<DealStatus>('active');
   const [managerShareStr, setManagerShareStr] = useState('20');
+  const [leadName, setLeadName] = useState('');
+  const [leadPhone, setLeadPhone] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadAddress, setLeadAddress] = useState('');
   const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string }[]>([]);
   const [error, setError] = useState('');
 
   // Synchronize state when the modal opens or the deal changes
   useEffect(() => {
-    if (deal) {
+    if (deal && open) {
       setName(deal.name);
       setGroupName(deal.groupName || '');
       setAmountStr(deal.amount.toString());
@@ -55,6 +59,10 @@ export default function EditDealModal({
       }
       setStatus(deal.status);
       setManagerShareStr(deal.managerShare?.toString() ?? '20');
+      setLeadName(deal.leadName || '');
+      setLeadPhone(deal.leadPhone || '');
+      setLeadEmail(deal.leadEmail || '');
+      setLeadAddress(deal.leadAddress || '');
       setDealInvestors(
         deal.investors.map(inv => ({
           investorId: inv.investorId,
@@ -146,6 +154,10 @@ export default function EditDealModal({
       toBranchName: targetType === 'branch' ? targetBranch!.name : customEntity.trim(),
       status,
       managerShare: parsedManagerShare,
+      leadName: leadName.trim(),
+      leadPhone: leadPhone.trim(),
+      leadEmail: leadEmail.trim(),
+      leadAddress: leadAddress.trim(),
     });
 
     setError('');
@@ -226,6 +238,30 @@ export default function EditDealModal({
           </select>
         </div>
         <div className={formGroup}></div>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+        <h4 className="mb-4 text-sm font-bold text-slate-800">Group Lead Information</h4>
+        <div className={formRow}>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Name</label>
+            <input className={formInput} type="text" placeholder="e.g. John Doe" value={leadName} onChange={e => setLeadName(e.target.value)} />
+          </div>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Phone</label>
+            <input className={formInput} type="tel" placeholder="+971..." value={leadPhone} onChange={e => setLeadPhone(e.target.value)} />
+          </div>
+        </div>
+        <div className={formRow}>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Email</label>
+            <input className={formInput} type="email" placeholder="john@example.com" value={leadEmail} onChange={e => setLeadEmail(e.target.value)} />
+          </div>
+          <div className={formGroup}>
+            <label className={formLabel}>Lead Address</label>
+            <input className={formInput} type="text" placeholder="Dubai, UAE" value={leadAddress} onChange={e => setLeadAddress(e.target.value)} />
+          </div>
+        </div>
       </div>
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">

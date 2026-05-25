@@ -34,7 +34,7 @@ export default function DealTransactionsTable({
   };
 
   const filteredAndSortedData = useMemo(() => {
-    const dataSource = transactions || (dealName.toLowerCase() === 'sports' ? SPORTS_MOCK_DATA : []);
+    const dataSource = transactions || (dealName.toLowerCase().includes('sports') ? SPORTS_MOCK_DATA : []);
     let result = [...dataSource];
 
     // 1. Search Filtering
@@ -88,7 +88,7 @@ export default function DealTransactionsTable({
 
   return (
     <div className="mb-8 mt-8 md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface">
-      <div className="flex flex-col gap-4 pb-4 md:border-b md:border-slate-100 md:p-5 sm:flex-row sm:items-center sm:justify-between px-2 md:px-0">
+      <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-bold text-slate-900">Deals</h3>
         <div className="flex items-center gap-3">
           <div className="relative flex-1">

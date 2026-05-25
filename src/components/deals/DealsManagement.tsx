@@ -34,16 +34,16 @@ export default function DealsManagement() {
   } = useDateFilter(SPORTS_MOCK_DATA);
 
   const totalGroups = new Set(deals.map(d => d.groupName || 'General')).size;
-  const totalDeals = deals.reduce((acc, deal) => acc + (deal.name.toLowerCase() === 'sports' ? filteredTransactions.length : 0), 0);
+  const totalDeals = deals.reduce((acc, deal) => acc + (deal.name.toLowerCase().includes('sports') ? filteredTransactions.length : 0), 0);
   const totalDealAmount = deals.reduce((acc, d) => acc + d.amount, 0);
   const totalPL = deals.reduce((acc, deal) => {
-    if (deal.name.toLowerCase() === 'sports') {
+    if (deal.name.toLowerCase().includes('sports')) {
       return acc + filteredTransactions.reduce((sum, txn) => sum + txn.grossProfit, 0);
     }
     return acc + (deal.totalPL || 0);
   }, 0);
   const totalExpense = deals.reduce((acc, deal) => {
-    if (deal.name.toLowerCase() === 'sports') {
+    if (deal.name.toLowerCase().includes('sports')) {
       return acc + filteredTransactions.reduce((sum, txn) => sum + txn.expenses, 0);
     }
     return acc + (deal.expense || 0);
@@ -185,7 +185,7 @@ export default function DealsManagement() {
                 </thead>
                 <tbody>
                   {deals.map((deal: Deal) => {
-                    const groupDeals = deal.name.toLowerCase() === 'sports' ? filteredTransactions : [];
+                    const groupDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions : [];
                     const totalDealsInGroup = groupDeals.length;
                     const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
                     const onTransitDeals = totalDealsInGroup - completedDeals;
@@ -252,7 +252,7 @@ export default function DealsManagement() {
               {/* Mobile View */}
               <div className="flex md:hidden flex-col gap-4 py-4">
                 {deals.map((deal: Deal) => {
-                  const groupDeals = deal.name.toLowerCase() === 'sports' ? filteredTransactions : [];
+                  const groupDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions : [];
                   const totalDealsInGroup = groupDeals.length;
                   const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
                   const onTransitDeals = totalDealsInGroup - completedDeals;

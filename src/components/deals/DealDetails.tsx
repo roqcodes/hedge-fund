@@ -50,10 +50,10 @@ export default function DealDetails({ dealId }: { dealId: string }) {
     customStartDate, setCustomStartDate,
     customEndDate, setCustomEndDate,
     filteredData: filteredTransactions
-  } = useDateFilter(deal.name.toLowerCase() === 'sports' ? SPORTS_MOCK_DATA : []);
+  } = useDateFilter(deal.name.toLowerCase().includes('sports') ? SPORTS_MOCK_DATA : []);
 
-  const numberOfDeals = deal.name.toLowerCase() === 'sports' ? filteredTransactions.length : 0;
-  const completedDeals = deal.name.toLowerCase() === 'sports' ? filteredTransactions.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length : 0;
+  const numberOfDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions.length : 0;
+  const completedDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length : 0;
   const onTransitDeals = numberOfDeals - completedDeals;
   
   const filteredTotalPL = filteredTransactions.length > 0
@@ -79,7 +79,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                   <path d="M19 12H5M12 19l-7-7 7-7" />
                 </svg>
               </button>
-              <h2 className={pageTitle}>{deal.name}</h2>
+              <h2 className={pageTitle}>{deal.groupName || deal.name}</h2>
               <span className={badgeClass(deal.status)}>{deal.status.toUpperCase()}</span>
             </div>
             <p className={pageSubtitle}>
@@ -187,34 +187,69 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             color={(deal.totalPL || 0) >= 0 ? 'var(--success)' : 'var(--action)'}
             bgColor={(deal.totalPL || 0) >= 0 ? 'var(--success-light)' : 'var(--action-light)'}
           />
-        </div>
+      </div>
 
-        <div className="mb-6 mt-8 rounded-3xl border border-slate-100 bg-white p-5 sm:p-6 shadow-surface">
-          <div className="mb-6">
-            <h3 className="text-xl font-bold tracking-tight text-slate-900">Payout Distribution</h3>
-            <p className="text-sm font-medium text-slate-500 mt-1">Distribution of the deal's net profit</p>
+        {deal.leadName && (
+          <div className="mb-6 mt-8 flex flex-col sm:flex-row sm:items-center justify-between rounded-2xl sm:rounded-3xl border border-slate-100 bg-white p-4 sm:p-5 shadow-surface-xs">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-lg font-black text-slate-700">
+                {deal.leadName.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-900 leading-tight">{deal.leadName}</p>
+                <p className="text-[10px] sm:text-xs font-medium text-slate-500">Group Lead</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:flex sm:flex-row gap-x-3 gap-y-4 sm:gap-6 mt-3 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-slate-50 w-full sm:w-auto">
+              {deal.leadPhone && (
+                <div className="min-w-0">
+                  <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Phone</p>
+                  <p className="text-xs sm:text-sm font-medium text-slate-900 mt-0.5 truncate">{deal.leadPhone}</p>
+                </div>
+              )}
+              {deal.leadEmail && (
+                <div className="min-w-0">
+                  <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Email</p>
+                  <p className="text-xs sm:text-sm font-medium text-slate-900 mt-0.5 truncate">{deal.leadEmail}</p>
+                </div>
+              )}
+              {deal.leadAddress && (
+                <div className="col-span-2 sm:col-span-1 min-w-0">
+                  <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Location</p>
+                  <p className="text-xs sm:text-sm font-medium text-slate-900 mt-0.5 truncate">{deal.leadAddress}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mb-6 mt-8 rounded-2xl sm:rounded-3xl border border-slate-100 bg-white p-4 sm:p-5 shadow-surface-xs">
+          <div className="mb-4 sm:mb-5">
+            <h3 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">Payout Distribution</h3>
+            <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">Distribution of the deal's net profit</p>
           </div>
 
           {deal.investors.length === 0 && deal.managerShare === 0 ? (
-            <div className="flex h-32 items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50">
+            <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
               <p className="text-sm font-medium text-slate-500">No profit distribution available.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5">
               {/* Manager Card */}
-              <div className="relative flex items-center justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.04)]">
+              <div className="relative flex items-center justify-between overflow-hidden rounded-xl sm:rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_1px_4px_-2px_rgba(0,0,0,0.05)]">
                 <div className="absolute right-0 top-0 h-16 w-16 overflow-hidden z-20">
-                  <div className="absolute top-[10px] -right-[30px] w-[100px] rotate-45 bg-red-600 py-0.5 text-center text-[7px] font-black uppercase tracking-widest text-white shadow-sm">
+                  <div className="absolute top-[8px] -right-[32px] w-[100px] rotate-45 bg-red-600 py-0.5 text-center text-[6px] font-black uppercase tracking-widest text-white shadow-sm">
                     Manager
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3 sm:gap-4 relative z-10">
-                  <div className="flex size-10 sm:size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-base sm:text-lg font-black text-slate-700">
+                <div className="flex items-center gap-3 relative z-10">
+                  <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-sm sm:text-base font-black text-slate-700">
                     M
                   </div>
                   <div>
-                    <p className="text-sm sm:text-base font-bold text-slate-900">Manager</p>
+                    <p className="text-sm font-bold text-slate-900">Manager</p>
                     <p className="text-[11px] sm:text-xs font-medium text-slate-400">Profit Share • {deal.managerShare ?? 20}%</p>
                   </div>
                 </div>
@@ -233,20 +268,20 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                 return (
                   <div
                     key={idx}
-                    className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.04)]"
+                    className="flex items-center justify-between rounded-xl sm:rounded-2xl border border-slate-100 bg-white p-2.5 sm:p-3 shadow-[0_1px_4px_-2px_rgba(0,0,0,0.05)]"
                   >
-                    <div className="flex items-center gap-3 sm:gap-4">
-                      <div className="flex size-10 sm:size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-base sm:text-lg font-black text-slate-700">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-sm sm:text-base font-black text-slate-700">
                         {inv.investorName.charAt(0)}
                       </div>
                       <div>
-                        <p className="text-sm sm:text-base font-bold text-slate-900 uppercase">{inv.investorName}</p>
+                        <p className="text-sm font-bold text-slate-900 uppercase">{inv.investorName}</p>
                         <p className="text-[11px] sm:text-xs font-medium text-slate-400">Capital: {formatAED(inv.amount)} • {ratio}%</p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right pr-2">
                       <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Payout</p>
-                      <p className={`mt-0.5 font-mono text-base sm:text-lg font-black ${partnerProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      <p className={`mt-0.5 font-mono text-base font-black ${partnerProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                         {formatAED(partnerProfit, true)}
                       </p>
                     </div>
@@ -255,9 +290,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               })}
 
               {/* Total Row */}
-              <div className="mt-2 flex items-center justify-between rounded-2xl bg-emerald-50/70 border border-emerald-100/50 p-4 sm:p-5">
-                <p className="text-sm sm:text-base font-bold text-slate-900">Total Distributed Profit</p>
-                <p className={`font-mono text-lg sm:text-xl font-black ${filteredTotalPL >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+              <div className="mt-1 flex items-center justify-between rounded-xl sm:rounded-2xl bg-emerald-50/70 border border-emerald-100/50 p-3 sm:p-4">
+                <p className="text-sm font-bold text-slate-900">Total Distributed Profit</p>
+                <p className={`font-mono text-lg font-black ${filteredTotalPL >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                   {formatAED(filteredTotalPL, true)}
                 </p>
               </div>
