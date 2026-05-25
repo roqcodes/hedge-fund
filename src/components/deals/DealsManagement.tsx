@@ -8,6 +8,9 @@ import { Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import CreateDealModal from './CreateDealModal';
 import CurrencySwitcher from './CurrencySwitcher';
+import { SPORTS_MOCK_DATA } from '@/data/mockTransactions';
+import { useDateFilter } from '@/hooks/useDateFilter';
+import DateFilterBar from '@/components/ui/DateFilterBar';
 import {
   btnPrimary,
   kpiGrid,
@@ -23,10 +26,28 @@ export default function DealsManagement() {
   const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
 
-  const totalDeals = deals.length;
-  const activeDealsCount = deals.filter(d => d.status === 'active').length;
+  const {
+    dateFilter, setDateFilter,
+    customStartDate, setCustomStartDate,
+    customEndDate, setCustomEndDate,
+    filteredData: filteredTransactions
+  } = useDateFilter(SPORTS_MOCK_DATA);
+
+  const totalGroups = new Set(deals.map(d => d.groupName || 'General')).size;
+  const totalDeals = deals.reduce((acc, deal) => acc + (deal.name.toLowerCase() === 'sports' ? filteredTransactions.length : 0), 0);
   const totalDealAmount = deals.reduce((acc, d) => acc + d.amount, 0);
-  const totalInvested = deals.reduce((acc, d) => acc + d.totalInvestment, 0);
+  const totalPL = deals.reduce((acc, deal) => {
+    if (deal.name.toLowerCase() === 'sports') {
+      return acc + filteredTransactions.reduce((sum, txn) => sum + txn.grossProfit, 0);
+    }
+    return acc + (deal.totalPL || 0);
+  }, 0);
+  const totalExpense = deals.reduce((acc, deal) => {
+    if (deal.name.toLowerCase() === 'sports') {
+      return acc + filteredTransactions.reduce((sum, txn) => sum + txn.expenses, 0);
+    }
+    return acc + (deal.expense || 0);
+  }, 0);
 
   const totalGoldGrams = deals.reduce((acc, deal) => {
     return acc + deal.investors.reduce((invAcc, inv) => invAcc + (inv.isGold ? inv.amount : 0), 0);
@@ -36,27 +57,41 @@ export default function DealsManagement() {
   return (
     <>
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
-        <div className={pageHeader}>
+        <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
           <div>
-            <h2 className={pageTitle}>Deals</h2>
+            <h2 className={pageTitle}>Groups</h2>
             <p className={pageSubtitle}>Manage investments and track deal allocations</p>
           </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-            <CurrencySwitcher />
-            <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowCreate(true)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <div className="flex items-center">
+            <button 
+              type="button" 
+              className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-transparent sm:text-slate-500 sm:hover:bg-slate-100 sm:hover:text-slate-900 gap-2 font-semibold text-sm" 
+              onClick={() => setShowCreate(true)}
+              aria-label="Create New Group"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              Create New Deal
+              <span className="hidden sm:inline">Create New Group</span>
             </button>
           </div>
         </div>
 
-        <div className={kpiGrid}>
+        <DateFilterBar
+          dateFilter={dateFilter}
+          setDateFilter={setDateFilter}
+          customStartDate={customStartDate}
+          setCustomStartDate={setCustomStartDate}
+          customEndDate={customEndDate}
+          setCustomEndDate={setCustomEndDate}
+        >
+          <CurrencySwitcher />
+        </DateFilterBar>
+
+        <div className={`${kpiGrid} grid-cols-2`}>
           <KPICard
             label="Total Groups"
-            value={totalDeals}
-            subValue={`${activeDealsCount} active deals`}
+            value={totalGroups}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -70,9 +105,20 @@ export default function DealsManagement() {
             bgColor="var(--purple-light)"
           />
           <KPICard
-            label="Total Capital"
+            label="Total Deals"
+            value={totalDeals}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+            }
+            color="#3b82f6"
+            bgColor="#dbeafe"
+          />
+          <KPICard
+            label="Total Capital Amount"
             value={formatAED(totalDealAmount)}
-            subValue="Target capital for all Groups"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -82,9 +128,8 @@ export default function DealsManagement() {
             bgColor="var(--accent-light)"
           />
           <KPICard
-            label="Total Gold Volume"
+            label="Total Gold Value"
             value={`${totalGoldKg} kg`}
-            subValue="Gold backed investments"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6z" />
@@ -94,42 +139,58 @@ export default function DealsManagement() {
             bgColor="var(--warning-light)"
           />
           <KPICard
-            label="Total Invested"
-            value={formatAED(totalInvested)}
-            subValue="Capital committed by investors"
+            label="Total P & L"
+            value={formatAED(totalPL)}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M3 21h18M3 10h18M5 21V10m14 11V10M2 7l10-5 10 5M10 14h4v7h-4z" />
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                <polyline points="17 6 23 6 23 12" />
               </svg>
             }
             color="var(--success)"
             bgColor="var(--success-light)"
           />
+          <KPICard
+            label="Total Expense"
+            value={formatAED(totalExpense)}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
+                <polyline points="17 18 23 18 23 12" />
+              </svg>
+            }
+            color="#ef4444"
+            bgColor="#fee2e2"
+          />
         </div>
 
-        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
-          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
-            <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">All Groups</h3>
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+          <div className="flex flex-col gap-3 pb-4 md:border-b md:border-slate-100 md:px-4 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
+            <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg px-2 md:px-0">All Groups</h3>
           </div>
           <div className="p-0">
             <div className={tableWrap}>
-              <table className={`${dataTable} min-w-[900px]`}>
+              <table className={`${dataTable} min-w-[900px] hidden md:table`}>
                 <thead>
                   <tr>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Group Name</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Capital</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Volume Gold (g)</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Avg Cost</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Avg Expense</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
-                    <th className="px-3 pb-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Group</th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Capital</th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Total Deals</th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Settled Deals</th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Unsettled Deals</th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Gross P&L</th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {deals.map((deal: Deal) => {
-                    const goldVolume = deal.investors.reduce((acc, inv) => acc + (inv.isGold ? inv.amount : 0), 0);
-                    const avgCost = goldVolume > 0 ? deal.totalInvestment / goldVolume : 0;
-                    const avgExpense = goldVolume > 0 ? (deal.expense || 0) / goldVolume : 0;
+                    const groupDeals = deal.name.toLowerCase() === 'sports' ? filteredTransactions : [];
+                    const totalDealsInGroup = groupDeals.length;
+                    const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
+                    const onTransitDeals = totalDealsInGroup - completedDeals;
+                    const totalGrossProfit = groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
                     return (
                       <tr
                         key={deal.id}
@@ -140,25 +201,28 @@ export default function DealsManagement() {
                         <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
                           {deal.groupName || '-'}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
                           {formatAED(deal.amount)}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                          {goldVolume > 0 ? `${goldVolume.toFixed(4)}` : '-'}
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
+                          {totalDealsInGroup}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                          {formatAED(avgCost)}
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
+                          {completedDeals}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4">
-                          {formatAED(avgExpense)}
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
+                          {onTransitDeals}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold text-emerald-600 sm:px-5 sm:py-4">
+                          {formatAED(totalGrossProfit)}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center sm:px-5 sm:py-4">
+                          <div className="flex items-center justify-center gap-2">
                             <span className={`h-2.5 w-2.5 rounded-full ${deal.status === 'active' ? 'bg-green-500' : deal.status === 'pending' ? 'bg-amber-500' : deal.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'}`}></span>
                             <span className="text-xs font-medium text-slate-600 capitalize">{deal.status}</span>
                           </div>
                         </td>
-                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-right last:rounded-r-2xl sm:px-5 sm:py-4">
+                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
                           <button
                             type="button"
                             className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
@@ -184,6 +248,62 @@ export default function DealsManagement() {
                   )}
                 </tbody>
               </table>
+
+              {/* Mobile View */}
+              <div className="flex md:hidden flex-col gap-4 py-4">
+                {deals.map((deal: Deal) => {
+                  const groupDeals = deal.name.toLowerCase() === 'sports' ? filteredTransactions : [];
+                  const totalDealsInGroup = groupDeals.length;
+                  const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
+                  const onTransitDeals = totalDealsInGroup - completedDeals;
+                  const totalGrossProfit = groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+                  return (
+                    <div 
+                      key={deal.id}
+                      onClick={() => router.push(`/deals/${deal.id}`)}
+                      className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-slate-900">{deal.groupName || '-'}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${deal.status === 'active' ? 'bg-green-500' : deal.status === 'pending' ? 'bg-amber-500' : deal.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'}`}></span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{deal.status}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-y-3 gap-x-4 border-y border-slate-50 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capital</span>
+                          <span className="font-mono text-sm font-bold text-slate-900">{formatAED(deal.amount)}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross P&L</span>
+                          <span className="font-mono text-sm font-bold text-emerald-600">{formatAED(totalGrossProfit)}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Settled</span>
+                          <span className="font-mono text-sm font-bold text-slate-900">{completedDeals}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unsettled</span>
+                          <span className="font-mono text-sm font-bold text-slate-900">{onTransitDeals}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-medium">Total Deals: {totalDealsInGroup}</span>
+                        <span className="text-accent font-bold">View details &rarr;</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {deals.length === 0 && (
+                  <div className="p-8 text-center text-sm text-slate-500">
+                    No deals found. Create a new deal to get started.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

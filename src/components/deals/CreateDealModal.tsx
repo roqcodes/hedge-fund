@@ -101,10 +101,6 @@ export default function CreateDealModal({
     const uniqueIds = new Set(validInvestors.map(v => v.investorId));
     if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
 
-    const targetBranch = targetType === 'branch' ? branches.find(b => b.id === toBranchId) : null;
-    if (targetType === 'branch' && !targetBranch) return setError('Selected branch not found.');
-    if (targetType === 'custom' && !customEntity.trim()) return setError('Custom entity name is required.');
-
     addDeal({
       name: name.trim(),
       groupName: groupName.trim() || 'General',
@@ -112,8 +108,8 @@ export default function CreateDealModal({
       investors: validInvestors,
       totalInvestment,
       balance,
-      toBranchId: targetType === 'branch' ? toBranchId : `custom-${Date.now()}`,
-      toBranchName: targetType === 'branch' ? targetBranch!.name : customEntity.trim(),
+      toBranchId: `custom-${Date.now()}`,
+      toBranchName: 'Unassigned',
       status: 'active',
       totalPL: 0,
       expense: 0,
@@ -137,26 +133,26 @@ export default function CreateDealModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Create New Deal"
+      title="Edit Group"
       footer={
         <>
-          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose}>
+          <button type="button" className={`${btnSecondary}`} onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={handleSubmit}>
-            Create Deal
+          <button type="button" className={`${btnPrimary}`} onClick={handleSubmit}>
+            Edit Group
           </button>
         </>
       }
     >
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Deal Name</label>
-          <input className={formInput} type="text" placeholder="e.g. Real Estate Acquisition" value={name} onChange={e => setName(e.target.value)} />
-        </div>
-        <div className={formGroup}>
           <label className={formLabel}>Group Name</label>
           <input className={formInput} type="text" placeholder="e.g. Q3 Syndicate" value={groupName} onChange={e => setGroupName(e.target.value)} />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Deal Name</label>
+          <input className={formInput} type="text" placeholder="e.g. Real Estate Acquisition" value={name} onChange={e => setName(e.target.value)} />
         </div>
       </div>
       <div className={formRow}>
@@ -247,52 +243,7 @@ export default function CreateDealModal({
         </div>
       </div>
 
-      <div className={formGroup}>
-        <div className="mb-2 flex items-center justify-between">
-          <label className={formLabel}>Investment Target</label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'branch' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              onClick={() => setTargetType('branch')}
-            >
-              Internal Branch
-            </button>
-            <button
-              type="button"
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${targetType === 'custom' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              onClick={() => setTargetType('custom')}
-            >
-              Custom Entity
-            </button>
-          </div>
-        </div>
 
-        {targetType === 'branch' ? (
-          <>
-            <select className={formSelect} value={toBranchId} onChange={e => setToBranchId(e.target.value)}>
-              <option value="">Select branch to allocate funds</option>
-              {branches.filter((b: Branch) => b.status === 'active').map((b: Branch) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            <p className={formHint}>The internal branch that will manage this deal's capital.</p>
-          </>
-        ) : (
-          <>
-            <input
-              type="text"
-              className={formInput}
-              placeholder="e.g. Apex Holdings LLC"
-              value={customEntity}
-              onChange={e => setCustomEntity(e.target.value)}
-            />
-            <p className={formHint}>The name of the external entity or partner managing this deal.</p>
-          </>
-        )}
-      </div>
 
       {error ? <p className={`${formError} mb-4`}>{error}</p> : null}
     </Modal>
