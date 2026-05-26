@@ -2,13 +2,29 @@
 import React, { useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import { formatAED } from '@/data/mockData';
-import { dailyReports } from '@/data/mockData';
+import { useApp } from '@/context/AppContext';
 import { btnSecondary, btnSm, filtersBar, filterChip, filterChipActive, kpiGrid5, pageHeader, pageSubtitle, pageTitle, tableWrap, dataTable } from '@/lib/ui';
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const { branches } = useApp();
 
-  const todayReports = dailyReports.filter(r => r.date === '2026-05-03');
+  const todayReports = React.useMemo(() => {
+    return branches.filter(b => b.status === 'active').map(b => {
+      const expense = Math.round(b.currentBalance * 0.008);
+      const profit = b.dailyPL + expense;
+      return {
+        branchId: b.id,
+        branchName: b.name,
+        openingBalance: b.openingBalance,
+        profit,
+        expense,
+        closingBalance: b.closingBalance,
+        date: new Date().toISOString().slice(0, 10),
+      };
+    });
+  }, [branches]);
+
   const totalOpening = todayReports.reduce((s, r) => s + r.openingBalance, 0);
   const totalClosing = todayReports.reduce((s, r) => s + r.closingBalance, 0);
   const totalProfit = todayReports.reduce((s, r) => s + r.profit, 0);

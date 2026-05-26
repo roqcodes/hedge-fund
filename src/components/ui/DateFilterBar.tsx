@@ -156,11 +156,10 @@ export default function DateFilterBar({
                   setDateFilter(opt.id);
                   setShowDropdown(false);
                 }}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 ${
-                  isActive
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
-                }`}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 ${isActive
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
               >
                 {opt.label}
               </button>
@@ -172,11 +171,10 @@ export default function DateFilterBar({
             <button
               type="button"
               onClick={() => setShowDropdown(!showDropdown)}
-              className={`flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500 outline-none transition-all hover:text-slate-900 focus:border-accent ${
-                dateFilter === 'custom'
-                  ? 'border-accent bg-accent/5 text-accent font-black'
-                  : ''
-              }`}
+              className={`flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500 outline-none transition-all hover:text-slate-900 focus:border-accent ${dateFilter === 'custom'
+                ? 'border-accent bg-accent/5 text-accent font-black'
+                : ''
+                }`}
             >
               <span>
                 {dateFilter === 'custom' && (customStartDate || customEndDate)

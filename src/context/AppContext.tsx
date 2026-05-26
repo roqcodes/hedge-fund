@@ -13,8 +13,10 @@ import {
   UserRole,
   Deal,
   InvestorRiskProfile,
+  DealTransaction,
 } from '@/types';
 import * as mock from '@/data/mockData';
+import { SPORTS_MOCK_DATA } from '@/data/mockTransactions';
 import { getCurrentUserAction, logoutAction } from '@/app/actions/auth';
 import {
   fetchInitialDataAction,
@@ -26,6 +28,9 @@ import {
   dbUpdateInvestorAction,
   dbAddDealAction,
   dbUpdateDealAction,
+  dbAddDealTransactionAction,
+  dbUpdateDealTransactionAction,
+  dbDeleteDealTransactionAction,
 } from '@/app/actions/dbActions';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
@@ -49,6 +54,7 @@ interface AppState {
   isInitialLoading: boolean;
   hqBalance: number;
   activeCurrency: 'AED' | 'USD' | 'INR';
+  dealTransactions: DealTransaction[];
 }
 
 export type AddInvestorInput = {
@@ -85,8 +91,11 @@ interface AppContextType extends AppState {
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
   updateInvestor: (investor: Investor) => void;
-  addDeal: (deal: Omit<Deal, 'id' | 'date'>) => void;
+  addDeal: (deal: Omit<Deal, 'id' | 'date'> & { date?: string }) => void;
   updateDeal: (deal: Deal) => void;
+  addDealTransaction: (txn: DealTransaction) => Promise<boolean>;
+  updateDealTransaction: (txn: DealTransaction) => Promise<boolean>;
+  deleteDealTransaction: (id: string, dealId: string) => Promise<boolean>;
   getTotalCapital: () => number;
   getNetPL: () => number;
   setActiveCurrency: (c: 'AED' | 'USD' | 'INR') => void;
@@ -100,20 +109,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isAuthenticated: false,
     currentPage: 'dashboard',
     dateRange: 'today',
-    branches: [...mock.branches],
-    transactions: [...mock.transactions],
-    expenses: [...mock.expenses],
-    invoices: [...mock.invoices],
-    notifications: [...mock.notifications],
+    branches: [],
+    transactions: [],
+    expenses: [],
+    invoices: [],
+    notifications: [],
     toasts: [],
     sidebarOpen: false,
     selectedBranchId: null,
     selectedInvestorId: null,
-    investors: [...mock.investors],
-    deals: [...mock.deals],
+    investors: [],
+    deals: [],
     isInitialLoading: true,
     hqBalance: 50000000, // 50M AED initial treasury
     activeCurrency: 'AED',
+    dealTransactions: [],
   });
 
   // Load session and database data on mount
@@ -150,6 +160,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             investors: data.investors,
             deals: data.deals,
             hqBalance: data.hqBalance,
+            dealTransactions: data.dealTransactions || [],
             isInitialLoading: false,
           }));
           return;
@@ -295,13 +306,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     showToast(`Investor "${finalInvestor.name}" updated locally (Mock Mode)`);
   }, [showToast, state.branches]);
 
-  const addDeal = useCallback(async (deal: Omit<Deal, 'id' | 'date'>) => {
+  const addDeal = useCallback(async (deal: Omit<Deal, 'id' | 'date'> & { date?: string }) => {
     const dealId = mock.generateId('DL');
     const now = new Date().toISOString();
     const newDeal: Deal = {
       ...deal,
       id: dealId,
-      date: now,
+      date: deal.date || now,
     };
 
     try {
@@ -339,6 +350,126 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deals: s.deals.map(d => d.id === updatedDeal.id ? updatedDeal : d)
     }));
     showToast(`Deal "${updatedDeal.name}" updated locally (Mock Mode)`);
+  }, [showToast]);
+
+  const addDealTransaction = useCallback(async (txn: DealTransaction) => {
+    try {
+      const dbRes = await dbAddDealTransactionAction(txn);
+      if (dbRes.success) {
+        setState(s => {
+          const updatedTransactions = [txn, ...s.dealTransactions];
+          const dealTxnsForThisDeal = updatedTransactions.filter(t => t.dealId === txn.dealId);
+          const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+          return {
+            ...s,
+            dealTransactions: updatedTransactions,
+            deals: s.deals.map(d => d.id === txn.dealId ? { ...d, totalPL } : d)
+          };
+        });
+        showToast(`Deal transaction executed successfully`);
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to execute deal transaction', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.warn('DB addDealTransaction failed, running client-side only', e);
+    }
+
+    setState(s => {
+      const updatedTransactions = [txn, ...s.dealTransactions];
+      const dealTxnsForThisDeal = updatedTransactions.filter(t => t.dealId === txn.dealId);
+      const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+      return {
+        ...s,
+        dealTransactions: updatedTransactions,
+        deals: s.deals.map(d => d.id === txn.dealId ? { ...d, totalPL } : d)
+      };
+    });
+    showToast(`Deal transaction recorded locally (Mock Mode)`);
+    return true;
+  }, [showToast]);
+
+  const updateDealTransaction = useCallback(async (txn: DealTransaction) => {
+    try {
+      const dbRes = await dbUpdateDealTransactionAction(txn);
+      if (dbRes.success) {
+        setState(s => {
+          const updatedTransactions = s.dealTransactions.map(t => t.id === txn.id ? txn : t);
+          const dealTxnsForThisDeal = updatedTransactions.filter(t => t.dealId === txn.dealId);
+          const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+          return {
+            ...s,
+            dealTransactions: updatedTransactions,
+            deals: s.deals.map(d => d.id === txn.dealId ? { ...d, totalPL } : d)
+          };
+        });
+        showToast(`Deal transaction updated successfully`);
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to update deal transaction', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.warn('DB updateDealTransaction failed, running client-side only', e);
+    }
+
+    setState(s => {
+      const updatedTransactions = s.dealTransactions.map(t => t.id === txn.id ? txn : t);
+      const dealTxnsForThisDeal = updatedTransactions.filter(t => t.dealId === txn.dealId);
+      const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+      return {
+        ...s,
+        dealTransactions: updatedTransactions,
+        deals: s.deals.map(d => d.id === txn.dealId ? { ...d, totalPL } : d)
+      };
+    });
+    showToast(`Deal transaction updated locally (Mock Mode)`);
+    return true;
+  }, [showToast]);
+
+  const deleteDealTransaction = useCallback(async (id: string, dealId: string) => {
+    try {
+      const dbRes = await dbDeleteDealTransactionAction(id, dealId);
+      if (dbRes.success) {
+        setState(s => {
+          const updatedTransactions = s.dealTransactions.filter(t => t.id !== id);
+          const dealTxnsForThisDeal = updatedTransactions.filter(t => t.dealId === dealId);
+          const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+          return {
+            ...s,
+            dealTransactions: updatedTransactions,
+            deals: s.deals.map(d => d.id === dealId ? { ...d, totalPL } : d)
+          };
+        });
+        showToast(`Deal transaction deleted successfully`);
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to delete deal transaction', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.warn('DB deleteDealTransaction failed, running client-side only', e);
+    }
+
+    setState(s => {
+      const updatedTransactions = s.dealTransactions.filter(t => t.id !== id);
+      const dealTxnsForThisDeal = updatedTransactions.filter(t => t.dealId === dealId);
+      const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+      return {
+        ...s,
+        dealTransactions: updatedTransactions,
+        deals: s.deals.map(d => d.id === dealId ? { ...d, totalPL } : d)
+      };
+    });
+    showToast(`Deal transaction deleted locally (Mock Mode)`);
+    return true;
   }, [showToast]);
 
   const addBranch = useCallback(async (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => {
@@ -554,7 +685,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, addDeal, updateDeal, getTotalCapital, getNetPL, setActiveCurrency,
+      updateInvestor, addDeal, updateDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency,
     }}>
       {children}
     </AppContext.Provider>

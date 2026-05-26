@@ -1,11 +1,10 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { formatAED } from '@/data/mockData';
+import { formatAED, formatAEDStr } from '@/data/mockData';
 import KPICard from '@/components/ui/KPICard';
 import Card from '@/components/ui/Card';
 import Link from 'next/link';
-import { plTrendData, fundDistribution, revenueExpenseData, recentActivities, dailyReports } from '@/data/mockData';
 import { useRouter } from 'next/navigation';
 import { badgeClass } from '@/lib/badgeClass';
 import {
@@ -25,7 +24,7 @@ import {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { branches, getTotalCapital, getNetPL, selectBranch, sidebarOpen, dateRange, setDateRange } = useApp();
+  const { branches, transactions, getTotalCapital, getNetPL, selectBranch, sidebarOpen, dateRange, setDateRange } = useApp();
 
   const dateOptions = [
     { value: 'today', label: 'Today' },
@@ -46,15 +45,119 @@ export default function AdminDashboard() {
   const revExpRef = useRef<HTMLCanvasElement>(null);
   const incomePieRef = useRef<HTMLCanvasElement>(null);
 
-  const incomeData = useMemo(
-    () =>
-      dailyReports.slice(0, 5).map((r, i) => ({
-        branch: r.branchName,
-        amount: Math.max(0, r.profit),
+  const fundDistribution = useMemo(() => {
+    const colors = ['#D11439', '#F57C00', '#0FA958', '#2196F3', '#9C27B0', '#64748B'];
+    return [...branches]
+      .filter(b => b.currentBalance > 0)
+      .sort((a, b) => b.currentBalance - a.currentBalance)
+      .slice(0, 6)
+      .map((b, i) => ({
+        branch: b.name,
+        amount: b.currentBalance,
+        color: colors[i % colors.length],
+      }));
+  }, [branches]);
+
+  const incomeData = useMemo(() => {
+    return [...branches]
+      .filter(b => b.status === 'active' && b.dailyPL > 0)
+      .sort((a, b) => b.dailyPL - a.dailyPL)
+      .slice(0, 5)
+      .map((b, i) => ({
+        branch: b.name,
+        amount: b.dailyPL,
         color: fundDistribution[i]?.color || '#000',
-      })),
-    []
-  );
+      }));
+  }, [branches, fundDistribution]);
+
+  const plTrendData = useMemo(() => {
+    const dayMap: Record<string, number> = {};
+    transactions.forEach(t => {
+      const day = t.date.slice(0, 10);
+      let val = 0;
+      if (t.type === 'profit') val = t.amount;
+      else if (t.type === 'expense' || t.type === 'opex' || t.type === 'capex') val = -t.amount;
+      else return;
+      dayMap[day] = (dayMap[day] || 0) + val;
+    });
+
+    const sortedDays = Object.keys(dayMap).sort();
+    if (sortedDays.length === 0) {
+      return { labels: [], values: [] };
+    }
+
+    if (sortedDays.length === 1) {
+      const d = sortedDays[0];
+      const prevD = new Date(new Date(d).getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      return {
+        labels: [
+          new Date(prevD).toLocaleDateString('en-AE', { day: '2-digit', month: 'short' }),
+          new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short' })
+        ],
+        values: [0, dayMap[d]]
+      };
+    }
+
+    return {
+      labels: sortedDays.map(d => new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short' })),
+      values: sortedDays.map(d => dayMap[d])
+    };
+  }, [transactions]);
+
+  const revenueExpenseData = useMemo(() => {
+    const dayMap: Record<string, { revenue: number; expense: number }> = {};
+    transactions.forEach(t => {
+      const day = t.date.slice(0, 10);
+      if (!dayMap[day]) {
+        dayMap[day] = { revenue: 0, expense: 0 };
+      }
+      if (t.type === 'profit') {
+        dayMap[day].revenue += t.amount;
+      } else if (t.type === 'expense' || t.type === 'opex' || t.type === 'capex') {
+        dayMap[day].expense += t.amount;
+      }
+    });
+
+    const sortedDays = Object.keys(dayMap).sort();
+    if (sortedDays.length === 0) {
+      return { labels: [], revenue: [], expense: [] };
+    }
+
+    return {
+      labels: sortedDays.map(d => new Date(d).toLocaleDateString('en-AE', { day: '2-digit', month: 'short' })),
+      revenue: sortedDays.map(d => dayMap[d].revenue),
+      expense: sortedDays.map(d => dayMap[d].expense)
+    };
+  }, [transactions]);
+
+  const recentActivities = useMemo(() => {
+    const list = [...transactions]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5);
+
+    return list.map(tx => {
+      let icon = '💵';
+      if (tx.type === 'profit') icon = '📈';
+      else if (tx.type === 'expense' || tx.type === 'opex' || tx.type === 'capex') icon = '📉';
+      else if (tx.type === 'transfer') icon = '🔄';
+
+      const timeStr = new Date(tx.date).toLocaleDateString('en-AE', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      return {
+        id: tx.id,
+        type: tx.type === 'opex' || tx.type === 'capex' ? 'expense' : tx.type,
+        icon,
+        title: tx.type.toUpperCase() + ': ' + tx.from + ' ➔ ' + tx.to,
+        desc: `${tx.notes} (${formatAEDStr(tx.amount)})`,
+        time: timeStr,
+      };
+    });
+  }, [transactions]);
 
   const drawPLChart = useCallback(() => {
     const c = plChartRef.current;
@@ -70,6 +173,13 @@ export default function AdminDashboard() {
       h = rect.height;
     const pad = { top: 20, right: 20, bottom: 40, left: 50 };
     const vals = plTrendData.values;
+    if (vals.length === 0) {
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '500 13px Outfit, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No trend data available yet', w / 2, h / 2);
+      return;
+    }
     const maxV = Math.max(...vals.map(Math.abs)) * 1.3;
     const chartW = w - pad.left - pad.right;
     const chartH = h - pad.top - pad.bottom;
@@ -145,7 +255,7 @@ export default function AdminDashboard() {
       const val = maxV - (i / 4) * 2 * maxV;
       ctx.fillText(`AED ${(val / 1000).toFixed(0)}K`, pad.left - 12, y + 4);
     }
-  }, []);
+  }, [plTrendData]);
 
   const drawDonut = useCallback(() => {
     const c = donutRef.current;
@@ -164,6 +274,13 @@ export default function AdminDashboard() {
     const radius = Math.min(w, h) / 2 - 15;
     const innerR = radius * 0.72;
     const total = fundDistribution.reduce((s, d) => s + d.amount, 0);
+    if (total === 0) {
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '500 13px Outfit, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No capital deployed yet', w / 2, h / 2);
+      return;
+    }
     let startAngle = -Math.PI / 2;
 
     fundDistribution.forEach(d => {
@@ -176,7 +293,7 @@ export default function AdminDashboard() {
       ctx.fill();
       startAngle += sliceAngle;
     });
-  }, []);
+  }, [fundDistribution]);
 
   const drawIncomePieChart = useCallback(() => {
     const c = incomePieRef.current;
@@ -195,6 +312,13 @@ export default function AdminDashboard() {
     const radius = Math.min(w, h) / 2 - 15;
     const innerR = radius * 0.72; // Added inner radius for donut style
     const total = incomeData.reduce((s, d) => s + d.amount, 0);
+    if (total === 0) {
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '500 13px Outfit, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No income yield yet', w / 2, h / 2);
+      return;
+    }
     let startAngle = -Math.PI / 2;
 
     incomeData.forEach(d => {
@@ -228,6 +352,13 @@ export default function AdminDashboard() {
 
     const chartW = w - pad.left - pad.right;
     const chartH = h - pad.top - pad.bottom;
+    if (revenueExpenseData.labels.length === 0) {
+      ctx.fillStyle = '#94A3B8';
+      ctx.font = '500 13px Outfit, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No revenue vs expense data yet', w / 2, h / 2);
+      return;
+    }
     const maxV = Math.max(...revenueExpenseData.revenue, ...revenueExpenseData.expense) * 1.1;
 
     ctx.strokeStyle = 'rgba(0,0,0,0.04)';
@@ -276,7 +407,7 @@ export default function AdminDashboard() {
       const val = maxV - (i / 4) * maxV;
       ctx.fillText(`AED ${(val / 1000).toFixed(0)}K`, pad.left - 12, y + 4);
     }
-  }, []);
+  }, [revenueExpenseData]);
 
   useEffect(() => {
     let resizeTimer: NodeJS.Timeout;

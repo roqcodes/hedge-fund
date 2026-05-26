@@ -4,7 +4,6 @@ import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { SPORTS_MOCK_DATA } from '@/data/mockTransactions';
 import { formatAED } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import CurrencySwitcher from './CurrencySwitcher';
@@ -26,16 +25,16 @@ function KPICard({ label, value, colorClass, icon }: { label: string; value: Rea
 
 export default function TransactionDetails({ dealId, txnId }: { dealId: string; txnId: string }) {
   const router = useRouter();
-  const { deals, isInitialLoading } = useApp();
+  const { deals, investors, isInitialLoading, dealTransactions } = useApp();
 
   const deal = deals.find(d => d.id === dealId);
-  const txn = SPORTS_MOCK_DATA.find(t => t.id === txnId);
+  const txn = dealTransactions.find(t => t.id === txnId);
 
   // Calculate the remaining profit and investor distributions
   const distributions = useMemo(() => {
     if (!deal || !txn) return null;
 
-    const remainingProfit = txn.tProfit - txn.aibakProfit;
+    const remainingProfit = txn.tProfit - txn.mange;
 
     const breakdown = deal.investors.map(inv => {
       const shareRatio = inv.amount / deal.amount;
@@ -183,14 +182,6 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
               <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.mange)}</span>
             </div>
 
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Y.NET</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.yNet)}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">SRK</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.srk)}</span>
-            </div>
 
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Profit (T Profit)</span>
@@ -208,10 +199,10 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           </div>
         </div>
 
-        {/* Right side: Partner Payout Distribution */}
+        {/* Right side: Partner Profit Distribution */}
         <div className="flex flex-col md:rounded-3xl md:border md:border-slate-100 md:bg-white md:p-6 md:shadow-surface">
           <div className="mb-6">
-            <h3 className="text-lg font-bold text-slate-900">Payout Distribution</h3>
+            <h3 className="text-lg font-bold text-slate-900">Profit Distribution</h3>
             <p className="text-xs text-slate-500">Distribution of the deal's net profit</p>
           </div>
 
@@ -220,7 +211,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             <div className="relative flex items-center justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.04)]">
               <div className="absolute right-0 top-0 h-16 w-16 overflow-hidden z-20">
                 <div className="absolute top-[10px] -right-[30px] w-[100px] rotate-45 bg-red-600 py-0.5 text-center text-[7px] font-black uppercase tracking-widest text-white shadow-sm">
-                  Manager
+                  Management
                 </div>
               </div>
 
@@ -229,7 +220,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                   M
                 </div>
                 <div>
-                  <p className="text-sm sm:text-base font-bold text-slate-900">Manager</p>
+                  <p className="text-sm sm:text-base font-bold text-slate-900">Management</p>
                   <p className="text-[11px] sm:text-xs font-medium text-slate-400">Profit Share • {deal.managerShare ?? 20}%</p>
                 </div>
               </div>
@@ -242,17 +233,19 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </div>
 
             {/* Partners Cards */}
-            {breakdown.map((inv, idx) => (
+            {breakdown.map((inv, idx) => {
+              const resolvedName = investors.find(i => i.id === inv.investorId)?.name || inv.investorName;
+              return (
               <div
                 key={idx}
                 className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.04)]"
               >
                 <div className="flex items-center gap-3 sm:gap-4">
                   <div className="flex size-10 sm:size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-base sm:text-lg font-black text-slate-700">
-                    {inv.investorName.charAt(0)}
+                    {resolvedName.charAt(0)}
                   </div>
                   <div>
-                    <p className="text-sm sm:text-base font-bold text-slate-900 uppercase">{inv.investorName}</p>
+                    <p className="text-sm sm:text-base font-bold text-slate-900 uppercase">{resolvedName}</p>
                     <p className="text-[11px] sm:text-xs font-medium text-slate-400">Capital: {formatAED(inv.amount)} • {(inv.shareRatio * 100).toFixed(1)}%</p>
                   </div>
                 </div>
@@ -263,7 +256,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                   </p>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
 
           {/* Total Profit Distributed */}

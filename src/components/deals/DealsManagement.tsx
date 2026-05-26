@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import KPICard from '@/components/ui/KPICard';
 import { useApp } from '@/context/AppContext';
@@ -8,7 +8,6 @@ import { Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import CreateDealModal from './CreateDealModal';
 import CurrencySwitcher from './CurrencySwitcher';
-import { SPORTS_MOCK_DATA } from '@/data/mockTransactions';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import {
@@ -19,32 +18,58 @@ import {
   pageTitle,
   tableWrap,
   dataTable,
+  formInput,
 } from '@/lib/ui';
 
+type SortField = 'groupName' | 'amount' | 'goldVolume' | 'totalDeals' | 'completedDeals' | 'onTransitDeals' | 'grossProfit' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 export default function DealsManagement() {
-  const { deals } = useApp();
+  const { deals, dealTransactions } = useApp();
   const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<SortField>('groupName');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const {
     dateFilter, setDateFilter,
     customStartDate, setCustomStartDate,
     customEndDate, setCustomEndDate,
     filteredData: filteredTransactions
-  } = useDateFilter(SPORTS_MOCK_DATA);
+  } = useDateFilter(dealTransactions);
 
   const totalGroups = new Set(deals.map(d => d.groupName || 'General')).size;
-  const totalDeals = deals.reduce((acc, deal) => acc + (deal.name.toLowerCase().includes('sports') ? filteredTransactions.length : 0), 0);
+
+  const processedDeals = useMemo(() => {
+    return deals.map((deal) => {
+      const groupDeals = filteredTransactions.filter(t => t.dealId === deal.id);
+      const totalDealsInGroup = groupDeals.length;
+      const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
+      const onTransitDeals = totalDealsInGroup - completedDeals;
+      const totalGrossProfit = groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+      const dealGoldGrams = deal.investors.reduce((acc, inv) => acc + (inv.isGold ? inv.amount : 0), 0);
+      const dealGoldKg = dealGoldGrams / 1000;
+
+      return {
+        ...deal,
+        groupNameCalculated: deal.groupName || 'General',
+        goldVolume: dealGoldKg,
+        totalDeals: totalDealsInGroup,
+        completedDeals,
+        onTransitDeals,
+        grossProfit: totalGrossProfit || deal.totalPL || 0,
+      };
+    });
+  }, [deals, filteredTransactions]);
+
+  const totalDeals = processedDeals.reduce((acc, d) => acc + d.totalDeals, 0);
   const totalDealAmount = deals.reduce((acc, d) => acc + d.amount, 0);
-  const totalPL = deals.reduce((acc, deal) => {
-    if (deal.name.toLowerCase().includes('sports')) {
-      return acc + filteredTransactions.reduce((sum, txn) => sum + txn.grossProfit, 0);
-    }
-    return acc + (deal.totalPL || 0);
-  }, 0);
+  const totalPL = processedDeals.reduce((acc, d) => acc + d.grossProfit, 0);
   const totalExpense = deals.reduce((acc, deal) => {
-    if (deal.name.toLowerCase().includes('sports')) {
-      return acc + filteredTransactions.reduce((sum, txn) => sum + txn.expenses, 0);
+    const groupDeals = filteredTransactions.filter(t => t.dealId === deal.id);
+    if (groupDeals.length > 0) {
+      return acc + groupDeals.reduce((sum, txn) => sum + (txn.expenses || 0), 0);
     }
     return acc + (deal.expense || 0);
   }, 0);
@@ -53,6 +78,74 @@ export default function DealsManagement() {
     return acc + deal.investors.reduce((invAcc, inv) => invAcc + (inv.isGold ? inv.amount : 0), 0);
   }, 0);
   const totalGoldKg = (totalGoldGrams / 1000).toFixed(4);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const filteredAndSortedDeals = useMemo(() => {
+    let result = [...processedDeals];
+
+    if (searchTerm.trim()) {
+      const lowerQuery = searchTerm.toLowerCase();
+      result = result.filter(deal => 
+        deal.groupNameCalculated.toLowerCase().includes(lowerQuery) ||
+        deal.name.toLowerCase().includes(lowerQuery) ||
+        deal.status.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    result.sort((a, b) => {
+      let valA: any;
+      let valB: any;
+
+      if (sortField === 'groupName') {
+        valA = a.groupNameCalculated;
+        valB = b.groupNameCalculated;
+      } else {
+        valA = a[sortField];
+        valB = b[sortField];
+      }
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [processedDeals, searchTerm, sortField, sortDirection]);
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    return sortDirection === 'asc' ? (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+      </svg>
+    ) : (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
+
+  const getThClass = (align: 'left' | 'center') => 
+    `group cursor-pointer select-none px-3 pb-3 text-${align} text-[11px] font-bold uppercase tracking-wider text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700 sm:px-5`;
 
   return (
     <>
@@ -165,31 +258,63 @@ export default function DealsManagement() {
         </div>
 
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
-          <div className="flex flex-col gap-3 pb-4 md:border-b md:border-slate-100 md:px-4 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
-            <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg px-2 md:px-0">All Groups</h3>
+          <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-lg font-bold text-slate-900">All Groups</h3>
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.3-4.3" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search groups..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm`}
+                />
+              </div>
+            </div>
           </div>
           <div className="p-0">
             <div className={tableWrap}>
               <table className={`${dataTable} min-w-[900px] hidden md:table`}>
                 <thead>
                   <tr>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Group</th>
-                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Capital</th>
-                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Total Deals</th>
-                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Settled Deals</th>
-                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Unsettled Deals</th>
-                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Gross P&L</th>
-                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
+                    <th className={getThClass('left')} onClick={() => handleSort('groupName')}>
+                      <div className="flex items-center gap-2">Group <SortIcon field="groupName" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSort('amount')}>
+                      <div className="flex items-center justify-center gap-2">Capital <SortIcon field="amount" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSort('goldVolume')}>
+                      <div className="flex items-center justify-center gap-2">Volume Gold <SortIcon field="goldVolume" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSort('totalDeals')}>
+                      <div className="flex items-center justify-center gap-2">Total Deals <SortIcon field="totalDeals" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSort('completedDeals')}>
+                      <div className="flex items-center justify-center gap-2">Settled Deals <SortIcon field="completedDeals" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSort('onTransitDeals')}>
+                      <div className="flex items-center justify-center gap-2">Unsettled Deals <SortIcon field="onTransitDeals" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSort('grossProfit')}>
+                      <div className="flex items-center justify-center gap-2">Gross P&L <SortIcon field="grossProfit" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSort('status')}>
+                      <div className="flex items-center justify-center gap-2">Status <SortIcon field="status" /></div>
+                    </th>
                     <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {deals.map((deal: Deal) => {
-                    const groupDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions : [];
-                    const totalDealsInGroup = groupDeals.length;
-                    const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
-                    const onTransitDeals = totalDealsInGroup - completedDeals;
-                    const totalGrossProfit = groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+                  {filteredAndSortedDeals.map((deal) => {
+                    const totalDealsInGroup = deal.totalDeals;
+                    const completedDeals = deal.completedDeals;
+                    const onTransitDeals = deal.onTransitDeals;
+                    const totalGrossProfit = deal.grossProfit;
+                    const dealGoldKg = deal.goldVolume.toFixed(4);
 
                     return (
                       <tr
@@ -199,10 +324,13 @@ export default function DealsManagement() {
                         className="cursor-pointer"
                       >
                         <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
-                          {deal.groupName || '-'}
+                          {deal.groupNameCalculated}
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
                           {formatAED(deal.amount)}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
+                          {dealGoldKg} kg
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
                           {totalDealsInGroup}
@@ -239,24 +367,23 @@ export default function DealsManagement() {
                       </tr>
                     );
                   })}
-                  {deals.length === 0 && (
+                  {filteredAndSortedDeals.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
-                        No deals found. Create a new deal to get started.
+                      <td colSpan={9} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
+                        {searchTerm ? 'No groups found matching your search query.' : 'No deals found. Create a new deal to get started.'}
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
 
-              {/* Mobile View */}
               <div className="flex md:hidden flex-col gap-4 py-4">
-                {deals.map((deal: Deal) => {
-                  const groupDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions : [];
-                  const totalDealsInGroup = groupDeals.length;
-                  const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
-                  const onTransitDeals = totalDealsInGroup - completedDeals;
-                  const totalGrossProfit = groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+                {filteredAndSortedDeals.map((deal) => {
+                  const totalDealsInGroup = deal.totalDeals;
+                  const completedDeals = deal.completedDeals;
+                  const onTransitDeals = deal.onTransitDeals;
+                  const totalGrossProfit = deal.grossProfit;
+                  const dealGoldKg = deal.goldVolume.toFixed(4);
 
                   return (
                     <div 
@@ -265,7 +392,7 @@ export default function DealsManagement() {
                       className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-slate-900">{deal.groupName || '-'}</span>
+                        <span className="text-sm font-bold text-slate-900">{deal.groupNameCalculated}</span>
                         <div className="flex items-center gap-2">
                           <span className={`h-2.5 w-2.5 rounded-full ${deal.status === 'active' ? 'bg-green-500' : deal.status === 'pending' ? 'bg-amber-500' : deal.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'}`}></span>
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{deal.status}</span>
@@ -276,6 +403,10 @@ export default function DealsManagement() {
                         <div className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capital</span>
                           <span className="font-mono text-sm font-bold text-slate-900">{formatAED(deal.amount)}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Volume Gold</span>
+                          <span className="font-mono text-sm font-bold text-slate-900">{dealGoldKg} kg</span>
                         </div>
                         <div className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross P&L</span>
@@ -298,9 +429,9 @@ export default function DealsManagement() {
                     </div>
                   );
                 })}
-                {deals.length === 0 && (
+                {filteredAndSortedDeals.length === 0 && (
                   <div className="p-8 text-center text-sm text-slate-500">
-                    No deals found. Create a new deal to get started.
+                    {searchTerm ? 'No groups found matching your search query.' : 'No deals found. Create a new deal to get started.'}
                   </div>
                 )}
               </div>

@@ -1,25 +1,4 @@
-export interface DealTransaction {
-  id: string;
-  date: string;
-  deal: string; // Deal ID or Name
-  weight: number;
-  rate: number;
-  pureCostAed: number;
-  salesValueInr: number;
-  rvRate: number;
-  salesAed: number;
-  expenses: number;
-  grossProfit: number;
-  nPPerGr: number;
-  tProfit: number;
-  mange: number;
-  yNet: number;
-  srk: number;
-  aibakProfit: number;
-  fixOrUnfix: 'fixed' | 'unfixed' | string;
-  marginDeposit: number;
-  premiumDiscount: number;
-}
+import { DealTransaction } from '@/types';
 
 export const SPORTS_MOCK_DATA: DealTransaction[] = [
   {
@@ -37,12 +16,11 @@ export const SPORTS_MOCK_DATA: DealTransaction[] = [
     nPPerGr: 22.00,
     tProfit: 22004.79,
     mange: 4400.96,
-    yNet: 11735.89,
-    srk: 5867.94,
     aibakProfit: 4400.96,
     fixOrUnfix: 'fixed',
     marginDeposit: 0,
     premiumDiscount: 0,
+    dealId: 'DLMPJG9CMI',
   },
   {
     id: 'txn-2',
@@ -59,12 +37,11 @@ export const SPORTS_MOCK_DATA: DealTransaction[] = [
     nPPerGr: 22.01,
     tProfit: 22005.91,
     mange: 4401.18,
-    yNet: 11736.48,
-    srk: 5868.24,
     aibakProfit: 4401.18,
     fixOrUnfix: 'fixed',
     marginDeposit: 0,
     premiumDiscount: 0,
+    dealId: 'DLMPJG9CMI',
   },
   {
     id: 'txn-3',
@@ -81,11 +58,10 @@ export const SPORTS_MOCK_DATA: DealTransaction[] = [
     nPPerGr: 19.38,
     tProfit: 9689.87,
     mange: 484.49,
-    yNet: 6136.92,
-    srk: 3068.46,
     aibakProfit: 3875.95,
     fixOrUnfix: 'unfixed',
     marginDeposit: 0,
     premiumDiscount: 0,
+    dealId: 'DLMPJG9CMI',
   }
 ];

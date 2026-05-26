@@ -36,23 +36,32 @@ export default function CreateDealModal({
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [leadAddress, setLeadAddress] = useState('');
-  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string }[]>([
-    { investorId: '', percentageStr: '' },
+  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; goldVolumeStr: string; inputMode: 'percentage' | 'amount' }[]>([
+    { investorId: '', percentageStr: '', amountStr: '', goldVolumeStr: '', inputMode: 'percentage' },
   ]);
   const [error, setError] = useState('');
+  const [date, setDate] = useState(() => {
+    const d = new Date();
+    const tzoffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzoffset).toISOString().slice(0, 16);
+  });
 
   const dealAmount = Number(amountStr) || 0;
 
   // Calculate total investment
   const totalInvestment = useMemo(() => {
-    const totalPercentage = dealInvestors.reduce((acc, inv) => acc + (Number(inv.percentageStr) || 0), 0);
-    return (totalPercentage / 100) * dealAmount;
+    return dealInvestors.reduce((acc, inv) => {
+      if (inv.inputMode === 'amount') {
+        return acc + (Number(inv.amountStr) || 0);
+      }
+      return acc + ((Number(inv.percentageStr) || 0) / 100) * dealAmount;
+    }, 0);
   }, [dealInvestors, dealAmount]);
 
   const balance = totalInvestment - dealAmount;
 
   const handleAddInvestorRow = () => {
-    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '' }]);
+    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', goldVolumeStr: '', inputMode: 'percentage' }]);
   };
 
   const handleRemoveInvestorRow = (index: number) => {
@@ -61,9 +70,26 @@ export default function CreateDealModal({
     setDealInvestors(newInvestors);
   };
 
-  const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr', value: string) => {
+  const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr' | 'amountStr' | 'goldVolumeStr', value: string) => {
     const newInvestors = [...dealInvestors];
     newInvestors[index][field] = value;
+    setDealInvestors(newInvestors);
+  };
+
+  const toggleInputMode = (index: number) => {
+    const newInvestors = [...dealInvestors];
+    const inv = newInvestors[index];
+    if (inv.inputMode === 'percentage') {
+      // Convert percentage to amount
+      const pct = Number(inv.percentageStr) || 0;
+      inv.amountStr = dealAmount > 0 ? ((pct / 100) * dealAmount).toFixed(2).replace(/\.00$/, '') : '';
+      inv.inputMode = 'amount';
+    } else {
+      // Convert amount to percentage
+      const amt = Number(inv.amountStr) || 0;
+      inv.percentageStr = dealAmount > 0 ? ((amt / dealAmount) * 100).toFixed(2).replace(/\.00$/, '') : '';
+      inv.inputMode = 'percentage';
+    }
     setDealInvestors(newInvestors);
   };
 
@@ -72,6 +98,7 @@ export default function CreateDealModal({
 
     if (!name.trim()) return setError('Deal name is required.');
     if (dealAmount <= 0) return setError('Deal amount must be greater than zero.');
+    if (!date) return setError('Creation date is required.');
 
     const parsedManagerShare = Number(managerShareStr);
     if (isNaN(parsedManagerShare) || parsedManagerShare < 0 || parsedManagerShare > 100) {
@@ -81,12 +108,21 @@ export default function CreateDealModal({
     // Validate investors
     const validInvestors: DealInvestor[] = [];
     for (let i = 0; i < dealInvestors.length; i++) {
-      const { investorId, percentageStr } = dealInvestors[i];
+      const { investorId, percentageStr, amountStr: invAmountStr, goldVolumeStr, inputMode } = dealInvestors[i];
       if (!investorId) continue; // skip empty rows
-      const invPercentage = Number(percentageStr);
-      if (invPercentage <= 0 || invPercentage > 100) return setError(`Percentage for investor row ${i + 1} must be between 0 and 100.`);
-      
-      const invAmount = (invPercentage / 100) * dealAmount;
+
+      let invAmount: number;
+      if (inputMode === 'amount') {
+        invAmount = Number(invAmountStr) || 0;
+        if (invAmount <= 0) return setError(`Amount for investor row ${i + 1} must be greater than zero.`);
+      } else {
+        const invPercentage = Number(percentageStr);
+        if (invPercentage <= 0 || invPercentage > 100) return setError(`Percentage for investor row ${i + 1} must be between 0 and 100.`);
+        invAmount = (invPercentage / 100) * dealAmount;
+      }
+
+      const goldVolume = goldVolumeStr ? Number(goldVolumeStr) : 0;
+      if (goldVolumeStr && (isNaN(goldVolume) || goldVolume < 0)) return setError(`Gold volume for investor row ${i + 1} must be a positive number.`);
 
       const investor = investors.find(inv => inv.id === investorId);
       if (!investor) return setError(`Investor not found for row ${i + 1}.`);
@@ -95,7 +131,8 @@ export default function CreateDealModal({
         investorId,
         investorName: investor.name,
         amount: invAmount,
-        isGold: false, // For simplicity in this UI, we treat as AED cash. Can be extended later.
+        isGold: goldVolume > 0,
+        goldVolume: goldVolume > 0 ? Number(goldVolume.toFixed(4)) : undefined,
       });
     }
 
@@ -122,6 +159,7 @@ export default function CreateDealModal({
       leadPhone: leadPhone.trim(),
       leadEmail: leadEmail.trim(),
       leadAddress: leadAddress.trim(),
+      date: new Date(date).toISOString(),
     });
 
     // Reset and close
@@ -136,7 +174,10 @@ export default function CreateDealModal({
     setLeadPhone('');
     setLeadEmail('');
     setLeadAddress('');
-    setDealInvestors([{ investorId: '', percentageStr: '' }]);
+    setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', goldVolumeStr: '', inputMode: 'percentage' }]);
+    const d = new Date();
+    const tzoffset = d.getTimezoneOffset() * 60000;
+    setDate(new Date(d.getTime() - tzoffset).toISOString().slice(0, 16));
     setError('');
     onClose();
   };
@@ -173,7 +214,7 @@ export default function CreateDealModal({
           <input className={formInput} type="number" placeholder="0.00" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
         </div>
         <div className={formGroup}>
-          <label className={formLabel}>Manager Share (%)</label>
+          <label className={formLabel}>Management Share (%)</label>
           <input
             className={formInput}
             type="number"
@@ -184,6 +225,18 @@ export default function CreateDealModal({
             max="100"
           />
         </div>
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Creation Date</label>
+          <input
+            className={formInput}
+            type="datetime-local"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+          />
+        </div>
+        <div className={formGroup}></div>
       </div>
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
@@ -220,47 +273,108 @@ export default function CreateDealModal({
 
         <div className="space-y-3">
           {dealInvestors.map((inv, index) => (
-            <div key={index} className="flex flex-col gap-2 sm:flex-row sm:items-start">
-              <div className="flex-1 min-w-0">
-                <select
-                  className={formSelect}
-                  value={inv.investorId}
-                  onChange={e => handleInvestorChange(index, 'investorId', e.target.value)}
-                >
-                  <option value="">Select Investor</option>
-                  {investors.filter(i => i.status !== 'pending').map((i: Investor) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} (Bal: {formatAEDStr(i.cashDeposit)})
-                    </option>
-                  ))}
-                </select>
+            <div key={index} className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <select
+                    className={formSelect}
+                    value={inv.investorId}
+                    onChange={e => handleInvestorChange(index, 'investorId', e.target.value)}
+                  >
+                    <option value="">Select Investor</option>
+                    {investors.filter(i => i.status !== 'pending').map((i: Investor) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {dealInvestors.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveInvestorRow(index)}
+                    className="shrink-0 flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                    aria-label="Remove investor"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="relative">
-                  <input
-                    className={`${formInput} !pr-8`}
-                    type="number"
-                    placeholder="Share %"
-                    value={inv.percentageStr}
-                    onChange={e => handleInvestorChange(index, 'percentageStr', e.target.value)}
-                    max="100"
-                    min="0"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {/* Segmented Toggle */}
+                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => { if (inv.inputMode !== 'percentage') toggleInputMode(index); }}
+                    className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all duration-200 ${
+                      inv.inputMode === 'percentage'
+                        ? 'bg-white text-accent shadow-sm'
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    % Share
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (inv.inputMode !== 'amount') toggleInputMode(index); }}
+                    className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all duration-200 ${
+                      inv.inputMode === 'amount'
+                        ? 'bg-white text-accent shadow-sm'
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                  >
+                    Amount
+                  </button>
+                </div>
+                {/* Share/Amount Input */}
+                <div className="flex-1 min-w-0">
+                  <div className="relative">
+                    {inv.inputMode === 'percentage' ? (
+                      <>
+                        <input
+                          className={`${formInput} !pr-8`}
+                          type="number"
+                          placeholder="Enter share %"
+                          value={inv.percentageStr}
+                          onChange={e => handleInvestorChange(index, 'percentageStr', e.target.value)}
+                          max="100"
+                          min="0"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">%</span>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          className={`${formInput} !pr-12`}
+                          type="number"
+                          placeholder="Enter amount"
+                          value={inv.amountStr}
+                          onChange={e => handleInvestorChange(index, 'amountStr', e.target.value)}
+                          min="0"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">AED</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {/* Gold Volume Input */}
+                <div className="flex-1 min-w-0">
+                  <div className="relative">
+                    <input
+                      className={`${formInput} !pr-8`}
+                      type="number"
+                      placeholder="Gold volume"
+                      value={inv.goldVolumeStr}
+                      onChange={e => handleInvestorChange(index, 'goldVolumeStr', e.target.value)}
+                      min="0"
+                      step="0.0001"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">g</span>
+                  </div>
                 </div>
               </div>
-              {dealInvestors.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => handleRemoveInvestorRow(index)}
-                  className="mt-2 text-slate-400 hover:text-red-500 sm:mt-0 sm:self-center"
-                  aria-label="Remove investor"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
             </div>
           ))}
         </div>

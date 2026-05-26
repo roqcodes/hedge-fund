@@ -105,6 +105,7 @@ export const addDealSchema = z.object({
   toBranchName: nonEmptyString,
   status: z.enum(['active', 'pending', 'completed', 'cancelled']),
   managerShare: z.number().min(0).max(100).optional(),
+  date: z.string().optional(),
 });
 
 export type AddDealInput = z.infer<typeof addDealSchema>;

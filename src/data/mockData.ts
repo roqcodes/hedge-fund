@@ -79,63 +79,6 @@ function seedToBranch(seed: BranchSeed, index: number): Branch {
 
 export const branches: Branch[] = BRANCH_SEEDS.map(seedToBranch);
 
-export const transactions: Transaction[] = [];
-export const expenses: Expense[] = [];
-
-function buildDailyReport(branch: Branch, date: string): DailyReport {
-  const expense = Math.round(branch.currentBalance * 0.008);
-  const profit = branch.dailyPL + expense;
-  return {
-    date,
-    branchId: branch.id,
-    branchName: branch.name,
-    openingBalance: branch.openingBalance,
-    profit,
-    expense,
-    closingBalance: branch.closingBalance,
-  };
-}
-
-const activeBranches = branches.filter(b => b.status === 'active' && b.currentBalance > 0);
-
-export const dailyReports: DailyReport[] = [
-  ...activeBranches.map(b => buildDailyReport(b, REPORT_DATE)),
-  ...activeBranches.map(b => buildDailyReport(
-    { ...b, openingBalance: Math.round(b.openingBalance * 0.995), closingBalance: b.openingBalance, dailyPL: Math.round(b.dailyPL * 0.9) },
-    '2026-05-02',
-  )),
-];
-
-export const invoices: Invoice[] = [];
-export const notifications: Notification[] = [];
-export const investors: Investor[] = [];
-export const deals: Deal[] = [];
-
-export const plTrendData = {
-  labels: [] as string[],
-  values: [] as number[],
-};
-
-const CHART_COLORS = ['#D11439', '#F57C00', '#0FA958', '#2196F3', '#9C27B0', '#64748B'];
-
-export const fundDistribution = [...branches]
-  .filter(b => b.currentBalance > 0)
-  .sort((a, b) => b.currentBalance - a.currentBalance)
-  .slice(0, 6)
-  .map((b, i) => ({
-    branch: b.name,
-    amount: b.currentBalance,
-    color: CHART_COLORS[i % CHART_COLORS.length],
-  }));
-
-export const revenueExpenseData = {
-  labels: [] as string[],
-  revenue: [] as number[],
-  expense: [] as number[],
-};
-
-export const recentActivities: any[] = [];
-
 export function investorTotalExposure(inv: Pick<Investor, 'cashDeposit' | 'goldDeposit'>): number {
   return inv.cashDeposit + inv.goldDeposit;
 }

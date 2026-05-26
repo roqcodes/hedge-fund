@@ -8,9 +8,11 @@ import KPICard from '@/components/ui/KPICard';
 import EditDealModal from './EditDealModal';
 import DealTransactionsTable from './DealTransactionsTable';
 import CurrencySwitcher from './CurrencySwitcher';
-import { SPORTS_MOCK_DATA } from '@/data/mockTransactions';
+import CreateDealTransactionModal from './CreateDealTransactionModal';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
+import Modal from '@/components/ui/Modal';
+import { DealTransaction } from '@/types';
 import {
   pageHeader,
   pageSubtitle,
@@ -23,11 +25,28 @@ import {
 } from '@/lib/ui';
 
 export default function DealDetails({ dealId }: { dealId: string }) {
-  const { deals, selectInvestor } = useApp();
+  const { deals, investors, selectInvestor, dealTransactions, deleteDealTransaction } = useApp();
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
+  const [showAddTxn, setShowAddTxn] = useState(false);
+
+  const [selectedTxn, setSelectedTxn] = useState<DealTransaction | null>(null);
+  const [selectedTxnToDelete, setSelectedTxnToDelete] = useState<DealTransaction | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const deal = deals.find(d => d.id === dealId);
+
+  const handleDelete = async () => {
+    if (!selectedTxnToDelete) return;
+    setIsDeleting(true);
+    const success = await deleteDealTransaction(selectedTxnToDelete.id, dealId);
+    setIsDeleting(false);
+    if (success) {
+      setShowDeleteModal(false);
+      setSelectedTxnToDelete(null);
+    }
+  };
 
   if (!deal) {
     return (
@@ -45,15 +64,17 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const totalGoldGrams = deal.investors.reduce((acc, inv) => acc + (inv.isGold ? inv.amount : 0), 0);
   const totalGoldKg = (totalGoldGrams / 1000).toFixed(2);
 
+  const transactionsForThisDeal = dealTransactions.filter(t => t.dealId === deal.id);
+
   const {
     dateFilter, setDateFilter,
     customStartDate, setCustomStartDate,
     customEndDate, setCustomEndDate,
     filteredData: filteredTransactions
-  } = useDateFilter(deal.name.toLowerCase().includes('sports') ? SPORTS_MOCK_DATA : []);
+  } = useDateFilter(transactionsForThisDeal);
 
-  const numberOfDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions.length : 0;
-  const completedDeals = deal.name.toLowerCase().includes('sports') ? filteredTransactions.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length : 0;
+  const numberOfDeals = filteredTransactions.length;
+  const completedDeals = filteredTransactions.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
   const onTransitDeals = numberOfDeals - completedDeals;
   
   const filteredTotalPL = filteredTransactions.length > 0
@@ -86,7 +107,17 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               Created: {formatDateTime(deal.date)}
             </p>
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="inline-flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-[#D11439] to-[#f02852] text-white shadow-primary transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:-translate-y-px motion-safe:hover:shadow-primary-hover motion-safe:active:translate-y-0 motion-safe:active:scale-[0.99] sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:text-sm sm:gap-1.5 font-bold text-xs"
+              onClick={() => setShowAddTxn(true)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="stroke-2">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span className="hidden sm:inline">Add Transaction</span>
+            </button>
             <button
               type="button"
               className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-transparent sm:text-slate-500 sm:hover:bg-slate-100 sm:hover:text-slate-900 gap-2 font-semibold text-sm"
@@ -226,7 +257,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
         <div className="mb-6 mt-8 rounded-2xl sm:rounded-3xl border border-slate-100 bg-white p-4 sm:p-5 shadow-surface-xs">
           <div className="mb-4 sm:mb-5">
-            <h3 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">Payout Distribution</h3>
+            <h3 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">Profit Distribution</h3>
             <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">Distribution of the deal's net profit</p>
           </div>
 
@@ -240,7 +271,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               <div className="relative flex items-center justify-between overflow-hidden rounded-xl sm:rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_1px_4px_-2px_rgba(0,0,0,0.05)]">
                 <div className="absolute right-0 top-0 h-16 w-16 overflow-hidden z-20">
                   <div className="absolute top-[8px] -right-[32px] w-[100px] rotate-45 bg-red-600 py-0.5 text-center text-[6px] font-black uppercase tracking-widest text-white shadow-sm">
-                    Manager
+                    Management
                   </div>
                 </div>
                 
@@ -249,7 +280,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                     M
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900">Manager</p>
+                    <p className="text-sm font-bold text-slate-900">Management</p>
                     <p className="text-[11px] sm:text-xs font-medium text-slate-400">Profit Share • {deal.managerShare ?? 20}%</p>
                   </div>
                 </div>
@@ -265,6 +296,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               {[...deal.investors].sort((a, b) => b.amount - a.amount).map((inv, idx) => {
                 const ratio = ((inv.amount / deal.amount) * 100).toFixed(1);
                 const partnerProfit = filteredTotalPL * (inv.amount / deal.amount);
+                const resolvedName = investors.find(i => i.id === inv.investorId)?.name || inv.investorName;
                 return (
                   <div
                     key={idx}
@@ -272,10 +304,10 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-sm sm:text-base font-black text-slate-700">
-                        {inv.investorName.charAt(0)}
+                        {resolvedName.charAt(0)}
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-900 uppercase">{inv.investorName}</p>
+                        <p className="text-sm font-bold text-slate-900 uppercase">{resolvedName}</p>
                         <p className="text-[11px] sm:text-xs font-medium text-slate-400">Capital: {formatAED(inv.amount)} • {ratio}%</p>
                       </div>
                     </div>
@@ -300,9 +332,66 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           )}
         </div>
 
-        <DealTransactionsTable dealName={deal.name} transactions={filteredTransactions} />
+        <DealTransactionsTable 
+          dealName={deal.name} 
+          transactions={filteredTransactions} 
+          onEdit={(txn) => setSelectedTxn(txn)}
+          onDelete={(txn) => {
+            setSelectedTxnToDelete(txn);
+            setShowDeleteModal(true);
+          }}
+        />
       </div>
       <EditDealModal open={showEdit} onClose={() => setShowEdit(false)} deal={deal} />
+      <CreateDealTransactionModal open={showAddTxn} onClose={() => setShowAddTxn(false)} deal={deal} />
+      
+      {selectedTxn && (
+        <CreateDealTransactionModal
+          open={!!selectedTxn}
+          onClose={() => setSelectedTxn(null)}
+          deal={deal}
+          editTransaction={selectedTxn}
+        />
+      )}
+
+      {selectedTxnToDelete && (
+        <Modal
+          open={showDeleteModal}
+          onClose={() => {
+            setShowDeleteModal(false);
+            setSelectedTxnToDelete(null);
+          }}
+          title="Delete Transaction"
+          footer={
+            <>
+              <button
+                type="button"
+                className={btnSecondary}
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setSelectedTxnToDelete(null);
+                }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-red-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-red-700 active:scale-[0.99] sm:px-4 sm:text-sm"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </>
+          }
+        >
+          <div className="text-sm text-slate-600">
+            <p className="mb-2">Are you sure you want to delete Deal Transaction <span className="font-bold text-slate-900">#{selectedTxnToDelete.deal}</span>?</p>
+            <p>This action cannot be undone and the parent group P&L will be re-calculated.</p>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

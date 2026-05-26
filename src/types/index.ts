@@ -145,6 +145,7 @@ export interface DealInvestor {
   investorName: string;
   amount: number;
   isGold: boolean; // True if the amount represents gold grams, false if AED cash
+  goldVolume?: number; // Volume of gold in grams (up to 4 decimals)
 }
 
 export interface Deal {
@@ -166,4 +167,26 @@ export interface Deal {
   leadPhone?: string;
   leadEmail?: string;
   leadAddress?: string;
+}
+
+export interface DealTransaction {
+  id: string;
+  date: string;
+  deal: string; // Deal sequence number/name (e.g. '1', '2')
+  weight: number;
+  rate: number;
+  pureCostAed: number;
+  salesValueInr: number;
+  rvRate: number;
+  salesAed: number;
+  expenses: number;
+  grossProfit: number;
+  nPPerGr: number;
+  tProfit: number;
+  mange: number;
+  aibakProfit: number;
+  fixOrUnfix: 'fixed' | 'unfixed' | string;
+  marginDeposit: number;
+  premiumDiscount: number;
+  dealId?: string; // Foreign key linking to deals(id)
 }

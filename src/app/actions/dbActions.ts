@@ -9,6 +9,7 @@ import {
   Notification,
   Investor,
   Deal,
+  DealTransaction,
 } from '@/types';
 import {
   addBranchSchema,
@@ -36,6 +37,7 @@ export interface InitialDataPayload {
   investors: Investor[];
   deals: Deal[];
   hqBalance: number;
+  dealTransactions: DealTransaction[];
 }
 
 /**
@@ -232,6 +234,30 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
     }));
 
+    // 9. Fetch Deal Transactions
+    const dealTxRes = await query('SELECT * FROM deal_transactions ORDER BY date DESC');
+    const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) => ({
+      id: r.id,
+      date: r.date ? new Date(r.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      dealId: r.deal_id || undefined,
+      deal: r.id.startsWith('txn-') ? r.id.substring(4) : (r.id.split('-').pop() || '1'),
+      weight: parseFloat(r.weight),
+      rate: parseFloat(r.rate),
+      pureCostAed: parseFloat(r.pure_cost_aed),
+      salesValueInr: parseFloat(r.sales_value_inr),
+      rvRate: parseFloat(r.rv_rate),
+      salesAed: parseFloat(r.sales_aed),
+      expenses: parseFloat(r.expenses),
+      grossProfit: parseFloat(r.gross_profit),
+      nPPerGr: parseFloat(r.n_p_per_gr),
+      tProfit: parseFloat(r.t_profit),
+      mange: parseFloat(r.mange),
+      aibakProfit: parseFloat(r.aibak_profit),
+      fixOrUnfix: r.fix_or_unfix,
+      marginDeposit: parseFloat(r.margin_deposit),
+      premiumDiscount: parseFloat(r.premium_discount),
+    }));
+
     return {
       success: true,
       data: {
@@ -243,6 +269,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
         investors,
         deals,
         hqBalance,
+        dealTransactions,
       },
     };
   } catch (error: unknown) {
@@ -691,6 +718,7 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
     toBranchId: deal.toBranchId,
     toBranchName: deal.toBranchName,
     status: deal.status,
+    date: deal.date,
   });
   if (!validation.success) {
     return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
@@ -773,8 +801,9 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         group_name = $8,
         total_pl = $9,
         expense = $10,
-        manager_share = $11
-       WHERE id = $12`,
+        manager_share = $11,
+        date = $12
+       WHERE id = $13`,
       [
         deal.name,
         deal.amount,
@@ -787,6 +816,7 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         deal.totalPL || 0,
         deal.expense || 0,
         deal.managerShare ?? 20,
+        deal.date,
         deal.id,
       ]
     );
@@ -816,3 +846,179 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
     client.release();
   }
 }
+
+/**
+ * Creates a new deal transaction record in the database.
+ */
+export async function dbAddDealTransactionAction(
+  txn: DealTransaction
+): Promise<DbActionResult<DealTransaction>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Insert deal transaction
+    await client.query(
+      `INSERT INTO deal_transactions (
+        id, date, deal_id, weight, rate, pure_cost_aed, sales_value_inr, rv_rate, sales_aed, expenses, 
+        gross_profit, n_p_per_gr, t_profit, mange, y_net, srk, aibak_profit, fix_or_unfix, margin_deposit, premium_discount
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+      [
+        txn.id,
+        txn.date,
+        txn.dealId,
+        txn.weight,
+        txn.rate,
+        txn.pureCostAed,
+        txn.salesValueInr,
+        txn.rvRate,
+        txn.salesAed,
+        txn.expenses,
+        txn.grossProfit,
+        txn.nPPerGr,
+        txn.tProfit,
+        txn.mange,
+        0, // y_net (calculated live)
+        0, // srk (calculated live)
+        txn.aibakProfit,
+        txn.fixOrUnfix,
+        txn.marginDeposit,
+        txn.premiumDiscount,
+      ]
+    );
+
+    // Also update the parent deal's totalPL by summing all its deal_transactions gross_profit!
+    const plRes = await client.query(
+      `SELECT COALESCE(SUM(gross_profit), 0) as total_pl FROM deal_transactions WHERE deal_id = $1`,
+      [txn.dealId]
+    );
+    const totalPL = parseFloat(plRes.rows[0].total_pl);
+
+    await client.query(
+      `UPDATE deals SET total_pl = $1 WHERE id = $2`,
+      [totalPL, txn.dealId]
+    );
+
+    await client.query('COMMIT');
+    return { success: true, data: txn };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
+    console.error('Error adding deal transaction:', error);
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Updates a deal transaction record in the database and recomputes the parent deal's P&L.
+ */
+export async function dbUpdateDealTransactionAction(
+  txn: DealTransaction
+): Promise<DbActionResult<DealTransaction>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `UPDATE deal_transactions SET
+        date = $1, deal = $2, weight = $3, rate = $4, pure_cost_aed = $5, sales_value_inr = $6, rv_rate = $7,
+        sales_aed = $8, expenses = $9, gross_profit = $10, n_p_per_gr = $11, t_profit = $12, mange = $13,
+        y_net = $14, srk = $15, aibak_profit = $16, fix_or_unfix = $17, margin_deposit = $18, premium_discount = $19
+      WHERE id = $20 AND deal_id = $21`,
+      [
+        txn.date,
+        txn.deal,
+        txn.weight,
+        txn.rate,
+        txn.pureCostAed,
+        txn.salesValueInr,
+        txn.rvRate,
+        txn.salesAed,
+        txn.expenses,
+        txn.grossProfit,
+        txn.nPPerGr,
+        txn.tProfit,
+        txn.mange,
+        0, // y_net (calculated live)
+        0, // srk (calculated live)
+        txn.aibakProfit,
+        txn.fixOrUnfix,
+        txn.marginDeposit,
+        txn.premiumDiscount,
+        txn.id,
+        txn.dealId,
+      ]
+    );
+
+    // Recompute totalPL
+    const plRes = await client.query(
+      `SELECT COALESCE(SUM(gross_profit), 0) as total_pl FROM deal_transactions WHERE deal_id = $1`,
+      [txn.dealId]
+    );
+    const totalPL = parseFloat(plRes.rows[0].total_pl);
+
+    await client.query(
+      `UPDATE deals SET total_pl = $1 WHERE id = $2`,
+      [totalPL, txn.dealId]
+    );
+
+    await client.query('COMMIT');
+    return { success: true, data: txn };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
+    console.error('Error updating deal transaction:', error);
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Deletes a deal transaction record and recomputes the parent deal's P&L.
+ */
+export async function dbDeleteDealTransactionAction(
+  id: string,
+  dealId: string
+): Promise<DbActionResult<{ id: string; dealId: string }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `DELETE FROM deal_transactions WHERE id = $1 AND deal_id = $2`,
+      [id, dealId]
+    );
+
+    // Recompute totalPL
+    const plRes = await client.query(
+      `SELECT COALESCE(SUM(gross_profit), 0) as total_pl FROM deal_transactions WHERE deal_id = $1`,
+      [dealId]
+    );
+    const totalPL = parseFloat(plRes.rows[0].total_pl);
+
+    await client.query(
+      `UPDATE deals SET total_pl = $1 WHERE id = $2`,
+      [totalPL, dealId]
+    );
+
+    await client.query('COMMIT');
+    return { success: true, data: { id, dealId } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
+    console.error('Error deleting deal transaction:', error);
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
