@@ -31,22 +31,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const [showAddTxn, setShowAddTxn] = useState(false);
 
   const [selectedTxn, setSelectedTxn] = useState<DealTransaction | null>(null);
-  const [selectedTxnToDelete, setSelectedTxnToDelete] = useState<DealTransaction | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const deal = deals.find(d => d.id === dealId);
 
-  const handleDelete = async () => {
-    if (!selectedTxnToDelete) return;
-    setIsDeleting(true);
-    const success = await deleteDealTransaction(selectedTxnToDelete.id, dealId);
-    setIsDeleting(false);
-    if (success) {
-      setShowDeleteModal(false);
-      setSelectedTxnToDelete(null);
-    }
-  };
 
   if (!deal) {
     return (
@@ -369,10 +356,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           dealName={deal.name} 
           transactions={filteredTransactions} 
           onEdit={(txn) => setSelectedTxn(txn)}
-          onDelete={(txn) => {
-            setSelectedTxnToDelete(txn);
-            setShowDeleteModal(true);
-          }}
+          onDelete={(txn) => setSelectedTxn(txn)}
         />
       </div>
       <EditDealModal open={showEdit} onClose={() => setShowEdit(false)} deal={deal} />
@@ -384,47 +368,13 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           onClose={() => setSelectedTxn(null)}
           deal={deal}
           editTransaction={selectedTxn}
+          onDelete={async (txn) => {
+            await deleteDealTransaction(txn.id, dealId);
+            setSelectedTxn(null);
+          }}
         />
       )}
 
-      {selectedTxnToDelete && (
-        <Modal
-          open={showDeleteModal}
-          onClose={() => {
-            setShowDeleteModal(false);
-            setSelectedTxnToDelete(null);
-          }}
-          title="Delete Deal"
-          footer={
-            <>
-              <button
-                type="button"
-                className={btnSecondary}
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setSelectedTxnToDelete(null);
-                }}
-                disabled={isDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-red-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-red-700 active:scale-[0.99] sm:px-4 sm:text-sm"
-                onClick={handleDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </>
-          }
-        >
-          <div className="text-sm text-slate-600">
-            <p className="mb-2">Are you sure you want to delete Deal <span className="font-bold text-slate-900">#{selectedTxnToDelete.deal}</span>?</p>
-            <p>This action cannot be undone and the parent group P&L will be re-calculated.</p>
-          </div>
-        </Modal>
-      )}
     </>
   );
 }

@@ -22,13 +22,16 @@ export default function CreateDealTransactionModal({
   onClose,
   deal,
   editTransaction,
+  onDelete,
 }: {
   open: boolean;
   onClose: () => void;
   deal: Deal;
   editTransaction?: DealTransaction;
+  onDelete?: (txn: DealTransaction) => void;
 }) {
   const { addDealTransaction, updateDealTransaction, investors, dealTransactions } = useApp();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const getLocalDateString = () => {
     const d = new Date();
@@ -36,6 +39,13 @@ export default function CreateDealTransactionModal({
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  };
+
+  const getLocalTimeString = () => {
+    const d = new Date();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${mins}`;
   };
 
   const formatCost = (amount: number) => {
@@ -56,6 +66,7 @@ export default function CreateDealTransactionModal({
 
   // Inputs
   const [date, setDate] = useState(getLocalDateString);
+  const [time, setTime] = useState(getLocalTimeString);
   const [dealNum, setDealNum] = useState('');
   const [weightStr, setWeightStr] = useState('');
   const [rateStr, setRateStr] = useState('');
@@ -69,6 +80,7 @@ export default function CreateDealTransactionModal({
     if (deal && open) {
       if (editTransaction) {
         setDate(editTransaction.date.slice(0, 10));
+        setTime(editTransaction.time || getLocalTimeString());
         setDealNum(editTransaction.deal);
         setWeightStr(editTransaction.weight.toString());
         setRateStr(editTransaction.rate.toString());
@@ -76,6 +88,7 @@ export default function CreateDealTransactionModal({
         setPremiumDiscountStr(editTransaction.premiumDiscount.toString());
       } else {
         setDate(getLocalDateString());
+        setTime(getLocalTimeString());
 
         // Find next deal sequence number for this group
         const groupTxns = dealTransactions.filter(t => t.dealId === deal.id);
@@ -95,6 +108,7 @@ export default function CreateDealTransactionModal({
         setPremiumDiscountStr('0');
       }
       setError('');
+      setConfirmDelete(false);
     }
   }, [deal, open, editTransaction, dealTransactions]);
 
@@ -141,6 +155,7 @@ export default function CreateDealTransactionModal({
     const newTxn: DealTransaction = {
       id: editTransaction ? editTransaction.id : `txn-${Date.now()}`,
       date,
+      time: time || undefined,
       deal: dealNum.trim(),
       weight,
       rate,
@@ -175,6 +190,43 @@ export default function CreateDealTransactionModal({
       title={editTransaction ? "Edit Deal" : "Add Deal"}
       footer={
         <>
+          {/* Left side: delete (edit mode only) */}
+          {editTransaction && onDelete && (
+            <div className="mr-auto">
+              {!confirmDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-all"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  Delete
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Sure?</span>
+                  <button
+                    type="button"
+                    onClick={() => { onDelete(editTransaction); onClose(); }}
+                    className="inline-flex items-center gap-1 rounded-full bg-red-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-red-700 transition-all"
+                  >
+                    Yes, Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {/* Right side: cancel / save */}
           <button type="button" className={btnSecondary} onClick={onClose}>
             Cancel
           </button>
@@ -188,13 +240,21 @@ export default function CreateDealTransactionModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Date</label>
-          <input
-            className={formInput}
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-          />
+          <label className={formLabel}>Date & Time</label>
+          <div className="flex gap-2">
+            <input
+              className={`${formInput} min-w-0 flex-[3] px-2 sm:px-3`}
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+            />
+            <input
+              className={`${formInput} min-w-0 flex-[2] px-2 sm:px-3 text-center`}
+              type="time"
+              value={time}
+              onChange={e => setTime(e.target.value)}
+            />
+          </div>
         </div>
         <div className={formGroup}>
           <label className={formLabel}>Deal Number</label>
@@ -294,7 +354,7 @@ export default function CreateDealTransactionModal({
 
           {partnerBreakdown.length > 0 && (
             <div className="col-span-2 border-t border-emerald-100/50 pt-4 mt-2">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Investor Cost Shares (Ignore Mgmt Share)</p>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Investor Cost Shares</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {partnerBreakdown.map((partner, idx) => (
                   <div key={idx} className="flex items-center justify-between rounded-xl bg-white border border-emerald-100/40 p-3 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">

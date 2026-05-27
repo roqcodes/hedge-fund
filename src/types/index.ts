@@ -169,9 +169,18 @@ export interface Deal {
   leadAddress?: string;
 }
 
+export interface DealTransactionExpense {
+  id: string;
+  dealTransactionId: string;
+  key: string;           // Expense label, e.g. "Freight", "Insurance"
+  value: number;         // Amount in AED
+  createdAt?: string;
+}
+
 export interface DealTransaction {
   id: string;
   date: string;
+  time?: string;       // "HH:MM" 24h format, e.g. "14:30"
   deal: string; // Deal sequence number/name (e.g. '1', '2')
   weight: number;
   rate: number;

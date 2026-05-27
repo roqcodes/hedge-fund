@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import SellDealModal from './SellDealModal';
+import ExpensesModal from './ExpensesModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -28,6 +29,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
   const router = useRouter();
   const { deals, investors, isInitialLoading, dealTransactions } = useApp();
   const [showSellModal, setShowSellModal] = useState(false);
+  const [showExpensesModal, setShowExpensesModal] = useState(false);
 
   const deal = deals.find(d => d.id === dealId);
   const txn = dealTransactions.find(t => t.id === txnId);
@@ -96,11 +98,30 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           </div>
           <p className={pageSubtitle}>Date: {txn.date} &bull; Group: {deal.groupName || deal.name}</p>
         </div>
-        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+        {/* Buttons — on mobile: col, Expenses above Sell; on sm+: row */}
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          <div className={txn.fixOrUnfix === 'unfixed' ? 'w-full sm:w-24' : 'w-full sm:w-auto'}>
+            <CurrencySwitcher />
+          </div>
+
+          {/* Expenses button — always visible */}
+          <button
+            type="button"
+            className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm sm:text-xs font-bold text-rose-600 hover:bg-rose-100 active:scale-[0.99] gap-1.5 transition-all"
+            onClick={() => setShowExpensesModal(true)}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+            <span>Expenses</span>
+          </button>
+
+          {/* Sell button — only for unfixed deals */}
           {txn.fixOrUnfix === 'unfixed' && (
             <button
               type="button"
-              className="inline-flex h-9 flex-1 sm:flex-none items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] gap-1.5 transition-all justify-center"
+              className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm sm:text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] gap-1.5 transition-all"
               onClick={() => setShowSellModal(true)}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -111,16 +132,24 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
               <span>Sell Deal</span>
             </button>
           )}
-          <div className={txn.fixOrUnfix === 'unfixed' ? 'w-24 sm:w-auto' : 'w-full sm:w-auto'}>
-            <CurrencySwitcher />
-          </div>
         </div>
       </div>
 
       {/* Top Row of KPI Cards */}
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <KPICard
-          label="Purchase"
+          label="Purchase Volume"
+          value={`${txn.weight.toLocaleString()} g`}
+          colorClass="bg-indigo-100 text-indigo-600"
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+            </svg>
+          }
+        />
+        <KPICard
+          label="Purchase Cost Total"
           value={formatAED(txn.pureCostAed)}
           colorClass="bg-slate-900 text-white"
           icon={
@@ -128,6 +157,16 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
               <circle cx="9" cy="21" r="1" />
               <circle cx="20" cy="21" r="1" />
               <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+            </svg>
+          }
+        />
+        <KPICard
+          label="Buy Premium/Disc"
+          value={formatAED(txn.premiumDiscount)}
+          colorClass="bg-amber-100 text-amber-700"
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
           }
         />
@@ -143,7 +182,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           }
         />
         <KPICard
-          label="Sale"
+          label="Total Sale Amount"
           value={formatAED(txn.salesAed)}
           colorClass="bg-emerald-100 text-emerald-600"
           icon={
@@ -153,9 +192,9 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           }
         />
         <KPICard
-          label="Gross Profit"
-          value={formatAED(txn.grossProfit)}
-          colorClass="bg-accent/10 text-accent"
+          label="Profit/Loss"
+          value={formatAED(txn.grossProfit, true)}
+          colorClass={txn.grossProfit >= 0 ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 6l-9.5 9.5-5-5L1 18" />
@@ -185,12 +224,12 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </div>
 
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Sales Value INR</span>
-              <span className="font-mono text-sm font-black text-slate-900">₹{txn.salesValueInr.toLocaleString()}</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Live Selling Rate</span>
+              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.salesValueInr)}/g</span>
             </div>
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">RV Rate</span>
-              <span className="font-mono text-sm font-black text-slate-900">{txn.rvRate.toLocaleString()}</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Sell Premium/Disc</span>
+              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.rvRate)}/oz</span>
             </div>
 
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
@@ -294,6 +333,12 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         onClose={() => setShowSellModal(false)}
         deal={deal}
         transaction={txn}
+      />
+      <ExpensesModal
+        open={showExpensesModal}
+        onClose={() => setShowExpensesModal(false)}
+        dealTransactionId={txn.id}
+        dealLabel={`Deal #${txn.deal} — ${deal.groupName || deal.name}`}
       />
     </>
   );

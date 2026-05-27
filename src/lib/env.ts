@@ -48,10 +48,10 @@ function validateEnv(): Env {
 
     console.error(
       `\n╔══════════════════════════════════════════════════╗\n` +
-        `║  ENVIRONMENT VALIDATION FAILED                   ║\n` +
-        `╚══════════════════════════════════════════════════╝\n\n` +
-        `${formatted}\n\n` +
-        `Copy .env.example → .env and fill in the required values.\n`,
+      `║  ENVIRONMENT VALIDATION FAILED                   ║\n` +
+      `╚══════════════════════════════════════════════════╝\n\n` +
+      `${formatted}\n\n` +
+      `Copy .env.example → .env and fill in the required values.\n`,
     );
 
     throw new Error('Invalid environment configuration. See errors above.');

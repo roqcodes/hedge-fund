@@ -27,6 +27,7 @@ export default function DealTransactionsTable({
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [activeTab, setActiveTab] = useState<'all' | 'unsettled' | 'settled'>('all');
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -37,9 +38,36 @@ export default function DealTransactionsTable({
     }
   };
 
+  const tabCounts = useMemo(() => {
+    const src = transactions || [];
+    return {
+      all: src.length,
+      unsettled: src.filter(t => t.fixOrUnfix === 'unfixed').length,
+      settled: src.filter(t => t.fixOrUnfix === 'fixed').length,
+    };
+  }, [transactions]);
+
+  const formatTime12h = (timeStr?: string) => {
+    if (!timeStr) return '—';
+    try {
+      const [h, m] = timeStr.split(':');
+      let hours = parseInt(h, 10);
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 becomes 12
+      return `${String(hours).padStart(2, '0')}:${m} ${ampm}`;
+    } catch (e) {
+      return timeStr;
+    }
+  };
+
   const filteredAndSortedData = useMemo(() => {
     const dataSource = transactions || [];
     let result = [...dataSource];
+
+    // 0. Tab filter
+    if (activeTab === 'unsettled') result = result.filter(t => t.fixOrUnfix === 'unfixed');
+    else if (activeTab === 'settled') result = result.filter(t => t.fixOrUnfix === 'fixed');
 
     // 1. Search Filtering
     if (searchTerm.trim()) {
@@ -67,7 +95,7 @@ export default function DealTransactionsTable({
     });
 
     return result;
-  }, [searchTerm, sortField, sortDirection, dealName, transactions]);
+  }, [searchTerm, sortField, sortDirection, dealName, transactions, activeTab]);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
@@ -93,7 +121,43 @@ export default function DealTransactionsTable({
   return (
     <div className="mb-8 mt-8 md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface">
       <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-lg font-bold text-slate-900">Deals</h3>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <h3 className="text-lg font-bold text-slate-900">Deals</h3>
+
+          {/* Tabs */}
+          <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+            {([
+              { key: 'all',       label: 'All',        count: tabCounts.all },
+              { key: 'unsettled', label: 'Unsettled',  count: tabCounts.unsettled },
+              { key: 'settled',   label: 'Settled',    count: tabCounts.settled },
+            ] as const).map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                  activeTab === tab.key
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {tab.label}
+                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black transition-colors ${
+                  activeTab === tab.key
+                    ? tab.key === 'unsettled'
+                      ? 'bg-amber-100 text-amber-700'
+                      : tab.key === 'settled'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-slate-100 text-slate-600'
+                    : 'bg-slate-200/60 text-slate-400'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -124,6 +188,12 @@ export default function DealTransactionsTable({
                 <th className={thClass} onClick={() => handleSort('deal')}>
                   <div className="flex items-center gap-2">Deal Number <SortIcon field="deal" /></div>
                 </th>
+                <th className={thClass} onClick={() => handleSort('date')}>
+                  <div className="flex items-center gap-2">Date & Time <SortIcon field="date" /></div>
+                </th>
+                <th className={thClass}>
+                  Status
+                </th>
                 <th className={thClass} onClick={() => handleSort('weight')}>
                   <div className="flex items-center gap-2">Volume <SortIcon field="weight" /></div>
                 </th>
@@ -153,6 +223,21 @@ export default function DealTransactionsTable({
                     onClick={() => router.push(`/group/${dealId}/deal/${row.id}`)}
                   >
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{row.deal}</td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-bold text-slate-900">{row.date}</span>
+                        <span className="text-xs font-semibold text-slate-500">{formatTime12h(row.time)}</span>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+                        row.fixOrUnfix === 'unfixed'
+                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      }`}>
+                        {row.fixOrUnfix === 'unfixed' ? 'Unsettled' : 'Settled'}
+                      </span>
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">{row.weight.toLocaleString()}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.pureCostAed)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.expenses)}</td>
@@ -171,21 +256,6 @@ export default function DealTransactionsTable({
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                             <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          className="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                          onClick={() => {
-                            if (onDelete) onDelete(row);
-                          }}
-                          title="Delete Deal"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            <line x1="10" y1="11" x2="10" y2="17" />
-                            <line x1="14" y1="11" x2="14" y2="17" />
                           </svg>
                         </button>
                       </div>
@@ -219,7 +289,21 @@ export default function DealTransactionsTable({
                   className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-slate-900">Deal: {row.deal}</span>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">Deal: {row.deal}</span>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${
+                          row.fixOrUnfix === 'unfixed'
+                            ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                            : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                        }`}>
+                          {row.fixOrUnfix === 'unfixed' ? 'Unsettled' : 'Settled'}
+                        </span>
+                      </div>
+                      <div className="text-xs font-semibold text-slate-500 mt-0.5">
+                        {row.date}{row.time ? ` • ${formatTime12h(row.time)}` : ''}
+                      </div>
+                    </div>
                     <span className="text-xs font-medium text-slate-500">Vol: {row.weight.toLocaleString()}</span>
                   </div>
                   
@@ -256,19 +340,6 @@ export default function DealTransactionsTable({
                           <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                         </svg>
                         <span>Edit</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-slate-500 hover:bg-red-50 hover:text-red-600 active:bg-red-100 transition-colors"
-                        onClick={() => {
-                          if (onDelete) onDelete(row);
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                        <span>Delete</span>
                       </button>
                     </div>
                     <div className="text-accent font-bold" onClick={() => router.push(`/group/${dealId}/deal/${row.id}`)}>

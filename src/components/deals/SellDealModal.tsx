@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
-import { Deal, DealTransaction } from '@/types';
+import { Deal, DealTransaction, DealTransactionExpense } from '@/types';
 import { formatAEDStr, getGlobalCurrency } from '@/data/mockData';
+import { dbFetchDealExpensesAction } from '@/app/actions/dbActions';
 import {
   btnPrimary,
   btnSecondary,
@@ -31,26 +32,46 @@ export default function SellDealModal({
   const [salesValueInrStr, setSalesValueInrStr] = useState('');
   const [rvRateStr, setRvRateStr] = useState('');
   const [expensesStr, setExpensesStr] = useState('0');
+  const [fetchedExpenseItems, setFetchedExpenseItems] = useState<DealTransactionExpense[]>([]);
+  const [expensesLoading, setExpensesLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (open) {
       setSalesValueInrStr(transaction.salesValueInr ? transaction.salesValueInr.toString() : '');
       setRvRateStr(transaction.rvRate ? transaction.rvRate.toString() : '');
-      setExpensesStr(transaction.expenses ? transaction.expenses.toString() : '0');
       setError('');
+      setFetchedExpenseItems([]);
+
+      // Auto-fetch itemised expenses and sum them
+      setExpensesLoading(true);
+      dbFetchDealExpensesAction(transaction.id).then((res) => {
+        if (res.success && res.data && res.data.length > 0) {
+          setFetchedExpenseItems(res.data);
+          const total = res.data.reduce((acc, e) => acc + e.value, 0);
+          setExpensesStr(total.toFixed(4));
+        } else {
+          // Fallback: use value already stored on the transaction row
+          setExpensesStr(transaction.expenses ? transaction.expenses.toString() : '0');
+        }
+        setExpensesLoading(false);
+      });
     }
   }, [open, transaction]);
 
-  const salesValueInr = Number(salesValueInrStr) || 0;
-  const rvRate = Number(rvRateStr) || 0;
+  const salesValueInr = Number(salesValueInrStr) || 0; // Live rate per gram (AED/gram)
+  const rvRate = Number(rvRateStr) || 0; // Sell premium/discount (per troy oz)
   const expenses = Number(expensesStr) || 0;
   const weight = transaction.weight;
   const pureCostAed = transaction.pureCostAed;
   const managerShare = deal.managerShare ?? 20;
 
   const calculations = useMemo(() => {
-    const salesAed = (salesValueInr * rvRate) / 100000;
+    // 1 troy oz = 31.1034768 grams
+    const sellPremiumDiscountPerGram = rvRate / 31.1034768;
+    const effectiveSellRate = salesValueInr + sellPremiumDiscountPerGram;
+    const salesAed = weight * effectiveSellRate;
+
     const grossProfit = salesAed - pureCostAed - expenses;
     const nPPerGr = weight > 0 ? grossProfit / weight : 0;
     const tProfit = weight > 0 ? (grossProfit / (weight / 1000)) : 0;
@@ -58,6 +79,8 @@ export default function SellDealModal({
     const investorProfitPool = tProfit - mange;
 
     return {
+      sellPremiumDiscountPerGram,
+      effectiveSellRate,
       salesAed,
       grossProfit,
       nPPerGr,
@@ -99,8 +122,7 @@ export default function SellDealModal({
   const handleSubmit = async () => {
     setError('');
 
-    if (salesValueInr <= 0) return setError('Sales Value INR is required.');
-    if (rvRate <= 0) return setError('RV Rate is required.');
+    if (salesValueInr <= 0) return setError('Live rate per gram is required.');
 
     const updatedTxn: DealTransaction = {
       ...transaction,
@@ -153,7 +175,7 @@ export default function SellDealModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Sales Value (INR)</label>
+          <label className={formLabel}>Live Selling Rate (AED/Gram)</label>
           <input
             className={formInput}
             type="number"
@@ -163,11 +185,11 @@ export default function SellDealModal({
           />
         </div>
         <div className={formGroup}>
-          <label className={formLabel}>RV Rate</label>
+          <label className={formLabel}>Sell Premium / Discount (per troy oz)</label>
           <input
             className={formInput}
             type="number"
-            placeholder="e.g. 3850"
+            placeholder="0.00"
             value={rvRateStr}
             onChange={e => setRvRateStr(e.target.value)}
           />
@@ -176,7 +198,17 @@ export default function SellDealModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Expenses (AED)</label>
+          <label className={formLabel}>
+            Expenses (AED)
+            {expensesLoading && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium text-slate-400">
+                <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                fetching…
+              </span>
+            )}
+          </label>
           <input
             className={formInput}
             type="number"
@@ -184,6 +216,26 @@ export default function SellDealModal({
             value={expensesStr}
             onChange={e => setExpensesStr(e.target.value)}
           />
+          {/* Itemised expense breakdown chips */}
+          {!expensesLoading && fetchedExpenseItems.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {fetchedExpenseItems.map((item) => (
+                <span
+                  key={item.id}
+                  className="inline-flex items-center gap-1 rounded-lg bg-rose-50 border border-rose-100 px-2.5 py-1 text-[11px] font-semibold text-rose-700"
+                >
+                  <span className="text-rose-400">{item.key}:</span>
+                  <span className="font-mono font-black">AED {item.value.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+                </span>
+              ))}
+              <span className="inline-flex items-center rounded-lg bg-slate-100 border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-500">
+                {fetchedExpenseItems.length} item{fetchedExpenseItems.length !== 1 ? 's' : ''} auto-loaded
+              </span>
+            </div>
+          )}
+          {!expensesLoading && fetchedExpenseItems.length === 0 && (
+            <p className="mt-1 text-[10px] text-slate-400">No itemised expenses found — enter manually or add via Expenses button.</p>
+          )}
         </div>
         <div className={formGroup}>
           <label className={formLabel}>Calculated Sales AED</label>
@@ -203,43 +255,72 @@ export default function SellDealModal({
         </h4>
         <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
           <div>
-            <p className="text-slate-400">Gross Profit (AED)</p>
-            <p className={`font-mono text-base font-black ${calculations.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-              {formatCost(calculations.grossProfit)}
+            <p className="text-slate-400">Sell Premium/Discount per Gram</p>
+            <p className="font-mono text-sm font-bold text-slate-900">
+              {formatCost(calculations.sellPremiumDiscountPerGram)}
+            </p>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+              ({rvRate >= 0 ? '+' : ''}{rvRate.toFixed(2)}/oz ÷ 31.1035)
             </p>
           </div>
           <div>
-            <p className="text-slate-400">Total Profit (T Profit)</p>
-            <p className={`font-mono text-base font-black ${calculations.tProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-              {formatCost(calculations.tProfit)}
+            <p className="text-slate-400">Effective Sell Rate per Gram</p>
+            <p className="font-mono text-sm font-bold text-slate-900">
+              {formatCost(calculations.effectiveSellRate)}
             </p>
-          </div>
-          <div className="col-span-2 border-t border-emerald-100/50 pt-2 mt-1">
-            <p className="text-slate-400">Net Profit per Gram</p>
-            <p className="font-mono text-sm font-bold text-slate-900 mt-0.5">
-              {calculations.nPPerGr.toFixed(4)} /g
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+              (Rate: {salesValueInr.toFixed(2)} + Prem: {calculations.sellPremiumDiscountPerGram.toFixed(4)})
             </p>
           </div>
 
-          <div className="col-span-2 border-t border-emerald-100/50 pt-3 mt-1 flex justify-between">
+          <div className="col-span-2 border-t border-emerald-100/50 pt-3 mt-1">
+            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Calculated Sales AED</p>
+            <p className="font-mono text-xl font-black text-emerald-700 mt-1">
+              {formatCost(calculations.salesAed)}
+            </p>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+              ({weight.toLocaleString()} g × {formatCost(calculations.effectiveSellRate)})
+            </p>
+          </div>
+
+          <div className="col-span-2 border-t border-emerald-100/50 pt-3 mt-1 grid grid-cols-2 gap-4">
             <div>
-              <p className="text-slate-400">Management share ({managerShare}%)</p>
-              <p className="font-mono text-sm font-bold text-slate-900 mt-0.5">
-                {formatCost(calculations.mange)}
+              <p className="text-slate-400">Gross Profit (AED)</p>
+              <p className={`font-mono text-base font-black ${calculations.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {formatCost(calculations.grossProfit)}
+              </p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                (Sales: {formatCost(calculations.salesAed)} - Cost: {formatCost(pureCostAed)} - Exp: {formatCost(expenses)})
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-slate-400">Investor Pool</p>
-              <p className="font-mono text-sm font-bold text-emerald-700 mt-0.5">
-                {formatCost(calculations.investorProfitPool)}
+            <div>
+              <p className="text-slate-400">Profit per Gram</p>
+              <p className={`font-mono text-base font-black ${calculations.nPPerGr >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {formatCost(calculations.nPPerGr)}
+              </p>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                (Net Profit)
               </p>
             </div>
           </div>
 
-          {partnerBreakdown.length > 0 && (
+          {(partnerBreakdown.length > 0 || managerShare > 0) && (
             <div className="col-span-2 border-t border-emerald-100/50 pt-4 mt-2">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Investor Profit Payouts</p>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Profit Distribution</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {managerShare > 0 && (
+                  <div className="flex items-center justify-between rounded-xl bg-white border border-emerald-100/40 p-3 shadow-[0_1px_3px_rgba(0,0,0,0.02)] ring-1 ring-emerald-500/10">
+                    <div>
+                      <p className="font-bold text-slate-800 uppercase">Management</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">{managerShare}% share</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-mono text-sm font-black ${calculations.mange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {formatCost(calculations.mange)}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {partnerBreakdown.map((partner, idx) => (
                   <div key={idx} className="flex items-center justify-between rounded-xl bg-white border border-emerald-100/40 p-3 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
                     <div>

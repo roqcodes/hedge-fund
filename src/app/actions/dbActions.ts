@@ -10,6 +10,7 @@ import {
   Investor,
   Deal,
   DealTransaction,
+  DealTransactionExpense,
 } from '@/types';
 import {
   addBranchSchema,
@@ -239,6 +240,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
     const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) => ({
       id: r.id,
       date: r.date ? new Date(r.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      time: r.time || undefined,
       dealId: r.deal_id || undefined,
       deal: r.id.startsWith('txn-') ? r.id.substring(4) : (r.id.split('-').pop() || '1'),
       weight: parseFloat(r.weight),
@@ -862,12 +864,13 @@ export async function dbAddDealTransactionAction(
     // Insert deal transaction
     await client.query(
       `INSERT INTO deal_transactions (
-        id, date, deal_id, weight, rate, pure_cost_aed, sales_value_inr, rv_rate, sales_aed, expenses, 
+        id, date, time, deal_id, weight, rate, pure_cost_aed, sales_value_inr, rv_rate, sales_aed, expenses, 
         gross_profit, n_p_per_gr, t_profit, mange, y_net, srk, aibak_profit, fix_or_unfix, margin_deposit, premium_discount
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
       [
         txn.id,
         txn.date,
+        txn.time || null,
         txn.dealId,
         txn.weight,
         txn.rate,
@@ -927,12 +930,13 @@ export async function dbUpdateDealTransactionAction(
 
     await client.query(
       `UPDATE deal_transactions SET
-        date = $1, weight = $2, rate = $3, pure_cost_aed = $4, sales_value_inr = $5, rv_rate = $6,
-        sales_aed = $7, expenses = $8, gross_profit = $9, n_p_per_gr = $10, t_profit = $11, mange = $12,
-        y_net = $13, srk = $14, aibak_profit = $15, fix_or_unfix = $16, margin_deposit = $17, premium_discount = $18
-      WHERE id = $19 AND deal_id = $20`,
+        date = $1, time = $2, weight = $3, rate = $4, pure_cost_aed = $5, sales_value_inr = $6, rv_rate = $7,
+        sales_aed = $8, expenses = $9, gross_profit = $10, n_p_per_gr = $11, t_profit = $12, mange = $13,
+        y_net = $14, srk = $15, aibak_profit = $16, fix_or_unfix = $17, margin_deposit = $18, premium_discount = $19
+      WHERE id = $20 AND deal_id = $21`,
       [
         txn.date,
+        txn.time || null,
         txn.weight,
         txn.rate,
         txn.pureCostAed,
@@ -1021,3 +1025,90 @@ export async function dbDeleteDealTransactionAction(
   }
 }
 
+/**
+ * Adds a batch of key-value expense entries for a deal transaction.
+ * Uses ON CONFLICT to upsert so re-saving the same items is safe.
+ */
+export async function dbAddDealExpensesAction(
+  expenses: DealTransactionExpense[]
+): Promise<DbActionResult<DealTransactionExpense[]>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  if (!expenses.length) return { success: true, data: [] };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const inserted: DealTransactionExpense[] = [];
+    for (const exp of expenses) {
+      await client.query(
+        `INSERT INTO deal_transaction_expenses (id, deal_transaction_id, key, value, created_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (id) DO UPDATE SET key = EXCLUDED.key, value = EXCLUDED.value`,
+        [exp.id, exp.dealTransactionId, exp.key, exp.value]
+      );
+      inserted.push(exp);
+    }
+
+    await client.query('COMMIT');
+    return { success: true, data: inserted };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
+    console.error('Error adding deal transaction expenses:', error);
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Fetches all expense items for a given deal transaction.
+ */
+export async function dbFetchDealExpensesAction(
+  dealTransactionId: string
+): Promise<DbActionResult<DealTransactionExpense[]>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  try {
+    const res = await query(
+      `SELECT id, deal_transaction_id, key, value, created_at
+       FROM deal_transaction_expenses
+       WHERE deal_transaction_id = $1
+       ORDER BY created_at ASC`,
+      [dealTransactionId]
+    );
+
+    const data: DealTransactionExpense[] = res.rows.map((r) => ({
+      id: r.id,
+      dealTransactionId: r.deal_transaction_id,
+      key: r.key,
+      value: parseFloat(r.value),
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
+    return { success: true, data };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error.';
+    console.error('Error fetching deal transaction expenses:', error);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Deletes a single expense entry by id.
+ */
+export async function dbDeleteDealExpenseAction(
+  id: string
+): Promise<DbActionResult<{ id: string }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  try {
+    await query(`DELETE FROM deal_transaction_expenses WHERE id = $1`, [id]);
+    return { success: true, data: { id } };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error.';
+    console.error('Error deleting deal transaction expense:', error);
+    return { success: false, error: message };
+  }
+}

@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS deal_investors (
 CREATE TABLE IF NOT EXISTS deal_transactions (
     id VARCHAR(50) PRIMARY KEY,
     date DATE NOT NULL,
+    time VARCHAR(5) DEFAULT NULL,          -- HH:MM format, e.g. "14:30"
     deal_id VARCHAR(50) REFERENCES deals(id) ON DELETE CASCADE,
     weight DECIMAL(15, 2) NOT NULL,
     rate DECIMAL(15, 2) NOT NULL,
@@ -164,3 +165,14 @@ CREATE TABLE IF NOT EXISTS deal_transactions (
     premium_discount DECIMAL(15, 2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 12. Deal Transaction Expenses (itemised key-value expenses per deal transaction)
+CREATE TABLE IF NOT EXISTS deal_transaction_expenses (
+    id VARCHAR(50) PRIMARY KEY,
+    deal_transaction_id VARCHAR(50) NOT NULL REFERENCES deal_transactions(id) ON DELETE CASCADE,
+    key VARCHAR(255) NOT NULL,          -- Expense label, e.g. "Freight", "Customs"
+    value DECIMAL(15, 4) NOT NULL,      -- Expense amount in AED
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dte_deal_transaction_id ON deal_transaction_expenses(deal_transaction_id);
