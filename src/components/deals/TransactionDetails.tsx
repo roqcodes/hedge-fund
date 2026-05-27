@@ -38,8 +38,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
   const distributions = useMemo(() => {
     if (!deal || !txn) return null;
 
-    const managementProfit = txn.mange;
-    const investorProfitPool = txn.tProfit - managementProfit;
+    const managementProfit = txn.managementProfit;
+    const investorProfitPool = txn.grossProfit - managementProfit;
 
     const breakdown = deal.investors.map(inv => {
       const shareRatio = deal.amount > 0 ? inv.amount / deal.amount : 0;
@@ -225,20 +225,20 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
 
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Live Selling Rate</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.salesValueInr)}/g</span>
+              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.liveSellRate)}/g</span>
             </div>
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Sell Premium/Disc</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.rvRate)}/oz</span>
+              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.sellPremiumDiscount)}/oz</span>
             </div>
 
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">N P.PER GR</span>
-              <span className="font-mono text-sm font-black text-slate-900">{txn.nPPerGr.toFixed(2)}</span>
+              <span className="font-mono text-sm font-black text-slate-900">{txn.netProfitPerGram.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">MANGE</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.mange)}</span>
+              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.managementProfit)}</span>
             </div>
 
 
@@ -285,8 +285,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
               </div>
               <div className="text-right pr-6 sm:pr-8 relative z-10">
                 <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Payout</p>
-                <p className={`mt-0.5 font-mono text-base sm:text-lg font-black ${txn.mange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {formatAED(txn.mange, true)}
+                <p className={`mt-0.5 font-mono text-base sm:text-lg font-black ${txn.managementProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {formatAED(txn.managementProfit, true)}
                 </p>
               </div>
             </div>
@@ -322,8 +322,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           {/* Total Profit Distributed */}
           <div className="mt-4 flex items-center justify-between rounded-2xl bg-emerald-50/70 border border-emerald-100/50 p-4 sm:p-5">
             <span className="text-sm sm:text-base font-bold text-slate-900">Total Distributed Profit</span>
-            <span className={`font-mono text-lg sm:text-xl font-black ${txn.tProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-              {formatAED(txn.tProfit, true)}
+            <span className={`font-mono text-lg sm:text-xl font-black ${txn.grossProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+              {formatAED(txn.grossProfit, true)}
             </span>
           </div>
         </div>

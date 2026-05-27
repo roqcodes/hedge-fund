@@ -235,29 +235,26 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
     }));
 
-    // 9. Fetch Deal Transactions
     const dealTxRes = await query('SELECT * FROM deal_transactions ORDER BY date DESC');
     const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) => ({
       id: r.id,
       date: r.date ? new Date(r.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       time: r.time || undefined,
       dealId: r.deal_id || undefined,
-      deal: r.id.startsWith('txn-') ? r.id.substring(4) : (r.id.split('-').pop() || '1'),
+      deal: r.deal_number || (r.id.startsWith('txn-') ? r.id.substring(4) : (r.id.split('-').pop() || '1')),
       weight: parseFloat(r.weight),
       rate: parseFloat(r.rate),
       pureCostAed: parseFloat(r.pure_cost_aed),
-      salesValueInr: parseFloat(r.sales_value_inr),
-      rvRate: parseFloat(r.rv_rate),
-      salesAed: parseFloat(r.sales_aed),
-      expenses: parseFloat(r.expenses),
-      grossProfit: parseFloat(r.gross_profit),
-      nPPerGr: parseFloat(r.n_p_per_gr),
-      tProfit: parseFloat(r.t_profit),
-      mange: parseFloat(r.mange),
-      aibakProfit: parseFloat(r.aibak_profit),
+      liveSellRate: parseFloat(r.live_sell_rate || '0'),
+      sellPremiumDiscount: parseFloat(r.sell_premium_discount || '0'),
+      salesAed: parseFloat(r.sales_aed || '0'),
+      expenses: parseFloat(r.expenses || '0'),
+      grossProfit: parseFloat(r.gross_profit || '0'),
+      netProfitPerGram: parseFloat(r.net_profit_per_gram || '0'),
+      managementProfit: parseFloat(r.management_profit || '0'),
       fixOrUnfix: r.fix_or_unfix,
-      marginDeposit: parseFloat(r.margin_deposit),
-      premiumDiscount: parseFloat(r.premium_discount),
+      marginDeposit: parseFloat(r.margin_deposit || '0'),
+      premiumDiscount: parseFloat(r.premium_discount || '0'),
     }));
 
     return {
@@ -864,28 +861,25 @@ export async function dbAddDealTransactionAction(
     // Insert deal transaction
     await client.query(
       `INSERT INTO deal_transactions (
-        id, date, time, deal_id, weight, rate, pure_cost_aed, sales_value_inr, rv_rate, sales_aed, expenses, 
-        gross_profit, n_p_per_gr, t_profit, mange, y_net, srk, aibak_profit, fix_or_unfix, margin_deposit, premium_discount
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+        id, deal_number, date, time, deal_id, weight, rate, pure_cost_aed, live_sell_rate, sell_premium_discount, sales_aed, expenses, 
+        gross_profit, net_profit_per_gram, management_profit, fix_or_unfix, margin_deposit, premium_discount
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
       [
         txn.id,
+        txn.deal,
         txn.date,
         txn.time || null,
         txn.dealId,
         txn.weight,
         txn.rate,
         txn.pureCostAed,
-        txn.salesValueInr,
-        txn.rvRate,
+        txn.liveSellRate,
+        txn.sellPremiumDiscount,
         txn.salesAed,
         txn.expenses,
         txn.grossProfit,
-        txn.nPPerGr,
-        txn.tProfit,
-        txn.mange,
-        0, // y_net (calculated live)
-        0, // srk (calculated live)
-        txn.aibakProfit,
+        txn.netProfitPerGram,
+        txn.managementProfit,
         txn.fixOrUnfix,
         txn.marginDeposit,
         txn.premiumDiscount,
@@ -930,27 +924,24 @@ export async function dbUpdateDealTransactionAction(
 
     await client.query(
       `UPDATE deal_transactions SET
-        date = $1, time = $2, weight = $3, rate = $4, pure_cost_aed = $5, sales_value_inr = $6, rv_rate = $7,
-        sales_aed = $8, expenses = $9, gross_profit = $10, n_p_per_gr = $11, t_profit = $12, mange = $13,
-        y_net = $14, srk = $15, aibak_profit = $16, fix_or_unfix = $17, margin_deposit = $18, premium_discount = $19
-      WHERE id = $20 AND deal_id = $21`,
+        deal_number = $1, date = $2, time = $3, weight = $4, rate = $5, pure_cost_aed = $6, live_sell_rate = $7, sell_premium_discount = $8,
+        sales_aed = $9, expenses = $10, gross_profit = $11, net_profit_per_gram = $12, management_profit = $13,
+        fix_or_unfix = $14, margin_deposit = $15, premium_discount = $16
+      WHERE id = $17 AND deal_id = $18`,
       [
+        txn.deal,
         txn.date,
         txn.time || null,
         txn.weight,
         txn.rate,
         txn.pureCostAed,
-        txn.salesValueInr,
-        txn.rvRate,
+        txn.liveSellRate,
+        txn.sellPremiumDiscount,
         txn.salesAed,
         txn.expenses,
         txn.grossProfit,
-        txn.nPPerGr,
-        txn.tProfit,
-        txn.mange,
-        0, // y_net (calculated live)
-        0, // srk (calculated live)
-        txn.aibakProfit,
+        txn.netProfitPerGram,
+        txn.managementProfit,
         txn.fixOrUnfix,
         txn.marginDeposit,
         txn.premiumDiscount,

@@ -29,8 +29,8 @@ export default function SellDealModal({
 }) {
   const { updateDealTransaction } = useApp();
 
-  const [salesValueInrStr, setSalesValueInrStr] = useState('');
-  const [rvRateStr, setRvRateStr] = useState('');
+  const [liveSellRateStr, setLiveSellRateStr] = useState('');
+  const [sellPremiumDiscountStr, setSellPremiumDiscountStr] = useState('');
   const [expensesStr, setExpensesStr] = useState('0');
   const [fetchedExpenseItems, setFetchedExpenseItems] = useState<DealTransactionExpense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -38,8 +38,8 @@ export default function SellDealModal({
 
   useEffect(() => {
     if (open) {
-      setSalesValueInrStr(transaction.salesValueInr ? transaction.salesValueInr.toString() : '');
-      setRvRateStr(transaction.rvRate ? transaction.rvRate.toString() : '');
+      setLiveSellRateStr(transaction.liveSellRate ? transaction.liveSellRate.toString() : '');
+      setSellPremiumDiscountStr(transaction.sellPremiumDiscount ? transaction.sellPremiumDiscount.toString() : '');
       setError('');
       setFetchedExpenseItems([]);
 
@@ -59,8 +59,8 @@ export default function SellDealModal({
     }
   }, [open, transaction]);
 
-  const salesValueInr = Number(salesValueInrStr) || 0; // Live rate per gram (AED/gram)
-  const rvRate = Number(rvRateStr) || 0; // Sell premium/discount (per troy oz)
+  const liveSellRate = Number(liveSellRateStr) || 0; // Live rate per gram (AED/gram)
+  const sellPremiumDiscount = Number(sellPremiumDiscountStr) || 0; // Sell premium/discount (per troy oz)
   const expenses = Number(expensesStr) || 0;
   const weight = transaction.weight;
   const pureCostAed = transaction.pureCostAed;
@@ -68,27 +68,25 @@ export default function SellDealModal({
 
   const calculations = useMemo(() => {
     // 1 troy oz = 31.1034768 grams
-    const sellPremiumDiscountPerGram = rvRate / 31.1034768;
-    const effectiveSellRate = salesValueInr + sellPremiumDiscountPerGram;
+    const sellPremiumDiscountPerGram = sellPremiumDiscount / 31.1034768;
+    const effectiveSellRate = liveSellRate + sellPremiumDiscountPerGram;
     const salesAed = weight * effectiveSellRate;
 
     const grossProfit = salesAed - pureCostAed - expenses;
-    const nPPerGr = weight > 0 ? grossProfit / weight : 0;
-    const tProfit = weight > 0 ? (grossProfit / (weight / 1000)) : 0;
-    const mange = tProfit * (managerShare / 100);
-    const investorProfitPool = tProfit - mange;
+    const netProfitPerGram = weight > 0 ? grossProfit / weight : 0;
+    const managementProfit = grossProfit * (managerShare / 100);
+    const investorProfitPool = grossProfit - managementProfit;
 
     return {
       sellPremiumDiscountPerGram,
       effectiveSellRate,
       salesAed,
       grossProfit,
-      nPPerGr,
-      tProfit,
-      mange,
+      netProfitPerGram,
+      managementProfit,
       investorProfitPool,
     };
-  }, [salesValueInr, rvRate, expenses, pureCostAed, weight, managerShare]);
+  }, [liveSellRate, sellPremiumDiscount, expenses, pureCostAed, weight, managerShare]);
 
   const partnerBreakdown = useMemo(() => {
     if (!deal || !deal.investors) return [];
@@ -122,19 +120,17 @@ export default function SellDealModal({
   const handleSubmit = async () => {
     setError('');
 
-    if (salesValueInr <= 0) return setError('Live rate per gram is required.');
+    if (liveSellRate <= 0) return setError('Live rate per gram is required.');
 
     const updatedTxn: DealTransaction = {
       ...transaction,
-      salesValueInr,
-      rvRate,
+      liveSellRate,
+      sellPremiumDiscount,
       salesAed: Number(calculations.salesAed.toFixed(2)),
       expenses,
       grossProfit: Number(calculations.grossProfit.toFixed(2)),
-      nPPerGr: Number(calculations.nPPerGr.toFixed(4)),
-      tProfit: Number(calculations.tProfit.toFixed(2)),
-      mange: Number(calculations.mange.toFixed(2)),
-      aibakProfit: Number(calculations.mange.toFixed(2)),
+      netProfitPerGram: Number(calculations.netProfitPerGram.toFixed(4)),
+      managementProfit: Number(calculations.managementProfit.toFixed(2)),
       fixOrUnfix: 'fixed', // Mark as settled
     };
 
@@ -180,8 +176,8 @@ export default function SellDealModal({
             className={formInput}
             type="number"
             placeholder="0.00"
-            value={salesValueInrStr}
-            onChange={e => setSalesValueInrStr(e.target.value)}
+            value={liveSellRateStr}
+            onChange={e => setLiveSellRateStr(e.target.value)}
           />
         </div>
         <div className={formGroup}>
@@ -190,8 +186,8 @@ export default function SellDealModal({
             className={formInput}
             type="number"
             placeholder="0.00"
-            value={rvRateStr}
-            onChange={e => setRvRateStr(e.target.value)}
+            value={sellPremiumDiscountStr}
+            onChange={e => setSellPremiumDiscountStr(e.target.value)}
           />
         </div>
       </div>
@@ -260,7 +256,7 @@ export default function SellDealModal({
               {formatCost(calculations.sellPremiumDiscountPerGram)}
             </p>
             <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              ({rvRate >= 0 ? '+' : ''}{rvRate.toFixed(2)}/oz ÷ 31.1035)
+              ({sellPremiumDiscount >= 0 ? '+' : ''}{sellPremiumDiscount.toFixed(2)}/oz ÷ 31.1035)
             </p>
           </div>
           <div>
@@ -269,7 +265,7 @@ export default function SellDealModal({
               {formatCost(calculations.effectiveSellRate)}
             </p>
             <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              (Rate: {salesValueInr.toFixed(2)} + Prem: {calculations.sellPremiumDiscountPerGram.toFixed(4)})
+              (Rate: {liveSellRate.toFixed(2)} + Prem: {calculations.sellPremiumDiscountPerGram.toFixed(4)})
             </p>
           </div>
 
@@ -295,8 +291,8 @@ export default function SellDealModal({
             </div>
             <div>
               <p className="text-slate-400">Profit per Gram</p>
-              <p className={`font-mono text-base font-black ${calculations.nPPerGr >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {formatCost(calculations.nPPerGr)}
+              <p className={`font-mono text-base font-black ${calculations.netProfitPerGram >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {formatCost(calculations.netProfitPerGram)}
               </p>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">
                 (Net Profit)
@@ -315,8 +311,8 @@ export default function SellDealModal({
                       <p className="text-[10px] text-slate-400 font-semibold">{managerShare}% share</p>
                     </div>
                     <div className="text-right">
-                      <p className={`font-mono text-sm font-black ${calculations.mange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatCost(calculations.mange)}
+                      <p className={`font-mono text-sm font-black ${calculations.managementProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {formatCost(calculations.managementProfit)}
                       </p>
                     </div>
                   </div>

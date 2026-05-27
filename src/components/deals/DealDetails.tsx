@@ -81,12 +81,11 @@ export default function DealDetails({ dealId }: { dealId: string }) {
     }
 
     filteredTransactions.forEach(txn => {
-      // Management profit for this transaction
-      const mProfit = txn.mange || txn.aibakProfit || 0;
+      const mProfit = txn.managementProfit || 0;
       totalManagement += mProfit;
 
-      // Investor pool for this transaction
-      const investorProfitPool = (txn.tProfit || 0) - mProfit;
+      // The remaining gross profit after management deduction is distributed to investors
+      const investorProfitPool = (txn.grossProfit || 0) - mProfit;
 
       // Distribute to each investor based on their capital share in the group
       if (deal && deal.investors) {

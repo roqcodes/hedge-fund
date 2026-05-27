@@ -185,15 +185,13 @@ export interface DealTransaction {
   weight: number;
   rate: number;
   pureCostAed: number;
-  salesValueInr: number;
-  rvRate: number;
+  liveSellRate: number;        // Renamed from salesValueInr
+  sellPremiumDiscount: number; // Renamed from rvRate
   salesAed: number;
   expenses: number;
   grossProfit: number;
-  nPPerGr: number;
-  tProfit: number;
-  mange: number;
-  aibakProfit: number;
+  netProfitPerGram: number;    // Renamed from nPPerGr
+  managementProfit: number;    // Renamed from mange
   fixOrUnfix: 'fixed' | 'unfixed' | string;
   marginDeposit: number;
   premiumDiscount: number;
