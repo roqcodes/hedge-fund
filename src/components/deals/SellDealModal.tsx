@@ -137,7 +137,7 @@ export default function SellDealModal({
   const handleSubmit = async () => {
     setError('');
 
-    if (liveSellRate <= 0) return setError('Live rate per gram is required.');
+    if (liveSellRateInr <= 0) return setError('Live selling rate is required.');
 
     const updatedTxn: DealTransaction = {
       ...transaction,

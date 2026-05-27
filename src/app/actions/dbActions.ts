@@ -1108,3 +1108,30 @@ export async function dbDeleteDealExpenseAction(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Deletes a deal completely, cascading deletes to transactions, expenses, and investors.
+ */
+export async function dbDeleteDealAction(
+  id: string
+): Promise<DbActionResult<{ id: string }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Deleting the deal cascades to deal_transactions, deal_transaction_expenses, and deal_investors.
+    await client.query(`DELETE FROM deals WHERE id = $1`, [id]);
+    
+    await client.query('COMMIT');
+    return { success: true, data: { id } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error.';
+    console.error('Error deleting deal:', error);
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}

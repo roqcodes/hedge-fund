@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatAEDStr, formatDateTime } from '@/data/mockData';
@@ -34,14 +34,17 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
   const deal = deals.find(d => d.id === dealId);
 
+  useEffect(() => {
+    if (!deal) {
+      router.push('/group');
+    }
+  }, [deal, router]);
 
   if (!deal) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-4">
-        <h2 className="text-xl font-bold text-slate-700">Deal Not Found</h2>
-        <button className={btnSecondary} onClick={() => router.push('/group')}>
-          Back to Deals
-        </button>
+        <div className="size-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600"></div>
+        <p className="text-sm font-medium text-slate-500">Redirecting to Groups...</p>
       </div>
     );
   }

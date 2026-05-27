@@ -27,6 +27,7 @@ import {
   dbUpdateInvestorAction,
   dbAddDealAction,
   dbUpdateDealAction,
+  dbDeleteDealAction,
   dbAddDealTransactionAction,
   dbUpdateDealTransactionAction,
   dbDeleteDealTransactionAction,
@@ -92,6 +93,7 @@ interface AppContextType extends AppState {
   updateInvestor: (investor: Investor) => void;
   addDeal: (deal: Omit<Deal, 'id' | 'date'> & { date?: string }) => void;
   updateDeal: (deal: Deal) => void;
+  deleteDeal: (id: string) => Promise<boolean>;
   addDealTransaction: (txn: DealTransaction) => Promise<boolean>;
   updateDealTransaction: (txn: DealTransaction) => Promise<boolean>;
   deleteDealTransaction: (id: string, dealId: string) => Promise<boolean>;
@@ -349,6 +351,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('DB updateDeal failed', e);
       showToast('Failed to update deal', 'error');
       return;
+    }
+  }, [showToast]);
+
+  const deleteDeal = useCallback(async (id: string) => {
+    try {
+      const dbRes = await dbDeleteDealAction(id);
+      if (dbRes.success) {
+        setState(s => ({
+          ...s,
+          deals: s.deals.filter(d => d.id !== id),
+          dealTransactions: s.dealTransactions.filter(t => t.dealId !== id)
+        }));
+        showToast('Deal deleted successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to delete deal', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB deleteDeal failed', e);
+      showToast('Failed to delete deal', 'error');
+      return false;
     }
   }, [showToast]);
 
@@ -649,7 +673,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, addDeal, updateDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency,
+      updateInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency,
     }}>
       {children}
     </AppContext.Provider>
