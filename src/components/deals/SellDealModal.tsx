@@ -30,6 +30,7 @@ export default function SellDealModal({
   const { updateDealTransaction } = useApp();
 
   const [liveSellRateStr, setLiveSellRateStr] = useState('');
+  const [conversionRateStr, setConversionRateStr] = useState('');
   const [sellPremiumDiscountStr, setSellPremiumDiscountStr] = useState('');
   const [expensesStr, setExpensesStr] = useState('0');
   const [fetchedExpenseItems, setFetchedExpenseItems] = useState<DealTransactionExpense[]>([]);
@@ -39,6 +40,7 @@ export default function SellDealModal({
   useEffect(() => {
     if (open) {
       setLiveSellRateStr(transaction.liveSellRate ? transaction.liveSellRate.toString() : '');
+      setConversionRateStr('');
       setSellPremiumDiscountStr(transaction.sellPremiumDiscount ? transaction.sellPremiumDiscount.toString() : '');
       setError('');
       setFetchedExpenseItems([]);
@@ -59,7 +61,8 @@ export default function SellDealModal({
     }
   }, [open, transaction]);
 
-  const liveSellRate = Number(liveSellRateStr) || 0; // Live rate per gram (AED/gram)
+  const liveSellRateInr = Number(liveSellRateStr) || 0; // Live rate in INR per ounce
+  const conversionRateInput = Number(conversionRateStr) || 0;
   const sellPremiumDiscount = Number(sellPremiumDiscountStr) || 0; // Sell premium/discount (per troy oz)
   const expenses = Number(expensesStr) || 0;
   const weight = transaction.weight;
@@ -67,8 +70,12 @@ export default function SellDealModal({
   const managerShare = deal.managerShare ?? 20;
 
   const calculations = useMemo(() => {
+    // Determine the conversion multiplier (handles both 3851 and 0.03851 forms)
+    const conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1; // Default to 1 if no conversion rate
+    const liveSellRateAed = liveSellRateInr * conversionMultiplier;
+
     // 1 troy oz = 31.1035 grams
-    const liveSellRatePerGram = liveSellRate / 31.1035;
+    const liveSellRatePerGram = liveSellRateAed / 31.1035;
     const sellPremiumDiscountPerGram = sellPremiumDiscount / 31.1035;
     const effectiveSellRate = liveSellRatePerGram + sellPremiumDiscountPerGram;
     const salesAed = weight * effectiveSellRate;
@@ -80,6 +87,8 @@ export default function SellDealModal({
     const investorProfitPool = grossProfit - managementProfit;
 
     return {
+      liveSellRateAed,
+      conversionMultiplier,
       sellPremiumDiscountPerGram,
       effectiveSellRate,
       salesAed,
@@ -88,7 +97,7 @@ export default function SellDealModal({
       managementProfit,
       investorProfitPool,
     };
-  }, [liveSellRate, sellPremiumDiscount, expenses, pureCostAed, weight, managerShare]);
+  }, [liveSellRateInr, conversionRateInput, sellPremiumDiscount, expenses, pureCostAed, weight, managerShare]);
 
   const partnerBreakdown = useMemo(() => {
     if (!deal || !deal.investors) return [];
@@ -132,7 +141,7 @@ export default function SellDealModal({
 
     const updatedTxn: DealTransaction = {
       ...transaction,
-      liveSellRate,
+      liveSellRate: calculations.liveSellRateAed,
       sellPremiumDiscount,
       salesAed: Number(calculations.salesAed.toFixed(2)),
       expenses,
@@ -179,7 +188,7 @@ export default function SellDealModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Live Selling Rate (per Ounce)</label>
+          <label className={formLabel}>Live Selling Rate (INR per Ounce)</label>
           <input
             className={formInput}
             type="number"
@@ -189,7 +198,20 @@ export default function SellDealModal({
           />
         </div>
         <div className={formGroup}>
-          <label className={formLabel}>Sell Premium / Discount (per troy oz)</label>
+          <label className={formLabel}>INR to AED Rate</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="3851"
+            value={conversionRateStr}
+            onChange={e => setConversionRateStr(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Sell Premium / Discount (AED/oz)</label>
           <input
             className={formInput}
             type="number"
@@ -263,6 +285,9 @@ export default function SellDealModal({
           <div>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Effective Sell Rate</p>
             <p className="font-mono text-sm font-bold text-slate-900 mt-1">{formatCost(calculations.effectiveSellRate)} /g</p>
+            <p className="text-[9px] text-slate-400 font-medium mt-1">
+              (AED Rate: {calculations.liveSellRateAed.toFixed(2)}/oz + Prem: {sellPremiumDiscount.toFixed(2)}/oz)
+            </p>
           </div>
           <div>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Sales (AED)</p>
