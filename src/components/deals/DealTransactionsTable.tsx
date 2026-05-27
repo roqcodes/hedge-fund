@@ -136,18 +136,18 @@ export default function DealTransactionsTable({
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === tab.key
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
                   }`}
               >
                 {tab.label}
                 <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black transition-colors ${activeTab === tab.key
-                    ? tab.key === 'unsettled'
-                      ? 'bg-amber-100 text-amber-700'
-                      : tab.key === 'settled'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-slate-100 text-slate-600'
-                    : 'bg-slate-200/60 text-slate-400'
+                  ? tab.key === 'unsettled'
+                    ? 'bg-amber-100 text-amber-700'
+                    : tab.key === 'settled'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-slate-100 text-slate-600'
+                  : 'bg-slate-200/60 text-slate-400'
                   }`}>
                   {tab.count}
                 </span>
@@ -229,8 +229,8 @@ export default function DealTransactionsTable({
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${row.fixOrUnfix === 'unfixed'
-                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                          : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                        ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                        : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
                         }`}>
                         {row.fixOrUnfix === 'unfixed' ? 'Unsettled' : 'Settled'}
                       </span>
@@ -290,8 +290,8 @@ export default function DealTransactionsTable({
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-slate-900">Deal: {row.deal}</span>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${row.fixOrUnfix === 'unfixed'
-                            ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                            : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
                           }`}>
                           {row.fixOrUnfix === 'unfixed' ? 'Unsettled' : 'Settled'}
                         </span>

@@ -67,14 +67,16 @@ export default function SellDealModal({
   const managerShare = deal.managerShare ?? 20;
 
   const calculations = useMemo(() => {
-    // 1 troy oz = 31.1034768 grams
-    const sellPremiumDiscountPerGram = sellPremiumDiscount / 31.1034768;
-    const effectiveSellRate = liveSellRate + sellPremiumDiscountPerGram;
+    // 1 troy oz = 31.1035 grams
+    const liveSellRatePerGram = liveSellRate / 31.1035;
+    const sellPremiumDiscountPerGram = sellPremiumDiscount / 31.1035;
+    const effectiveSellRate = liveSellRatePerGram + sellPremiumDiscountPerGram;
     const salesAed = weight * effectiveSellRate;
 
     const grossProfit = salesAed - pureCostAed - expenses;
     const netProfitPerGram = weight > 0 ? grossProfit / weight : 0;
-    const managementProfit = grossProfit * (managerShare / 100);
+    // Management only takes a cut of positive profit. If it's a loss, they get 0 and investors absorb it.
+    const managementProfit = grossProfit > 0 ? grossProfit * (managerShare / 100) : 0;
     const investorProfitPool = grossProfit - managementProfit;
 
     return {
@@ -177,7 +179,7 @@ export default function SellDealModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Live Selling Rate (AED/Gram)</label>
+          <label className={formLabel}>Live Selling Rate (per Ounce)</label>
           <input
             className={formInput}
             type="number"

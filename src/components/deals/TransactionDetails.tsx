@@ -213,47 +213,78 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             <p className="text-xs text-slate-500">Key metrics and deal parameters</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Weight</span>
-              <span className="font-mono text-sm font-black text-slate-900">{txn.weight.toLocaleString()} g</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Rate</span>
-              <span className="font-mono text-sm font-black text-slate-900">{txn.rate.toFixed(2)}</span>
-            </div>
-
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Live Selling Rate</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.liveSellRate)}/g</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Sell Premium/Disc</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.sellPremiumDiscount)}/oz</span>
-            </div>
-
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">N P.PER GR</span>
-              <span className="font-mono text-sm font-black text-slate-900">{txn.netProfitPerGram.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">MANGE</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.managementProfit)}</span>
+          <div className="flex flex-col gap-6">
+            {/* Purchase Details */}
+            <div>
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-3 border-b border-slate-100 pb-2">Purchase Details</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Weight</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{txn.weight.toLocaleString()} g</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Live Rate /oz</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{txn.rate.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Premium/Disc</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{txn.premiumDiscount.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Purchase Cost (AED)</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{formatAED(txn.pureCostAed)}</p>
+                </div>
+              </div>
             </div>
 
-
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Profit (Gross Profit)</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.grossProfit)}</span>
+            {/* Selling Details */}
+            <div>
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-rose-800 mb-3 border-b border-slate-100 pb-2">Selling Details</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Live Sell Rate /oz</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{txn.liveSellRate > 0 ? txn.liveSellRate.toFixed(2) : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Sell Prem/Disc</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{txn.liveSellRate > 0 ? txn.sellPremiumDiscount.toFixed(2) : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Sales (AED)</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{txn.salesAed > 0 ? formatAED(txn.salesAed) : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Status</p>
+                  <p className="font-mono text-sm font-bold capitalize text-slate-900">{txn.fixOrUnfix}</p>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Investor Pool</span>
-              <span className="font-mono text-sm font-black text-slate-600">{formatAED(investorProfitPool)}</span>
-            </div>
 
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3 sm:border-b-0 sm:pb-0">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Deal Status</span>
-              <span className="font-mono text-sm font-black capitalize text-slate-900">{txn.fixOrUnfix}</span>
+            {/* Expenses & Profitability */}
+            <div>
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-blue-800 mb-3 border-b border-slate-100 pb-2">Financials & Profitability</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Total Expenses</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{formatAED(txn.expenses)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Gross Profit</p>
+                  <p className={`font-mono text-sm font-bold ${txn.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatAED(txn.grossProfit)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Net Profit / Gram</p>
+                  <p className={`font-mono text-sm font-bold ${txn.netProfitPerGram >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{txn.netProfitPerGram.toFixed(4)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Management Fee</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{formatAED(txn.managementProfit)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-medium">Investor Pool</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{formatAED(investorProfitPool)}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
