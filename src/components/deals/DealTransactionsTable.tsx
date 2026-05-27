@@ -150,7 +150,7 @@ export default function DealTransactionsTable({
                   <tr 
                     key={row.id} 
                     className="cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100"
-                    onClick={() => router.push(`/deals/${dealId}/transactions/${row.id}`)}
+                    onClick={() => router.push(`/group/${dealId}/deal/${row.id}`)}
                   >
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{row.deal}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">{row.weight.toLocaleString()}</td>
@@ -166,7 +166,7 @@ export default function DealTransactionsTable({
                           onClick={() => {
                             if (onEdit) onEdit(row);
                           }}
-                          title="Edit Transaction"
+                          title="Edit Deal"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -179,7 +179,7 @@ export default function DealTransactionsTable({
                           onClick={() => {
                             if (onDelete) onDelete(row);
                           }}
-                          title="Delete Transaction"
+                          title="Delete Deal"
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="3 6 5 6 21 6" />
@@ -215,7 +215,7 @@ export default function DealTransactionsTable({
               filteredAndSortedData.map((row) => (
                 <div 
                   key={row.id}
-                  onClick={() => router.push(`/deals/${dealId}/transactions/${row.id}`)}
+                  onClick={() => router.push(`/group/${dealId}/deal/${row.id}`)}
                   className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
                 >
                   <div className="flex items-center justify-between">
@@ -271,7 +271,7 @@ export default function DealTransactionsTable({
                         <span>Delete</span>
                       </button>
                     </div>
-                    <div className="text-accent font-bold" onClick={() => router.push(`/deals/${dealId}/transactions/${row.id}`)}>
+                    <div className="text-accent font-bold" onClick={() => router.push(`/group/${dealId}/deal/${row.id}`)}>
                       View &rarr;
                     </div>
                   </div>

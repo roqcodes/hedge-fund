@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { Deal, DealTransaction } from '@/types';
-import { formatAEDStr } from '@/data/mockData';
+import { formatAEDStr, getGlobalCurrency } from '@/data/mockData';
 import {
   btnPrimary,
   btnSecondary,
@@ -38,19 +38,28 @@ export default function CreateDealTransactionModal({
     return `${year}-${month}-${day}`;
   };
 
+  const formatCost = (amount: number) => {
+    const currency = getGlobalCurrency();
+    const rates: Record<string, number> = {
+      AED: 1,
+      USD: 0.2723,
+      INR: 22.68,
+    };
+    const converted = amount * (rates[currency] || 1);
+    const numStr = Math.abs(converted).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}${numStr}`;
+  };
+
   // Inputs
   const [date, setDate] = useState(getLocalDateString);
   const [dealNum, setDealNum] = useState('');
   const [weightStr, setWeightStr] = useState('');
   const [rateStr, setRateStr] = useState('');
-  const [fixOrUnfix, setFixOrUnfix] = useState<'fixed' | 'unfixed'>('fixed');
-  const [salesValueInrStr, setSalesValueInrStr] = useState('');
-  const [rvRateStr, setRvRateStr] = useState('');
-  const [salesAedStr, setSalesAedStr] = useState('');
-  const [expensesStr, setExpensesStr] = useState('0');
-  const [dealShareStr, setDealShareStr] = useState('100');
-  const [aibakShareStr, setAibakShareStr] = useState('20');
-  const [marginDepositStr, setMarginDepositStr] = useState('0');
+  const [fixOrUnfix, setFixOrUnfix] = useState<'fixed' | 'unfixed'>('unfixed');
   const [premiumDiscountStr, setPremiumDiscountStr] = useState('0');
 
   const [error, setError] = useState('');
@@ -64,20 +73,6 @@ export default function CreateDealTransactionModal({
         setWeightStr(editTransaction.weight.toString());
         setRateStr(editTransaction.rate.toString());
         setFixOrUnfix(editTransaction.fixOrUnfix === 'unfixed' ? 'unfixed' : 'fixed');
-        setSalesValueInrStr(editTransaction.salesValueInr ? editTransaction.salesValueInr.toString() : '');
-        setRvRateStr(editTransaction.rvRate ? editTransaction.rvRate.toString() : '');
-        setSalesAedStr(editTransaction.salesAed ? editTransaction.salesAed.toString() : '');
-        setExpensesStr(editTransaction.expenses.toString());
-
-        // Back-calculate input shares from stored totals
-        const totalProfitPerKg = editTransaction.weight > 0 ? (editTransaction.grossProfit / (editTransaction.weight / 1000)) : 0;
-        const backCalculatedDealShare = totalProfitPerKg !== 0 ? (editTransaction.tProfit / totalProfitPerKg) * 100 : 100;
-        const backCalculatedAibakShare = totalProfitPerKg !== 0 ? (editTransaction.aibakProfit / totalProfitPerKg) * 100 : 20;
-
-        setDealShareStr(Math.round(backCalculatedDealShare).toString());
-        setAibakShareStr(Math.round(backCalculatedAibakShare).toString());
-
-        setMarginDepositStr(editTransaction.marginDeposit.toString());
         setPremiumDiscountStr(editTransaction.premiumDiscount.toString());
       } else {
         setDate(getLocalDateString());
@@ -96,14 +91,7 @@ export default function CreateDealTransactionModal({
 
         setWeightStr('');
         setRateStr('');
-        setFixOrUnfix('fixed');
-        setSalesValueInrStr('');
-        setRvRateStr('');
-        setSalesAedStr('');
-        setExpensesStr('0');
-        setDealShareStr('100');
-        setAibakShareStr('20');
-        setMarginDepositStr('0');
+        setFixOrUnfix('unfixed');
         setPremiumDiscountStr('0');
       }
       setError('');
@@ -113,69 +101,34 @@ export default function CreateDealTransactionModal({
   // Numerical conversions
   const weight = Number(weightStr) || 0;
   const rate = Number(rateStr) || 0;
-  const salesValueInr = Number(salesValueInrStr) || 0;
-  const rvRate = Number(rvRateStr) || 0;
-  const expenses = Number(expensesStr) || 0;
-  const dealShare = Number(dealShareStr) || 100;
-  const managerShare = deal?.managerShare ?? 20;
-  const aibakShare = Number(aibakShareStr) || 0;
-  const marginDeposit = Number(marginDepositStr) || 0;
   const premiumDiscount = Number(premiumDiscountStr) || 0;
 
   // Real-time calculations
   const calculations = useMemo(() => {
-    const pureCostAed = weight * rate;
-
-    let salesAed = 0;
-    if (fixOrUnfix === 'fixed') {
-      salesAed = (salesValueInr * rvRate) / 100000;
-    } else {
-      salesAed = Number(salesAedStr) || 0;
-    }
-
-    const grossProfit = salesAed - pureCostAed - expenses;
-    const nPPerGr = weight > 0 ? grossProfit / weight : 0;
-    const totalProfitPerKg = weight > 0 ? (grossProfit / (weight / 1000)) : 0;
-
-    const tProfit = totalProfitPerKg * (dealShare / 100);
-    const mange = tProfit * (managerShare / 100);
-    const aibakProfit = totalProfitPerKg * (aibakShare / 100);
+    // 1 troy oz = 31.1034768 grams
+    const premiumDiscountPerGram = premiumDiscount / 31.1034768;
+    const effectiveRate = rate + premiumDiscountPerGram;
+    const pureCostAed = weight * effectiveRate;
 
     return {
+      premiumDiscountPerGram,
+      effectiveRate,
       pureCostAed,
-      salesAed,
-      grossProfit,
-      nPPerGr,
-      tProfit,
-      mange,
-      aibakProfit,
     };
-  }, [
-    weight,
-    rate,
-    fixOrUnfix,
-    salesValueInr,
-    rvRate,
-    salesAedStr,
-    expenses,
-    dealShare,
-    managerShare,
-    aibakShare,
-  ]);
+  }, [weight, rate, premiumDiscount]);
 
   const partnerBreakdown = useMemo(() => {
     if (!deal || !deal.investors) return [];
-    const remainingProfit = calculations.tProfit - calculations.mange;
     return deal.investors.map(inv => {
       const sharePercentage = deal.amount > 0 ? (inv.amount / deal.amount) * 100 : 0;
-      const payout = remainingProfit * (sharePercentage / 100);
+      const costShare = calculations.pureCostAed * (sharePercentage / 100);
       return {
         name: inv.investorName,
         percentage: sharePercentage,
-        payout,
+        amount: costShare,
       };
     });
-  }, [deal, calculations.tProfit, calculations.mange]);
+  }, [deal, calculations.pureCostAed]);
 
   const handleSubmit = async () => {
     setError('');
@@ -185,13 +138,6 @@ export default function CreateDealTransactionModal({
     if (weight <= 0) return setError('Weight must be greater than zero.');
     if (rate <= 0) return setError('Purchase rate must be greater than zero.');
 
-    if (fixOrUnfix === 'fixed') {
-      if (salesValueInr <= 0) return setError('Sales Value INR is required for fixed deals.');
-      if (rvRate <= 0) return setError('RV Rate is required for fixed deals.');
-    } else {
-      if (calculations.salesAed <= 0) return setError('Sales AED is required for unfixed deals.');
-    }
-
     const newTxn: DealTransaction = {
       id: editTransaction ? editTransaction.id : `txn-${Date.now()}`,
       date,
@@ -199,17 +145,17 @@ export default function CreateDealTransactionModal({
       weight,
       rate,
       pureCostAed: Number(calculations.pureCostAed.toFixed(2)),
-      salesValueInr,
-      rvRate,
-      salesAed: Number(calculations.salesAed.toFixed(2)),
-      expenses,
-      grossProfit: Number(calculations.grossProfit.toFixed(2)),
-      nPPerGr: Number(calculations.nPPerGr.toFixed(4)),
-      tProfit: Number(calculations.tProfit.toFixed(2)),
-      mange: Number(calculations.mange.toFixed(2)),
-      aibakProfit: Number(calculations.aibakProfit.toFixed(2)),
+      salesValueInr: editTransaction?.salesValueInr || 0,
+      rvRate: editTransaction?.rvRate || 0,
+      salesAed: editTransaction?.salesAed || 0,
+      expenses: editTransaction?.expenses || 0,
+      grossProfit: editTransaction?.grossProfit || 0,
+      nPPerGr: editTransaction?.nPPerGr || 0,
+      tProfit: editTransaction?.tProfit || 0,
+      mange: editTransaction?.mange || 0,
+      aibakProfit: editTransaction?.aibakProfit || 0,
       fixOrUnfix,
-      marginDeposit,
+      marginDeposit: editTransaction?.marginDeposit || 0,
       premiumDiscount,
       dealId: deal.id,
     };
@@ -226,14 +172,14 @@ export default function CreateDealTransactionModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={editTransaction ? "Edit Deal Transaction" : "Add Deal Transaction"}
+      title={editTransaction ? "Edit Deal" : "Add Deal"}
       footer={
         <>
           <button type="button" className={btnSecondary} onClick={onClose}>
             Cancel
           </button>
           <button type="button" className={btnPrimary} onClick={handleSubmit}>
-            {editTransaction ? 'Save Changes' : 'Add Transaction'}
+            {editTransaction ? 'Save Changes' : 'Add Deal'}
           </button>
         </>
       }
@@ -274,7 +220,7 @@ export default function CreateDealTransactionModal({
           />
         </div>
         <div className={formGroup}>
-          <label className={formLabel}>Purchase Rate (AED)</label>
+          <label className={formLabel}>Purchase Rate (AED/Gram)</label>
           <input
             className={formInput}
             type="number"
@@ -287,172 +233,80 @@ export default function CreateDealTransactionModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Fix Status</label>
+          <label className={formLabel}>Premium / Discount (per troy oz)</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="0.00"
+            value={premiumDiscountStr}
+            onChange={e => setPremiumDiscountStr(e.target.value)}
+          />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Deal Status</label>
           <select
             className={formSelect}
             value={fixOrUnfix}
             onChange={e => setFixOrUnfix(e.target.value as 'fixed' | 'unfixed')}
           >
-            <option value="fixed">Fixed</option>
             <option value="unfixed">Unfixed</option>
+            <option value="fixed">Fixed</option>
           </select>
-        </div>
-        {fixOrUnfix === 'unfixed' ? (
-          <div className={formGroup}>
-            <label className={formLabel}>Sales AED</label>
-            <input
-              className={formInput}
-              type="number"
-              placeholder="0.00"
-              value={salesAedStr}
-              onChange={e => setSalesAedStr(e.target.value)}
-            />
-          </div>
-        ) : (
-          <div className={formGroup}>
-            <label className={formLabel}>Expenses (AED)</label>
-            <input
-              className={formInput}
-              type="number"
-              placeholder="0.00"
-              value={expensesStr}
-              onChange={e => setExpensesStr(e.target.value)}
-            />
-          </div>
-        )}
-      </div>
-
-      {fixOrUnfix === 'fixed' && (
-        <div className={formRow}>
-          <div className={formGroup}>
-            <label className={formLabel}>Sales Value INR</label>
-            <input
-              className={formInput}
-              type="number"
-              placeholder="0.00"
-              value={salesValueInrStr}
-              onChange={e => setSalesValueInrStr(e.target.value)}
-            />
-          </div>
-          <div className={formGroup}>
-            <label className={formLabel}>RV Rate</label>
-            <input
-              className={formInput}
-              type="number"
-              placeholder="0.00"
-              value={rvRateStr}
-              onChange={e => setRvRateStr(e.target.value)}
-            />
-          </div>
-        </div>
-      )}
-
-      {fixOrUnfix === 'fixed' && (
-        <div className={formRow}>
-          <div className={formGroup}>
-            <label className={formLabel}>Expenses (AED)</label>
-            <input
-              className={formInput}
-              type="number"
-              placeholder="0.00"
-              value={expensesStr}
-              onChange={e => setExpensesStr(e.target.value)}
-            />
-          </div>
-          <div className={formGroup}></div>
-        </div>
-      )}
-
-      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-        <h4 className="mb-3 text-sm font-bold text-slate-800">Advanced Share Percentages</h4>
-        <div className={formRow}>
-          <div className={formGroup}>
-            <label className={formLabel}>Deal Share (%)</label>
-            <input
-              className={formInput}
-              type="number"
-              value={dealShareStr}
-              onChange={e => setDealShareStr(e.target.value)}
-            />
-          </div>
-          <div className={formGroup}>
-            <label className={formLabel}>Aibak Share (%)</label>
-            <input
-              className={formInput}
-              type="number"
-              value={aibakShareStr}
-              onChange={e => setAibakShareStr(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-        <h4 className="mb-3 text-sm font-bold text-slate-800">Optional Adjustments</h4>
-        <div className={formRow}>
-          <div className={formGroup}>
-            <label className={formLabel}>Margin Deposit (AED)</label>
-            <input
-              className={formInput}
-              type="number"
-              value={marginDepositStr}
-              onChange={e => setMarginDepositStr(e.target.value)}
-            />
-          </div>
-          <div className={formGroup}>
-            <label className={formLabel}>Premium / Discount (AED)</label>
-            <input
-              className={formInput}
-              type="number"
-              value={premiumDiscountStr}
-              onChange={e => setPremiumDiscountStr(e.target.value)}
-            />
-          </div>
         </div>
       </div>
 
       {/* Calculated Preview Card */}
-      <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/30 p-4 shadow-sm">
-        <h4 className="mb-3 text-sm font-bold text-emerald-800">Calculated Metrics Preview</h4>
+      <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/30 p-5 shadow-sm">
+        <h4 className="mb-4 text-sm font-bold text-emerald-800 flex items-center gap-1.5">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-600">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 11h.01M12 7h.01M12 14h.01M15 11h.01M15 7h.01M18 21H6a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2z" />
+          </svg>
+          Deal Cost Inference
+        </h4>
         <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
           <div>
-            <p className="text-slate-400">Pure Cost AED</p>
-            <p className="font-mono text-sm font-bold text-slate-900">{formatAEDStr(calculations.pureCostAed)}</p>
+            <p className="text-slate-400">Premium/Discount per Gram</p>
+            <p className="font-mono text-sm font-bold text-slate-900">
+              {formatCost(calculations.premiumDiscountPerGram)}
+            </p>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+              ({premiumDiscount >= 0 ? '+' : ''}{premiumDiscount.toFixed(2)}/oz ÷ 31.1035)
+            </p>
           </div>
           <div>
-            <p className="text-slate-400">Sales AED</p>
-            <p className="font-mono text-sm font-bold text-slate-900">{formatAEDStr(calculations.salesAed)}</p>
+            <p className="text-slate-400">Effective Rate per Gram</p>
+            <p className="font-mono text-sm font-bold text-slate-900">
+              {formatCost(calculations.effectiveRate)}
+            </p>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+              (Rate: {rate.toFixed(2)} + Prem: {calculations.premiumDiscountPerGram.toFixed(4)})
+            </p>
           </div>
-          <div>
-            <p className="text-slate-400">Gross Profit</p>
-            <p className="font-mono text-sm font-bold text-slate-900">{formatAEDStr(calculations.grossProfit)}</p>
+          <div className="col-span-2 border-t border-emerald-100/50 pt-3 mt-1">
+            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Final Cost (Pure Cost AED)</p>
+            <p className="font-mono text-xl font-black text-emerald-700 mt-1">
+              {formatCost(calculations.pureCostAed)}
+            </p>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+              ({weight.toLocaleString()} g × {formatCost(calculations.effectiveRate)})
+            </p>
           </div>
-          <div>
-            <p className="text-slate-400">N P.PER GR (Profit/g)</p>
-            <p className="font-mono text-sm font-bold text-slate-900">{calculations.nPPerGr.toFixed(4)}</p>
-          </div>
-          <div>
-            <p className="text-slate-400">T Profit (Profit per kg)</p>
-            <p className="font-mono text-sm font-bold text-slate-900">{formatAEDStr(calculations.tProfit)}</p>
-          </div>
-          <div>
-            <p className="text-slate-400">Management Share ({managerShare}%)</p>
-            <p className="font-mono text-sm font-bold text-slate-900">{formatAEDStr(calculations.mange)}</p>
-          </div>
-          <div>
-            <p className="text-slate-400">Aibak Profit (AIBAK PROFIT)</p>
-            <p className="font-mono text-sm font-bold text-emerald-700">{formatAEDStr(calculations.aibakProfit)}</p>
-          </div>
-          <div></div>
 
           {partnerBreakdown.length > 0 && (
-            <div className="col-span-2 border-t border-emerald-100/50 pt-3">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Partner Profit Shares</p>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 border-t border-emerald-100/50 pt-4 mt-2">
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Investor Cost Shares (Ignore Mgmt Share)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {partnerBreakdown.map((partner, idx) => (
-                  <div key={idx}>
-                    <p className="text-slate-400">{partner.name} ({partner.percentage.toFixed(2)}%)</p>
-                    <p className="font-mono text-sm font-bold text-slate-900">{formatAEDStr(partner.payout)}</p>
+                  <div key={idx} className="flex items-center justify-between rounded-xl bg-white border border-emerald-100/40 p-3 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                    <div>
+                      <p className="font-bold text-slate-800 uppercase">{partner.name}</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">{partner.percentage.toFixed(2)}% share</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-sm font-black text-slate-900">
+                        {formatCost(partner.amount)}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>

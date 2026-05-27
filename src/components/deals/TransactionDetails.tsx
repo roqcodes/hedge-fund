@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import SellDealModal from './SellDealModal';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -26,6 +27,7 @@ function KPICard({ label, value, colorClass, icon }: { label: string; value: Rea
 export default function TransactionDetails({ dealId, txnId }: { dealId: string; txnId: string }) {
   const router = useRouter();
   const { deals, investors, isInitialLoading, dealTransactions } = useApp();
+  const [showSellModal, setShowSellModal] = useState(false);
 
   const deal = deals.find(d => d.id === dealId);
   const txn = dealTransactions.find(t => t.id === txnId);
@@ -34,11 +36,12 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
   const distributions = useMemo(() => {
     if (!deal || !txn) return null;
 
-    const remainingProfit = txn.tProfit - txn.mange;
+    const managementProfit = txn.mange;
+    const investorProfitPool = txn.tProfit - managementProfit;
 
     const breakdown = deal.investors.map(inv => {
-      const shareRatio = inv.amount / deal.amount;
-      const payout = remainingProfit * shareRatio;
+      const shareRatio = deal.amount > 0 ? inv.amount / deal.amount : 0;
+      const payout = investorProfitPool * shareRatio;
       return {
         ...inv,
         shareRatio,
@@ -47,7 +50,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
     });
 
     return {
-      remainingProfit,
+      managementProfit,
+      investorProfitPool,
       breakdown,
     };
   }, [deal, txn]);
@@ -71,17 +75,17 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
     );
   }
 
-  const { remainingProfit, breakdown } = distributions;
+  const { managementProfit, investorProfitPool, breakdown } = distributions;
 
   return (
     <>
-      <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
-        <div>
+      <div className="mb-5 flex flex-col gap-4 border-b border-slate-200/80 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="w-full sm:w-auto">
           <div className="mb-2 flex items-center gap-3">
             <button
-              onClick={() => router.push(`/deals/${deal.id}`)}
+              onClick={() => router.push(`/group/${deal.id}`)}
               className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
-              aria-label="Back to Deal"
+              aria-label="Back to Group"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -90,10 +94,26 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             <h1 className={pageTitle}>Deal #{txn.deal}</h1>
             <div className={badgeClass(deal.status)}>{deal.status.toUpperCase()}</div>
           </div>
-          <p className={pageSubtitle}>Date: {txn.date} &bull; Deal: {deal.name}</p>
+          <p className={pageSubtitle}>Date: {txn.date} &bull; Group: {deal.groupName || deal.name}</p>
         </div>
-        <div className="flex items-center">
-          <CurrencySwitcher />
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          {txn.fixOrUnfix === 'unfixed' && (
+            <button
+              type="button"
+              className="inline-flex h-9 flex-1 sm:flex-none items-center justify-center rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] gap-1.5 transition-all justify-center"
+              onClick={() => setShowSellModal(true)}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="16" />
+                <line x1="8" y1="12" x2="16" y2="12" />
+              </svg>
+              <span>Sell Deal</span>
+            </button>
+          )}
+          <div className={txn.fixOrUnfix === 'unfixed' ? 'w-24 sm:w-auto' : 'w-full sm:w-auto'}>
+            <CurrencySwitcher />
+          </div>
         </div>
       </div>
 
@@ -184,16 +204,16 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
 
 
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Profit (T Profit)</span>
-              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.tProfit)}</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Profit (Gross Profit)</span>
+              <span className="font-mono text-sm font-black text-slate-900">{formatAED(txn.grossProfit)}</span>
             </div>
             <div className="flex items-center justify-between border-b border-slate-50 pb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Investor Pool</span>
-              <span className="font-mono text-sm font-black text-slate-600">{formatAED(remainingProfit)}</span>
+              <span className="font-mono text-sm font-black text-slate-600">{formatAED(investorProfitPool)}</span>
             </div>
 
             <div className="flex items-center justify-between border-b border-slate-50 pb-3 sm:border-b-0 sm:pb-0">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Fix Status</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Deal Status</span>
               <span className="font-mono text-sm font-black capitalize text-slate-900">{txn.fixOrUnfix}</span>
             </div>
           </div>
@@ -226,8 +246,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
               </div>
               <div className="text-right pr-6 sm:pr-8 relative z-10">
                 <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Payout</p>
-                <p className={`mt-0.5 font-mono text-base sm:text-lg font-black ${txn.aibakProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {formatAED(txn.aibakProfit, true)}
+                <p className={`mt-0.5 font-mono text-base sm:text-lg font-black ${txn.mange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {formatAED(txn.mange, true)}
                 </p>
               </div>
             </div>
@@ -269,6 +289,12 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           </div>
         </div>
       </div>
+      <SellDealModal
+        open={showSellModal}
+        onClose={() => setShowSellModal(false)}
+        deal={deal}
+        transaction={txn}
+      />
     </>
   );
 }

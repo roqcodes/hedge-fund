@@ -96,8 +96,8 @@ export default function CreateDealModal({
   const handleSubmit = () => {
     setError('');
 
-    if (!name.trim()) return setError('Deal name is required.');
-    if (dealAmount <= 0) return setError('Deal amount must be greater than zero.');
+    if (!name.trim()) return setError('Group name is required.');
+    if (dealAmount <= 0) return setError('Group capital must be greater than zero.');
     if (!date) return setError('Creation date is required.');
 
     const parsedManagerShare = Number(managerShareStr);
@@ -200,17 +200,17 @@ export default function CreateDealModal({
     >
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Group Name</label>
+          <label className={formLabel}>Group Category</label>
           <input className={formInput} type="text" placeholder="e.g. Q3 Syndicate" value={groupName} onChange={e => setGroupName(e.target.value)} />
         </div>
         <div className={formGroup}>
-          <label className={formLabel}>Deal Name</label>
-          <input className={formInput} type="text" placeholder="e.g. Real Estate Acquisition" value={name} onChange={e => setName(e.target.value)} />
+          <label className={formLabel}>Group Name</label>
+          <input className={formInput} type="text" placeholder="e.g. SPORTS" value={name} onChange={e => setName(e.target.value)} />
         </div>
       </div>
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Deal Amount (AED)</label>
+          <label className={formLabel}>Group Capital (AED)</label>
           <input className={formInput} type="number" placeholder="0.00" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
         </div>
         <div className={formGroup}>

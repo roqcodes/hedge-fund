@@ -133,8 +133,8 @@ export default function EditDealModal({
   const handleSubmit = () => {
     setError('');
 
-    if (!name.trim()) return setError('Deal name is required.');
-    if (dealAmount <= 0) return setError('Deal amount must be greater than zero.');
+    if (!name.trim()) return setError('Group name is required.');
+    if (dealAmount <= 0) return setError('Group capital must be greater than zero.');
 
     const targetBranch = targetType === 'branch' ? branches.find(b => b.id === toBranchId) : null;
     if (targetType === 'branch' && !targetBranch) return setError('Selected branch not found.');
@@ -227,7 +227,7 @@ export default function EditDealModal({
     >
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Group Name</label>
+          <label className={formLabel}>Group Category</label>
           <input
             className={formInput}
             type="text"
@@ -237,11 +237,11 @@ export default function EditDealModal({
           />
         </div>
         <div className={formGroup}>
-          <label className={formLabel}>Deal Name</label>
+          <label className={formLabel}>Group Name</label>
           <input
             className={formInput}
             type="text"
-            placeholder="e.g. Real Estate Acquisition"
+            placeholder="e.g. SPORTS"
             value={name}
             onChange={e => setName(e.target.value)}
           />
@@ -249,7 +249,7 @@ export default function EditDealModal({
       </div>
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Deal Amount (AED)</label>
+          <label className={formLabel}>Group Capital (AED)</label>
           <input
             className={formInput}
             type="number"
@@ -274,7 +274,7 @@ export default function EditDealModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Deal Status</label>
+          <label className={formLabel}>Group Status</label>
           <select className={formSelect} value={status} onChange={e => setStatus(e.target.value as DealStatus)}>
             <option value="active">Active</option>
             <option value="pending">Pending</option>

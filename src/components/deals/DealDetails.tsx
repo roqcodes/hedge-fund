@@ -52,7 +52,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-4">
         <h2 className="text-xl font-bold text-slate-700">Deal Not Found</h2>
-        <button className={btnSecondary} onClick={() => router.push('/deals')}>
+        <button className={btnSecondary} onClick={() => router.push('/group')}>
           Back to Deals
         </button>
       </div>
@@ -81,9 +81,42 @@ export default function DealDetails({ dealId }: { dealId: string }) {
     ? filteredTransactions.reduce((sum, txn) => sum + (txn.grossProfit || 0), 0)
     : (deal.totalPL || 0);
 
-  const totalAibakProfit = filteredTransactions.length > 0
-    ? filteredTransactions.reduce((sum, txn) => sum + (txn.aibakProfit || 0), 0)
-    : 0;
+  // Calculate total management profit and investor payouts dynamically by summing the payouts of all transactions
+  const profitDistributions = React.useMemo(() => {
+    let totalManagement = 0;
+    const investorTotals: Record<string, number> = {};
+
+    // Initialize all deal investors with 0
+    if (deal && deal.investors) {
+      deal.investors.forEach(inv => {
+        investorTotals[inv.investorId] = 0;
+      });
+    }
+
+    filteredTransactions.forEach(txn => {
+      // Management profit for this transaction
+      const mProfit = txn.mange || txn.aibakProfit || 0;
+      totalManagement += mProfit;
+
+      // Investor pool for this transaction
+      const investorProfitPool = (txn.tProfit || 0) - mProfit;
+
+      // Distribute to each investor based on their capital share in the group
+      if (deal && deal.investors) {
+        deal.investors.forEach(inv => {
+          const shareRatio = deal.amount > 0 ? inv.amount / deal.amount : 0;
+          investorTotals[inv.investorId] = (investorTotals[inv.investorId] || 0) + (investorProfitPool * shareRatio);
+        });
+      }
+    });
+
+    return {
+      totalManagement,
+      investorTotals,
+    };
+  }, [deal, filteredTransactions]);
+
+  const totalAibakProfit = profitDistributions.totalManagement;
 
   return (
     <>
@@ -92,7 +125,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           <div>
             <div className="mb-2 flex items-center gap-3">
               <button
-                onClick={() => router.push('/deals')}
+                onClick={() => router.push('/group')}
                 className="group flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
                 aria-label="Back to Deals"
               >
@@ -116,7 +149,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="stroke-2">
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              <span className="hidden sm:inline">Add Transaction</span>
+              <span className="hidden sm:inline">Add Deal</span>
             </button>
             <button
               type="button"
@@ -294,8 +327,8 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
               {/* Investor Cards */}
               {[...deal.investors].sort((a, b) => b.amount - a.amount).map((inv, idx) => {
+                const partnerProfit = profitDistributions.investorTotals[inv.investorId] ?? 0;
                 const ratio = ((inv.amount / deal.amount) * 100).toFixed(1);
-                const partnerProfit = filteredTotalPL * (inv.amount / deal.amount);
                 const resolvedName = investors.find(i => i.id === inv.investorId)?.name || inv.investorName;
                 return (
                   <div
@@ -361,7 +394,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             setShowDeleteModal(false);
             setSelectedTxnToDelete(null);
           }}
-          title="Delete Transaction"
+          title="Delete Deal"
           footer={
             <>
               <button
@@ -387,7 +420,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           }
         >
           <div className="text-sm text-slate-600">
-            <p className="mb-2">Are you sure you want to delete Deal Transaction <span className="font-bold text-slate-900">#{selectedTxnToDelete.deal}</span>?</p>
+            <p className="mb-2">Are you sure you want to delete Deal <span className="font-bold text-slate-900">#{selectedTxnToDelete.deal}</span>?</p>
             <p>This action cannot be undone and the parent group P&L will be re-calculated.</p>
           </div>
         </Modal>

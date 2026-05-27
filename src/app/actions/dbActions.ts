@@ -927,13 +927,12 @@ export async function dbUpdateDealTransactionAction(
 
     await client.query(
       `UPDATE deal_transactions SET
-        date = $1, deal = $2, weight = $3, rate = $4, pure_cost_aed = $5, sales_value_inr = $6, rv_rate = $7,
-        sales_aed = $8, expenses = $9, gross_profit = $10, n_p_per_gr = $11, t_profit = $12, mange = $13,
-        y_net = $14, srk = $15, aibak_profit = $16, fix_or_unfix = $17, margin_deposit = $18, premium_discount = $19
-      WHERE id = $20 AND deal_id = $21`,
+        date = $1, weight = $2, rate = $3, pure_cost_aed = $4, sales_value_inr = $5, rv_rate = $6,
+        sales_aed = $7, expenses = $8, gross_profit = $9, n_p_per_gr = $10, t_profit = $11, mange = $12,
+        y_net = $13, srk = $14, aibak_profit = $15, fix_or_unfix = $16, margin_deposit = $17, premium_discount = $18
+      WHERE id = $19 AND deal_id = $20`,
       [
         txn.date,
-        txn.deal,
         txn.weight,
         txn.rate,
         txn.pureCostAed,
