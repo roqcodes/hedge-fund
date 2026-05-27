@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatAEDStr } from '@/data/mockData';
@@ -25,13 +25,13 @@ export default function CreateDealModal({
 }) {
   const { branches, investors, addDeal } = useApp();
 
-  const [name, setName] = useState('');
   const [groupName, setGroupName] = useState('');
+  const [liveRateOzStr, setLiveRateOzStr] = useState('');
+  const [goldVolumeStr, setGoldVolumeStr] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [toBranchId, setToBranchId] = useState('');
   const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
   const [customEntity, setCustomEntity] = useState('');
-  const [managerShareStr, setManagerShareStr] = useState('20');
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
@@ -45,6 +45,15 @@ export default function CreateDealModal({
     const tzoffset = d.getTimezoneOffset() * 60000;
     return new Date(d.getTime() - tzoffset).toISOString().slice(0, 16);
   });
+
+  useEffect(() => {
+    if (Number(goldVolumeStr) > 0 && Number(liveRateOzStr) > 0) {
+      const calc = (Number(goldVolumeStr) / 31.1035) * Number(liveRateOzStr);
+      setAmountStr(calc.toFixed(2));
+    } else {
+      setAmountStr('');
+    }
+  }, [goldVolumeStr, liveRateOzStr]);
 
   const dealAmount = Number(amountStr) || 0;
 
@@ -72,7 +81,37 @@ export default function CreateDealModal({
 
   const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr' | 'amountStr' | 'goldVolumeStr', value: string) => {
     const newInvestors = [...dealInvestors];
-    newInvestors[index][field] = value;
+    const inv = newInvestors[index];
+    inv[field] = value;
+    
+    // Auto-calculate logic
+    const liveRate = Number(liveRateOzStr) || 0;
+    
+    if (liveRate > 0) {
+      if (field === 'amountStr' || field === 'percentageStr') {
+        let invAmount = 0;
+        if (inv.inputMode === 'amount') {
+          invAmount = Number(inv.amountStr) || 0;
+        } else {
+          invAmount = ((Number(inv.percentageStr) || 0) / 100) * dealAmount;
+        }
+        
+        const calculatedGold = (invAmount / liveRate) * 31.1035;
+        inv.goldVolumeStr = calculatedGold > 0 ? calculatedGold.toFixed(3) : '';
+      } else if (field === 'goldVolumeStr') {
+        const goldGrams = Number(value) || 0;
+        const calculatedCapital = (goldGrams / 31.1035) * liveRate;
+        if (inv.inputMode === 'amount') {
+          inv.amountStr = calculatedCapital > 0 ? calculatedCapital.toFixed(2) : '';
+        } else {
+          if (dealAmount > 0) {
+            const perc = (calculatedCapital / dealAmount) * 100;
+            inv.percentageStr = perc > 0 ? perc.toFixed(2) : '';
+          }
+        }
+      }
+    }
+    
     setDealInvestors(newInvestors);
   };
 
@@ -96,14 +135,9 @@ export default function CreateDealModal({
   const handleSubmit = () => {
     setError('');
 
-    if (!name.trim()) return setError('Group name is required.');
+    if (!groupName.trim()) return setError('Group name is required.');
     if (dealAmount <= 0) return setError('Group capital must be greater than zero.');
     if (!date) return setError('Creation date is required.');
-
-    const parsedManagerShare = Number(managerShareStr);
-    if (isNaN(parsedManagerShare) || parsedManagerShare < 0 || parsedManagerShare > 100) {
-      return setError('Manager share must be between 0 and 100.');
-    }
 
     // Validate investors
     const validInvestors: DealInvestor[] = [];
@@ -143,8 +177,8 @@ export default function CreateDealModal({
     if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
 
     addDeal({
-      name: name.trim(),
-      groupName: groupName.trim() || 'General',
+      name: groupName.trim(), // Use groupName as the deal name
+      groupName: groupName.trim(),
       amount: dealAmount,
       investors: validInvestors,
       totalInvestment,
@@ -154,22 +188,23 @@ export default function CreateDealModal({
       status: 'active',
       totalPL: 0,
       expense: 0,
-      managerShare: parsedManagerShare,
-      leadName: leadName.trim(),
-      leadPhone: leadPhone.trim(),
+      managerShare: 20, // Default management share
+      goldVolume: Number(goldVolumeStr) || 0,
+      leadName: leadName.trim() || undefined,
+      leadPhone: leadPhone.trim() || undefined,
       leadEmail: leadEmail.trim(),
       leadAddress: leadAddress.trim(),
       date: new Date(date).toISOString(),
     });
 
     // Reset and close
-    setName('');
     setGroupName('');
+    setLiveRateOzStr('');
+    setGoldVolumeStr('');
     setAmountStr('');
     setToBranchId('');
     setTargetType('branch');
     setCustomEntity('');
-    setManagerShareStr('20');
     setLeadName('');
     setLeadPhone('');
     setLeadEmail('');
@@ -200,34 +235,6 @@ export default function CreateDealModal({
     >
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Group Category</label>
-          <input className={formInput} type="text" placeholder="e.g. Q3 Syndicate" value={groupName} onChange={e => setGroupName(e.target.value)} />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Group Name</label>
-          <input className={formInput} type="text" placeholder="e.g. SPORTS" value={name} onChange={e => setName(e.target.value)} />
-        </div>
-      </div>
-      <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Group Capital (AED)</label>
-          <input className={formInput} type="number" placeholder="0.00" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Management Share (%)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="20"
-            value={managerShareStr}
-            onChange={e => setManagerShareStr(e.target.value)}
-            min="0"
-            max="100"
-          />
-        </div>
-      </div>
-      <div className={formRow}>
-        <div className={formGroup}>
           <label className={formLabel}>Creation Date</label>
           <input
             className={formInput}
@@ -235,6 +242,26 @@ export default function CreateDealModal({
             value={date}
             onChange={e => setDate(e.target.value)}
           />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Group Name</label>
+          <input className={formInput} type="text" placeholder="e.g. Q3 Syndicate" value={groupName} onChange={e => setGroupName(e.target.value)} />
+        </div>
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Live Rate (per Ounce)</label>
+          <input className={formInput} type="number" placeholder="0.00" value={liveRateOzStr} onChange={e => setLiveRateOzStr(e.target.value)} />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Gold Volume (Grams)</label>
+          <input className={formInput} type="number" placeholder="0.00" value={goldVolumeStr} onChange={e => setGoldVolumeStr(e.target.value)} />
+        </div>
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Group Capital (AED)</label>
+          <input className={formInput} type="number" placeholder="0.00" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
         </div>
         <div className={formGroup}></div>
       </div>

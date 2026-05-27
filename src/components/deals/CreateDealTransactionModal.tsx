@@ -69,6 +69,7 @@ export default function CreateDealTransactionModal({
   const [time, setTime] = useState(getLocalTimeString);
   const [dealNum, setDealNum] = useState('');
   const [weightStr, setWeightStr] = useState('');
+  const [purchaseCostStr, setPurchaseCostStr] = useState('');
   const [rateStr, setRateStr] = useState('');
   const [fixOrUnfix, setFixOrUnfix] = useState<'fixed' | 'unfixed'>('unfixed');
   const [premiumDiscountStr, setPremiumDiscountStr] = useState('0');
@@ -83,6 +84,7 @@ export default function CreateDealTransactionModal({
         setTime(editTransaction.time || getLocalTimeString());
         setDealNum(editTransaction.deal);
         setWeightStr(editTransaction.weight.toString());
+        setPurchaseCostStr(editTransaction.pureCostAed.toString());
         setRateStr(editTransaction.rate.toString());
         setFixOrUnfix(editTransaction.fixOrUnfix === 'unfixed' ? 'unfixed' : 'fixed');
         setPremiumDiscountStr(editTransaction.premiumDiscount.toString());
@@ -103,6 +105,7 @@ export default function CreateDealTransactionModal({
         setDealNum(autoDealNum);
 
         setWeightStr('');
+        setPurchaseCostStr('');
         setRateStr('');
         setFixOrUnfix('unfixed');
         setPremiumDiscountStr('0');
@@ -112,37 +115,99 @@ export default function CreateDealTransactionModal({
     }
   }, [deal, open, editTransaction, dealTransactions]);
 
+  // Handle bidirectional updates for Weight and Purchase Cost
+  const handleFieldChange = (field: 'weight' | 'purchaseCost' | 'rate' | 'premium', value: string) => {
+    let newWeight = weightStr;
+    let newCost = purchaseCostStr;
+    let newRate = rateStr;
+    let newPrem = premiumDiscountStr;
+
+    if (field === 'weight') {
+      newWeight = value;
+      setWeightStr(value);
+    } else if (field === 'purchaseCost') {
+      newCost = value;
+      setPurchaseCostStr(value);
+    } else if (field === 'rate') {
+      newRate = value;
+      setRateStr(value);
+    } else if (field === 'premium') {
+      newPrem = value;
+      setPremiumDiscountStr(value);
+    }
+
+    const currentRate = Number(newRate) || 0;
+    const currentPrem = Number(newPrem) || 0;
+
+    const ratePerGram = currentRate / 31.1035;
+    const premiumPerGram = currentPrem / 31.1035;
+    const effectiveRate = ratePerGram + premiumPerGram;
+
+    if (effectiveRate > 0) {
+      if (field === 'weight' || field === 'rate' || field === 'premium') {
+        const calculatedCost = (Number(newWeight) || 0) * effectiveRate;
+        setPurchaseCostStr(calculatedCost > 0 ? calculatedCost.toFixed(2) : '');
+      } else if (field === 'purchaseCost') {
+        const calculatedWeight = (Number(newCost) || 0) / effectiveRate;
+        setWeightStr(calculatedWeight > 0 ? calculatedWeight.toFixed(4) : '');
+      }
+    }
+  };
+
   // Numerical conversions
   const weight = Number(weightStr) || 0;
   const rate = Number(rateStr) || 0;
   const premiumDiscount = Number(premiumDiscountStr) || 0;
 
+  const availableCapital = useMemo(() => {
+    const groupTxns = dealTransactions.filter(t => t.dealId === deal.id);
+    const totalSpent = groupTxns.reduce((sum, t) => {
+      if (editTransaction && t.id === editTransaction.id) return sum;
+      return sum + (t.pureCostAed || 0);
+    }, 0);
+    return deal.amount - totalSpent;
+  }, [dealTransactions, deal, editTransaction]);
+
   // Real-time calculations
   const calculations = useMemo(() => {
-    // 1 troy oz = 31.1034768 grams
-    const premiumDiscountPerGram = premiumDiscount / 31.1034768;
-    const effectiveRate = rate + premiumDiscountPerGram;
-    const pureCostAed = weight * effectiveRate;
+    // 1 troy oz = 31.1035 grams
+    const ratePerGram = rate / 31.1035;
+    const premiumDiscountPerGram = premiumDiscount / 31.1035;
+    const effectiveRate = ratePerGram + premiumDiscountPerGram;
+    const pureCostAed = Number(purchaseCostStr) || 0;
 
     return {
+      ratePerGram,
       premiumDiscountPerGram,
       effectiveRate,
       pureCostAed,
     };
-  }, [weight, rate, premiumDiscount]);
+  }, [rate, premiumDiscount, purchaseCostStr]);
+
+  useEffect(() => {
+    if (calculations.pureCostAed > availableCapital) {
+      setError(`Purchase cost (${formatCost(calculations.pureCostAed)}) cannot exceed available capital (${formatCost(availableCapital)}).`);
+    } else {
+      setError(prev => prev.includes('exceed available capital') ? '' : prev);
+    }
+  }, [calculations.pureCostAed, availableCapital]);
+
+  const isOverBudget = calculations.pureCostAed > availableCapital;
 
   const partnerBreakdown = useMemo(() => {
     if (!deal || !deal.investors) return [];
     return deal.investors.map(inv => {
       const sharePercentage = deal.amount > 0 ? (inv.amount / deal.amount) * 100 : 0;
       const costShare = calculations.pureCostAed * (sharePercentage / 100);
+      const goldShare = weight * (sharePercentage / 100);
       return {
         name: inv.investorName,
         percentage: sharePercentage,
         amount: costShare,
+        goldShare,
       };
     });
-  }, [deal, calculations.pureCostAed]);
+  }, [deal, calculations.pureCostAed, weight]);
 
   const handleSubmit = async () => {
     setError('');
@@ -151,6 +216,10 @@ export default function CreateDealTransactionModal({
     if (!dealNum.trim()) return setError('Deal number is required.');
     if (weight <= 0) return setError('Weight must be greater than zero.');
     if (rate <= 0) return setError('Purchase rate must be greater than zero.');
+
+    if (calculations.pureCostAed > availableCapital) {
+      return setError(`Purchase cost (${formatCost(calculations.pureCostAed)}) cannot exceed available capital (${formatCost(availableCapital)}).`);
+    }
 
     const newTxn: DealTransaction = {
       id: editTransaction ? editTransaction.id : `txn-${Date.now()}`,
@@ -228,7 +297,12 @@ export default function CreateDealTransactionModal({
           <button type="button" className={btnSecondary} onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className={btnPrimary} onClick={handleSubmit}>
+          <button 
+            type="button" 
+            className={`${btnPrimary} ${isOverBudget ? 'opacity-50 cursor-not-allowed' : ''}`} 
+            onClick={handleSubmit} 
+            disabled={isOverBudget}
+          >
             {editTransaction ? 'Save Changes' : 'Add Deal'}
           </button>
         </>
@@ -268,28 +342,15 @@ export default function CreateDealTransactionModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Weight (grams)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={weightStr}
-            onChange={e => setWeightStr(e.target.value)}
-          />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Purchase Rate (AED/Gram)</label>
+          <label className={formLabel}>Live Rate (per Ounce)</label>
           <input
             className={formInput}
             type="number"
             placeholder="0.00"
             value={rateStr}
-            onChange={e => setRateStr(e.target.value)}
+            onChange={e => handleFieldChange('rate', e.target.value)}
           />
         </div>
-      </div>
-
-      <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Premium / Discount (per troy oz)</label>
           <input
@@ -297,9 +358,35 @@ export default function CreateDealTransactionModal({
             type="number"
             placeholder="0.00"
             value={premiumDiscountStr}
-            onChange={e => setPremiumDiscountStr(e.target.value)}
+            onChange={e => handleFieldChange('premium', e.target.value)}
           />
         </div>
+      </div>
+
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Weight (grams)</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="0.00"
+            value={weightStr}
+            onChange={e => handleFieldChange('weight', e.target.value)}
+          />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Purchase Cost (AED)</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="0.00"
+            value={purchaseCostStr}
+            onChange={e => handleFieldChange('purchaseCost', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Deal Status</label>
           <select
@@ -311,6 +398,7 @@ export default function CreateDealTransactionModal({
             <option value="fixed">Fixed</option>
           </select>
         </div>
+        <div className={formGroup}></div>
       </div>
 
       {/* Calculated Preview Card */}
@@ -321,38 +409,81 @@ export default function CreateDealTransactionModal({
           </svg>
           Deal Cost Inference
         </h4>
-        <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
-          <div>
-            <p className="text-slate-400">Premium/Discount per Gram</p>
-            <p className="font-mono text-sm font-bold text-slate-900">
-              {formatCost(calculations.premiumDiscountPerGram)}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              ({premiumDiscount >= 0 ? '+' : ''}{premiumDiscount.toFixed(2)}/oz ÷ 31.1035)
-            </p>
-          </div>
-          <div>
-            <p className="text-slate-400">Effective Rate per Gram</p>
-            <p className="font-mono text-sm font-bold text-slate-900">
-              {formatCost(calculations.effectiveRate)}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              (Rate: {rate.toFixed(2)} + Prem: {calculations.premiumDiscountPerGram.toFixed(4)})
-            </p>
-          </div>
-          <div className="col-span-2 border-t border-emerald-100/50 pt-3 mt-1">
-            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Final Cost (Pure Cost AED)</p>
-            <p className="font-mono text-xl font-black text-emerald-700 mt-1">
-              {formatCost(calculations.pureCostAed)}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              ({weight.toLocaleString()} g × {formatCost(calculations.effectiveRate)})
-            </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4 text-xs font-semibold text-slate-600">
+          {/* 1. Transaction Summary */}
+          <div className="col-span-1 sm:col-span-2">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-800 border-b border-emerald-100/50 pb-1">Transaction Summary</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl bg-white border border-emerald-100/40 p-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Deal No.</p>
+                <p className="font-mono text-sm font-bold text-slate-900 mt-0.5">{dealNum || '-'}</p>
+              </div>
+              <div className="rounded-xl bg-white border border-emerald-100/40 p-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Date & Time</p>
+                <p className="font-mono text-sm font-bold text-slate-900 mt-0.5">{date} {time}</p>
+              </div>
+              <div className="rounded-xl bg-white border border-emerald-100/40 p-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Status</p>
+                <p className="font-mono text-sm font-bold text-slate-900 mt-0.5 capitalize">{fixOrUnfix}</p>
+              </div>
+              <div className="rounded-xl bg-white border border-emerald-100/40 p-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Total Weight</p>
+                <p className="font-mono text-sm font-bold text-slate-900 mt-0.5">{weight > 0 ? `${weight.toLocaleString()} g` : '-'}</p>
+              </div>
+            </div>
           </div>
 
+          {/* 2. Rate Conversions */}
+          <div className="col-span-1 sm:col-span-2">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-800 border-b border-emerald-100/50 pb-1">Rate Conversions</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <p className="text-slate-400">Live Rate (per gram)</p>
+                <p className="font-mono text-sm font-bold text-slate-900">
+                  {formatCost(calculations.ratePerGram)}
+                </p>
+                <p className="text-[9px] text-slate-400 font-medium mt-0.5">
+                  ({rate.toFixed(2)}/oz ÷ 31.1035)
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-400">Premium/Discount (per gram)</p>
+                <p className="font-mono text-sm font-bold text-slate-900">
+                  {formatCost(calculations.premiumDiscountPerGram)}
+                </p>
+                <p className="text-[9px] text-slate-400 font-medium mt-0.5">
+                  ({premiumDiscount >= 0 ? '+' : ''}{premiumDiscount.toFixed(2)}/oz ÷ 31.1035)
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-400">Effective Rate (per gram)</p>
+                <p className="font-mono text-sm font-bold text-slate-900">
+                  {formatCost(calculations.effectiveRate)}
+                </p>
+                <p className="text-[9px] text-slate-400 font-medium mt-0.5">
+                  ({formatCost(calculations.ratePerGram)} + {formatCost(calculations.premiumDiscountPerGram)})
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Deal Cost */}
+          <div className="col-span-1 sm:col-span-2">
+            <div className="rounded-xl bg-emerald-100/30 p-4 border border-emerald-100/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-0.5">Purchase Cost (AED)</p>
+                <p className="text-[10px] text-emerald-600/70 font-medium">({weight.toLocaleString()} g × {formatCost(calculations.effectiveRate)})</p>
+              </div>
+              <p className="font-mono text-2xl font-black text-emerald-700 text-right">
+                {formatCost(calculations.pureCostAed)}
+              </p>
+            </div>
+          </div>
+
+          {/* 4. Investor Cost Shares */}
           {partnerBreakdown.length > 0 && (
-            <div className="col-span-2 border-t border-emerald-100/50 pt-4 mt-2">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Investor Cost Shares</p>
+            <div className="col-span-1 sm:col-span-2">
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800 border-b border-emerald-100/50 pb-1">Investor Cost Shares</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {partnerBreakdown.map((partner, idx) => (
                   <div key={idx} className="flex items-center justify-between rounded-xl bg-white border border-emerald-100/40 p-3 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
@@ -364,6 +495,11 @@ export default function CreateDealTransactionModal({
                       <p className="font-mono text-sm font-black text-slate-900">
                         {formatCost(partner.amount)}
                       </p>
+                      {partner.goldShare > 0 && (
+                        <p className="font-mono text-[10px] font-bold text-amber-600 mt-0.5 bg-amber-50 inline-block px-1.5 py-0.5 rounded">
+                          {partner.goldShare.toFixed(3)} g
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}

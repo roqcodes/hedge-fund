@@ -27,14 +27,15 @@ export default function EditDealModal({
 }) {
   const { branches, investors, updateDeal } = useApp();
 
-  const [name, setName] = useState('');
   const [groupName, setGroupName] = useState('');
+  const [liveRateOzStr, setLiveRateOzStr] = useState('');
+  const [goldVolumeStr, setGoldVolumeStr] = useState('');
   const [amountStr, setAmountStr] = useState('');
+  const [managerShareStr, setManagerShareStr] = useState('20');
   const [toBranchId, setToBranchId] = useState('');
   const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
   const [customEntity, setCustomEntity] = useState('');
   const [status, setStatus] = useState<DealStatus>('active');
-  const [managerShareStr, setManagerShareStr] = useState('20');
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
@@ -46,9 +47,16 @@ export default function EditDealModal({
   // Synchronize state when the modal opens or the deal changes
   useEffect(() => {
     if (deal && open) {
-      setName(deal.name);
       setGroupName(deal.groupName || '');
+      
+      let initLiveRate = '';
+      if (deal.amount > 0 && deal.goldVolume && deal.goldVolume > 0) {
+        initLiveRate = (deal.amount / (deal.goldVolume / 31.1035)).toFixed(2);
+      }
+      setLiveRateOzStr(initLiveRate);
+      setGoldVolumeStr(deal.goldVolume ? deal.goldVolume.toString() : '');
       setAmountStr(deal.amount.toString());
+      
       if (deal.toBranchId.startsWith('custom-')) {
         setTargetType('custom');
         setToBranchId('');
@@ -86,6 +94,15 @@ export default function EditDealModal({
     }
   }, [deal, open]);
 
+  useEffect(() => {
+    if (Number(goldVolumeStr) > 0 && Number(liveRateOzStr) > 0) {
+      const calc = (Number(goldVolumeStr) / 31.1035) * Number(liveRateOzStr);
+      setAmountStr(calc.toFixed(2));
+    } else {
+      setAmountStr('');
+    }
+  }, [goldVolumeStr, liveRateOzStr]);
+
   const dealAmount = Number(amountStr) || 0;
 
   const totalInvestment = useMemo(() => {
@@ -111,7 +128,37 @@ export default function EditDealModal({
 
   const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr' | 'amountStr' | 'goldVolumeStr', value: string) => {
     const newInvestors = [...dealInvestors];
-    newInvestors[index][field] = value;
+    const inv = newInvestors[index];
+    inv[field] = value;
+    
+    // Auto-calculate logic
+    const liveRate = Number(liveRateOzStr) || 0;
+    
+    if (liveRate > 0) {
+      if (field === 'amountStr' || field === 'percentageStr') {
+        let invAmount = 0;
+        if (inv.inputMode === 'amount') {
+          invAmount = Number(inv.amountStr) || 0;
+        } else {
+          invAmount = ((Number(inv.percentageStr) || 0) / 100) * dealAmount;
+        }
+        
+        const calculatedGold = (invAmount / liveRate) * 31.1035;
+        inv.goldVolumeStr = calculatedGold > 0 ? calculatedGold.toFixed(3) : '';
+      } else if (field === 'goldVolumeStr') {
+        const goldGrams = Number(value) || 0;
+        const calculatedCapital = (goldGrams / 31.1035) * liveRate;
+        if (inv.inputMode === 'amount') {
+          inv.amountStr = calculatedCapital > 0 ? calculatedCapital.toFixed(2) : '';
+        } else {
+          if (dealAmount > 0) {
+            const perc = (calculatedCapital / dealAmount) * 100;
+            inv.percentageStr = perc > 0 ? perc.toFixed(2) : '';
+          }
+        }
+      }
+    }
+    
     setDealInvestors(newInvestors);
   };
 
@@ -133,7 +180,7 @@ export default function EditDealModal({
   const handleSubmit = () => {
     setError('');
 
-    if (!name.trim()) return setError('Group name is required.');
+    if (!groupName.trim()) return setError('Group Name is required.');
     if (dealAmount <= 0) return setError('Group capital must be greater than zero.');
 
     const targetBranch = targetType === 'branch' ? branches.find(b => b.id === toBranchId) : null;
@@ -188,9 +235,10 @@ export default function EditDealModal({
 
     updateDeal({
       ...deal,
-      name: name.trim(),
+      name: groupName.trim() || 'General',
       groupName: groupName.trim() || 'General',
       amount: dealAmount,
+      goldVolume: Number(goldVolumeStr) || 0,
       investors: validInvestors,
       totalInvestment,
       balance,
@@ -227,35 +275,33 @@ export default function EditDealModal({
     >
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Group Category</label>
+          <label className={formLabel}>Creation Date</label>
           <input
             className={formInput}
-            type="text"
-            placeholder="e.g. Q3 Syndicate"
-            value={groupName}
-            onChange={e => setGroupName(e.target.value)}
+            type="datetime-local"
+            value={date}
+            onChange={e => setDate(e.target.value)}
           />
         </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Group Status</label>
+          <select className={formSelect} value={status} onChange={e => setStatus(e.target.value as DealStatus)}>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Group Name</label>
           <input
             className={formInput}
             type="text"
             placeholder="e.g. SPORTS"
-            value={name}
-            onChange={e => setName(e.target.value)}
-          />
-        </div>
-      </div>
-      <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Group Capital (AED)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={amountStr}
-            onChange={e => setAmountStr(e.target.value)}
+            value={groupName}
+            onChange={e => setGroupName(e.target.value)}
           />
         </div>
         <div className={formGroup}>
@@ -271,26 +317,40 @@ export default function EditDealModal({
           />
         </div>
       </div>
-
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Group Status</label>
-          <select className={formSelect} value={status} onChange={e => setStatus(e.target.value as DealStatus)}>
-            <option value="active">Active</option>
-            <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Creation Date</label>
+          <label className={formLabel}>Live Rate (per Ounce)</label>
           <input
             className={formInput}
-            type="datetime-local"
-            value={date}
-            onChange={e => setDate(e.target.value)}
+            type="number"
+            placeholder="e.g. 2350.50"
+            value={liveRateOzStr}
+            onChange={e => setLiveRateOzStr(e.target.value)}
           />
         </div>
+        <div className={formGroup}>
+          <label className={formLabel}>Gold Volume (g)</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="e.g. 1000"
+            value={goldVolumeStr}
+            onChange={e => setGoldVolumeStr(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Group Capital (AED)</label>
+          <input
+            className={formInput}
+            type="number"
+            placeholder="0.00"
+            value={amountStr}
+            onChange={e => setAmountStr(e.target.value)}
+          />
+        </div>
+        <div className={formGroup}></div>
       </div>
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">

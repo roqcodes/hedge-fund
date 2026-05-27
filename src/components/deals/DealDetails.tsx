@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { formatAED, formatDateTime } from '@/data/mockData';
+import { formatAED, formatAEDStr, formatDateTime } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import KPICard from '@/components/ui/KPICard';
 import EditDealModal from './EditDealModal';
@@ -48,8 +48,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
   const fundingPercentage = Math.min((deal.totalInvestment / deal.amount) * 100, 100);
 
-  const totalGoldGrams = deal.investors.reduce((acc, inv) => acc + (inv.isGold ? inv.amount : 0), 0);
-  const totalGoldKg = (totalGoldGrams / 1000).toFixed(2);
+  const dealGoldVolume = Number((deal.goldVolume || 0).toFixed(2)).toString();
 
   const transactionsForThisDeal = dealTransactions.filter(t => t.dealId === deal.id);
 
@@ -63,10 +62,17 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const numberOfDeals = filteredTransactions.length;
   const completedDeals = filteredTransactions.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
   const onTransitDeals = numberOfDeals - completedDeals;
-  
+
   const filteredTotalPL = filteredTransactions.length > 0
     ? filteredTransactions.reduce((sum, txn) => sum + (txn.grossProfit || 0), 0)
     : (deal.totalPL || 0);
+
+  const filteredTotalExpense = filteredTransactions.length > 0
+    ? filteredTransactions.reduce((sum, txn) => sum + (Number(txn.expenses) || 0), 0)
+    : 0;
+
+  const totalPureCost = transactionsForThisDeal.reduce((sum, txn) => sum + (txn.pureCostAed || 0), 0);
+  const availableCapital = deal.amount - totalPureCost;
 
   // Calculate total management profit and investor payouts dynamically by summing the payouts of all transactions
   const profitDistributions = React.useMemo(() => {
@@ -202,9 +208,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             bgColor="var(--warning-light)"
           />
           <KPICard
-            label="Capital"
-            value={formatAED(deal.amount)}
-            subValue="Total deal capital"
+            label="Available Capital"
+            value={formatAED(availableCapital)}
+            subValue={`Total: ${formatAEDStr(deal.amount)}`}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -215,8 +221,8 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           />
           <KPICard
             label="Gold Volume"
-            value={`${totalGoldKg} kg`}
-            subValue="Gold backed investments"
+            value={`${dealGoldVolume} g`}
+            subValue="Group Gold Volume"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6z" />
@@ -224,6 +230,18 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             }
             color="var(--warning)"
             bgColor="var(--warning-light)"
+          />
+          <KPICard
+            label="Total Expenses"
+            value={formatAED(filteredTotalExpense, true)}
+            subValue="Transaction Expenses"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+              </svg>
+            }
+            color="var(--action)"
+            bgColor="var(--action-light)"
           />
           <KPICard
             label="P&L"
@@ -237,7 +255,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             color={(deal.totalPL || 0) >= 0 ? 'var(--success)' : 'var(--action)'}
             bgColor={(deal.totalPL || 0) >= 0 ? 'var(--success-light)' : 'var(--action-light)'}
           />
-      </div>
+        </div>
 
         {deal.leadName && (
           <div className="mb-6 mt-8 flex flex-col sm:flex-row sm:items-center justify-between rounded-2xl sm:rounded-3xl border border-slate-100 bg-white p-4 sm:p-5 shadow-surface-xs">
@@ -250,7 +268,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                 <p className="text-[10px] sm:text-xs font-medium text-slate-500">Group Lead</p>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 sm:flex sm:flex-row gap-x-3 gap-y-4 sm:gap-6 mt-3 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-slate-50 w-full sm:w-auto">
               {deal.leadPhone && (
                 <div className="min-w-0">
@@ -293,7 +311,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                     Management
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3 relative z-10">
                   <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-sm sm:text-base font-black text-slate-700">
                     M
@@ -315,6 +333,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               {[...deal.investors].sort((a, b) => b.amount - a.amount).map((inv, idx) => {
                 const partnerProfit = profitDistributions.investorTotals[inv.investorId] ?? 0;
                 const ratio = ((inv.amount / deal.amount) * 100).toFixed(1);
+                const investorGold = deal.goldVolume && deal.amount > 0 ? (deal.goldVolume * (inv.amount / deal.amount)) : 0;
                 const resolvedName = investors.find(i => i.id === inv.investorId)?.name || inv.investorName;
                 return (
                   <div
@@ -327,7 +346,10 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-slate-900 uppercase">{resolvedName}</p>
-                        <p className="text-[11px] sm:text-xs font-medium text-slate-400">Capital: {formatAED(inv.amount)} • {ratio}%</p>
+                        <p className="text-[11px] sm:text-xs font-medium text-slate-400">
+                          Capital: {formatAED(inv.amount)} • {ratio}%
+                          {investorGold > 0 && <span> • Gold: {Number(investorGold.toFixed(3))} g</span>}
+                        </p>
                       </div>
                     </div>
                     <div className="text-right pr-2">
@@ -351,16 +373,16 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           )}
         </div>
 
-        <DealTransactionsTable 
-          dealName={deal.name} 
-          transactions={filteredTransactions} 
+        <DealTransactionsTable
+          dealName={deal.name}
+          transactions={filteredTransactions}
           onEdit={(txn) => setSelectedTxn(txn)}
           onDelete={(txn) => setSelectedTxn(txn)}
         />
       </div>
       <EditDealModal open={showEdit} onClose={() => setShowEdit(false)} deal={deal} />
       <CreateDealTransactionModal open={showAddTxn} onClose={() => setShowAddTxn(false)} deal={deal} />
-      
+
       {selectedTxn && (
         <CreateDealTransactionModal
           open={!!selectedTxn}

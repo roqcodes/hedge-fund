@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS deals (
     total_pl DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     expense DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     manager_share DECIMAL(5, 2) NOT NULL DEFAULT 20.00,
+    gold_volume DECIMAL(15, 2) DEFAULT 0.00,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -167,8 +168,9 @@ CREATE TABLE IF NOT EXISTS deal_transactions (
 CREATE TABLE IF NOT EXISTS deal_transaction_expenses (
     id VARCHAR(50) PRIMARY KEY,
     deal_transaction_id VARCHAR(50) NOT NULL REFERENCES deal_transactions(id) ON DELETE CASCADE,
-    key VARCHAR(255) NOT NULL,          -- Expense label, e.g. "Freight", "Customs"
-    value DECIMAL(15, 4) NOT NULL,      -- Expense amount in AED
+    key VARCHAR(255) NOT NULL,
+    value DECIMAL(15, 2) NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

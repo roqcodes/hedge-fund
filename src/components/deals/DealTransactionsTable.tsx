@@ -9,12 +9,12 @@ import { DealTransaction } from '@/types';
 type SortField = keyof DealTransaction;
 type SortDirection = 'asc' | 'desc';
 
-export default function DealTransactionsTable({ 
-  dealName = '', 
+export default function DealTransactionsTable({
+  dealName = '',
   transactions,
   onEdit,
   onDelete,
-}: { 
+}: {
   dealName?: string;
   transactions?: DealTransaction[];
   onEdit?: (txn: DealTransaction) => void;
@@ -127,30 +127,28 @@ export default function DealTransactionsTable({
           {/* Tabs */}
           <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
             {([
-              { key: 'all',       label: 'All',        count: tabCounts.all },
-              { key: 'unsettled', label: 'Unsettled',  count: tabCounts.unsettled },
-              { key: 'settled',   label: 'Settled',    count: tabCounts.settled },
+              { key: 'all', label: 'All', count: tabCounts.all },
+              { key: 'unsettled', label: 'Unsettled', count: tabCounts.unsettled },
+              { key: 'settled', label: 'Settled', count: tabCounts.settled },
             ] as const).map(tab => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                  activeTab === tab.key
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${activeTab === tab.key
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
-                }`}
+                  }`}
               >
                 {tab.label}
-                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black transition-colors ${
-                  activeTab === tab.key
+                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black transition-colors ${activeTab === tab.key
                     ? tab.key === 'unsettled'
                       ? 'bg-amber-100 text-amber-700'
                       : tab.key === 'settled'
                         ? 'bg-emerald-100 text-emerald-700'
                         : 'bg-slate-100 text-slate-600'
                     : 'bg-slate-200/60 text-slate-400'
-                }`}>
+                  }`}>
                   {tab.count}
                 </span>
               </button>
@@ -198,7 +196,7 @@ export default function DealTransactionsTable({
                   <div className="flex items-center gap-2">Volume <SortIcon field="weight" /></div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('pureCostAed')}>
-                  <div className="flex items-center gap-2">Purchase (Pure Cost) <SortIcon field="pureCostAed" /></div>
+                  <div className="flex items-center gap-2">Purchase Cost <SortIcon field="pureCostAed" /></div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('expenses')}>
                   <div className="flex items-center gap-2">Expense <SortIcon field="expenses" /></div>
@@ -217,8 +215,8 @@ export default function DealTransactionsTable({
             <tbody>
               {filteredAndSortedData.length > 0 ? (
                 filteredAndSortedData.map((row) => (
-                  <tr 
-                    key={row.id} 
+                  <tr
+                    key={row.id}
                     className="cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100"
                     onClick={() => router.push(`/group/${dealId}/deal/${row.id}`)}
                   >
@@ -230,11 +228,10 @@ export default function DealTransactionsTable({
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${
-                        row.fixOrUnfix === 'unfixed'
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${row.fixOrUnfix === 'unfixed'
                           ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
                           : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                      }`}>
+                        }`}>
                         {row.fixOrUnfix === 'unfixed' ? 'Unsettled' : 'Settled'}
                       </span>
                     </td>
@@ -283,7 +280,7 @@ export default function DealTransactionsTable({
           <div className="flex md:hidden flex-col gap-4 py-4">
             {filteredAndSortedData.length > 0 ? (
               filteredAndSortedData.map((row) => (
-                <div 
+                <div
                   key={row.id}
                   onClick={() => router.push(`/group/${dealId}/deal/${row.id}`)}
                   className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
@@ -292,11 +289,10 @@ export default function DealTransactionsTable({
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-slate-900">Deal: {row.deal}</span>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${
-                          row.fixOrUnfix === 'unfixed'
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${row.fixOrUnfix === 'unfixed'
                             ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
                             : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                        }`}>
+                          }`}>
                           {row.fixOrUnfix === 'unfixed' ? 'Unsettled' : 'Settled'}
                         </span>
                       </div>
@@ -306,10 +302,10 @@ export default function DealTransactionsTable({
                     </div>
                     <span className="text-xs font-medium text-slate-500">Vol: {row.weight.toLocaleString()}</span>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-y-3 gap-x-4 border-y border-slate-50 py-3">
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pure Cost</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Purchase Cost</span>
                       <span className="font-mono text-sm font-bold text-slate-900">{formatAED(row.pureCostAed)}</span>
                     </div>
                     <div className="flex flex-col gap-0.5">

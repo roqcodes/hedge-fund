@@ -231,6 +231,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       totalPL: parseFloat(r.total_pl),
       expense: parseFloat(r.expense),
       managerShare: parseFloat(r.manager_share || '20.00'),
+      goldVolume: parseFloat(r.gold_volume || '0.00'),
       status: r.status,
       date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
     }));
@@ -729,8 +730,8 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
 
     // 1. Insert deal
     await client.query(
-      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, group_name, total_pl, expense, manager_share, date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, group_name, total_pl, expense, manager_share, gold_volume, date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         deal.id,
         deal.name,
@@ -744,6 +745,7 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
         deal.totalPL || 0,
         deal.expense || 0,
         deal.managerShare ?? 20,
+        deal.goldVolume || 0,
         deal.date,
       ]
     );
@@ -801,8 +803,9 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         total_pl = $9,
         expense = $10,
         manager_share = $11,
-        date = $12
-       WHERE id = $13`,
+        gold_volume = $12,
+        date = $13
+       WHERE id = $14`,
       [
         deal.name,
         deal.amount,
@@ -815,6 +818,7 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         deal.totalPL || 0,
         deal.expense || 0,
         deal.managerShare ?? 20,
+        deal.goldVolume || 0,
         deal.date,
         deal.id,
       ]
@@ -1033,10 +1037,10 @@ export async function dbAddDealExpensesAction(
     const inserted: DealTransactionExpense[] = [];
     for (const exp of expenses) {
       await client.query(
-        `INSERT INTO deal_transaction_expenses (id, deal_transaction_id, key, value, created_at)
-         VALUES ($1, $2, $3, $4, NOW())
-         ON CONFLICT (id) DO UPDATE SET key = EXCLUDED.key, value = EXCLUDED.value`,
-        [exp.id, exp.dealTransactionId, exp.key, exp.value]
+        `INSERT INTO deal_transaction_expenses (id, deal_transaction_id, key, value, timestamp, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (id) DO UPDATE SET key = EXCLUDED.key, value = EXCLUDED.value, timestamp = EXCLUDED.timestamp`,
+        [exp.id, exp.dealTransactionId, exp.key, exp.value, exp.timestamp ? new Date(exp.timestamp).toISOString() : new Date().toISOString()]
       );
       inserted.push(exp);
     }
@@ -1063,7 +1067,7 @@ export async function dbFetchDealExpensesAction(
 
   try {
     const res = await query(
-      `SELECT id, deal_transaction_id, key, value, created_at
+      `SELECT id, deal_transaction_id, key, value, timestamp, created_at
        FROM deal_transaction_expenses
        WHERE deal_transaction_id = $1
        ORDER BY created_at ASC`,
@@ -1074,7 +1078,8 @@ export async function dbFetchDealExpensesAction(
       id: r.id,
       dealTransactionId: r.deal_transaction_id,
       key: r.key,
-      value: parseFloat(r.value),
+      value: Number(r.value),
+      timestamp: r.timestamp ? new Date(r.timestamp).toISOString() : undefined,
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
     }));
 

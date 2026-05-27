@@ -25,11 +25,16 @@ interface Row {
   dbId: string | null; // null = not yet saved
   key: string;
   value: string;       // raw string while editing
+  timestamp: string;
   saved: boolean;
 }
 
 function makeBlankRow(): Row {
-  return { localId: nanoid(), dbId: null, key: '', value: '', saved: false };
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  const timestamp = now.toISOString().slice(0, 16);
+
+  return { localId: nanoid(), dbId: null, key: '', value: '', timestamp, saved: false };
 }
 
 // ─── main component ──────────────────────────────────────────────────────────
@@ -66,7 +71,8 @@ export default function ExpensesModal({
           localId: nanoid(),
           dbId: e.id,
           key: e.key,
-          value: String(e.value),
+          value: e.value.toString(),
+          timestamp: e.timestamp ? new Date(e.timestamp).toISOString().slice(0, 16) : makeBlankRow().timestamp,
           saved: true,
         }));
         setRows([...loaded, makeBlankRow()]);
@@ -100,7 +106,7 @@ export default function ExpensesModal({
 
   // ── row ops ───────────────────────────────────────────────────────────────
 
-  const updateRow = (localId: string, field: 'key' | 'value', val: string) => {
+  const updateRow = (localId: string, field: 'key' | 'value' | 'timestamp', val: string) => {
     setRows((prev) =>
       prev.map((r) => {
         if (r.localId !== localId) return r;
@@ -148,7 +154,8 @@ export default function ExpensesModal({
       id: r.dbId ?? nanoid(),
       dealTransactionId,
       key: r.key.trim(),
-      value: parseFloat(r.value),
+      value: Number(r.value),
+      timestamp: r.timestamp ? new Date(r.timestamp).toISOString() : undefined,
     }));
 
     const res = await dbAddDealExpensesAction(payload);
@@ -224,15 +231,16 @@ export default function ExpensesModal({
           ) : (
             <>
               {/* column headers */}
-              <div className="mb-2 grid grid-cols-[1fr_140px_36px] gap-2 px-1">
+              <div className="mb-2 grid grid-cols-[1fr_130px_130px_36px] gap-2 px-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expense Label</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Date/Time</span>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (AED)</span>
                 <span />
               </div>
 
               <div className="flex flex-col gap-2">
                 {rows.map((row, idx) => (
-                  <div key={row.localId} className="grid grid-cols-[1fr_140px_36px] gap-2 items-center">
+                  <div key={row.localId} className="grid grid-cols-[1fr_130px_130px_36px] gap-2 items-center">
                     {/* key */}
                     <input
                       type="text"
@@ -240,6 +248,13 @@ export default function ExpensesModal({
                       value={row.key}
                       onChange={(e) => updateRow(row.localId, 'key', e.target.value)}
                       className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-900 placeholder:text-slate-300 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all"
+                    />
+                    {/* timestamp */}
+                    <input
+                      type="datetime-local"
+                      value={row.timestamp}
+                      onChange={(e) => updateRow(row.localId, 'timestamp', e.target.value)}
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-2 text-[11px] font-medium text-slate-900 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all"
                     />
                     {/* value */}
                     <div className="relative">

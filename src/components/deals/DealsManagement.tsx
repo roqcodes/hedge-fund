@@ -313,8 +313,8 @@ export default function DealsManagement() {
                     const totalDealsInGroup = deal.totalDeals;
                     const completedDeals = deal.completedDeals;
                     const onTransitDeals = deal.onTransitDeals;
+                    const dealGold = Number((deal.goldVolume || 0).toFixed(2)).toString();
                     const totalGrossProfit = deal.grossProfit;
-                    const dealGoldKg = deal.goldVolume.toFixed(4);
 
                     return (
                       <tr
@@ -330,7 +330,7 @@ export default function DealsManagement() {
                           {formatAED(deal.amount)}
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
-                          {dealGoldKg} kg
+                          {dealGold} g
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
                           {totalDealsInGroup}

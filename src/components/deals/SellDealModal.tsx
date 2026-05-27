@@ -92,14 +92,20 @@ export default function SellDealModal({
     if (!deal || !deal.investors) return [];
     return deal.investors.map(inv => {
       const sharePercentage = deal.amount > 0 ? (inv.amount / deal.amount) * 100 : 0;
+      const volumeShare = weight * (sharePercentage / 100);
+      const purchaseShare = pureCostAed * (sharePercentage / 100);
+      const salesShare = calculations.salesAed * (sharePercentage / 100);
       const payout = calculations.investorProfitPool * (sharePercentage / 100);
       return {
         name: inv.investorName,
         percentage: sharePercentage,
+        volumeShare,
+        purchaseShare,
+        salesShare,
         payout,
       };
     });
-  }, [deal, calculations.investorProfitPool]);
+  }, [deal, calculations.investorProfitPool, weight, pureCostAed, calculations.salesAed]);
 
   const formatCost = (amount: number) => {
     const currency = getGlobalCurrency();
@@ -164,7 +170,7 @@ export default function SellDealModal({
           <span className="text-slate-900">{weight.toLocaleString()} g</span>
         </div>
         <div>
-          <span className="text-slate-400">Pure Cost:</span>{' '}
+          <span className="text-slate-400">Purchase Cost:</span>{' '}
           <span className="text-slate-900">{formatCost(pureCostAed)} AED</span>
         </div>
       </div>
@@ -243,96 +249,83 @@ export default function SellDealModal({
 
       {/* Calculated Preview Card */}
       <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/30 p-5 shadow-sm">
-        <h4 className="mb-4 text-sm font-bold text-emerald-800 flex items-center gap-1.5">
+        <h4 className="mb-4 text-sm font-bold text-emerald-800 flex items-center gap-1.5 border-b border-emerald-100/50 pb-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-600">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 11h.01M12 7h.01M12 14h.01M15 11h.01M15 7h.01M18 21H6a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2z" />
           </svg>
           Sale Performance Inference
         </h4>
-        <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
+
+        {/* 1. Rates & Overalls */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           <div>
-            <p className="text-slate-400">Sell Premium/Discount per Gram</p>
-            <p className="font-mono text-sm font-bold text-slate-900">
-              {formatCost(calculations.sellPremiumDiscountPerGram)}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              ({sellPremiumDiscount >= 0 ? '+' : ''}{sellPremiumDiscount.toFixed(2)}/oz ÷ 31.1035)
-            </p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Effective Sell Rate</p>
+            <p className="font-mono text-sm font-bold text-slate-900 mt-1">{formatCost(calculations.effectiveSellRate)} /g</p>
           </div>
           <div>
-            <p className="text-slate-400">Effective Sell Rate per Gram</p>
-            <p className="font-mono text-sm font-bold text-slate-900">
-              {formatCost(calculations.effectiveSellRate)}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              (Rate: {liveSellRate.toFixed(2)} + Prem: {calculations.sellPremiumDiscountPerGram.toFixed(4)})
-            </p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Sales (AED)</p>
+            <p className="font-mono text-sm font-bold text-slate-900 mt-1">{formatCost(calculations.salesAed)}</p>
           </div>
-
-          <div className="col-span-2 border-t border-emerald-100/50 pt-3 mt-1">
-            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Calculated Sales AED</p>
-            <p className="font-mono text-xl font-black text-emerald-700 mt-1">
-              {formatCost(calculations.salesAed)}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              ({weight.toLocaleString()} g × {formatCost(calculations.effectiveSellRate)})
-            </p>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gross Profit</p>
+            <p className={`font-mono text-sm font-bold mt-1 ${calculations.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCost(calculations.grossProfit)}</p>
           </div>
-
-          <div className="col-span-2 border-t border-emerald-100/50 pt-3 mt-1 grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-slate-400">Gross Profit (AED)</p>
-              <p className={`font-mono text-base font-black ${calculations.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {formatCost(calculations.grossProfit)}
-              </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                (Sales: {formatCost(calculations.salesAed)} - Cost: {formatCost(pureCostAed)} - Exp: {formatCost(expenses)})
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-400">Profit per Gram</p>
-              <p className={`font-mono text-base font-black ${calculations.netProfitPerGram >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {formatCost(calculations.netProfitPerGram)}
-              </p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                (Net Profit)
-              </p>
-            </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Net Profit / g</p>
+            <p className={`font-mono text-sm font-bold mt-1 ${calculations.netProfitPerGram >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCost(calculations.netProfitPerGram)}</p>
           </div>
+        </div>
 
-          {(partnerBreakdown.length > 0 || managerShare > 0) && (
-            <div className="col-span-2 border-t border-emerald-100/50 pt-4 mt-2">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Profit Distribution</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {managerShare > 0 && (
-                  <div className="flex items-center justify-between rounded-xl bg-white border border-emerald-100/40 p-3 shadow-[0_1px_3px_rgba(0,0,0,0.02)] ring-1 ring-emerald-500/10">
-                    <div>
-                      <p className="font-bold text-slate-800 uppercase">Management</p>
-                      <p className="text-[10px] text-slate-400 font-semibold">{managerShare}% share</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-mono text-sm font-black ${calculations.managementProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatCost(calculations.managementProfit)}
-                      </p>
-                    </div>
+        {/* 2. Investor Breakdown */}
+        <div className="border-t border-emerald-100/50 pt-4">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800">Investor Breakdown</p>
+          <div className="flex flex-col gap-3">
+            {partnerBreakdown.map((partner, idx) => (
+              <div key={idx} className="flex flex-col rounded-xl bg-white border border-emerald-100/40 p-3 shadow-sm">
+                <div className="flex justify-between items-center border-b border-slate-50 pb-2 mb-2">
+                  <div>
+                    <p className="font-bold text-slate-800 uppercase text-xs">{partner.name}</p>
+                    <p className="text-[10px] text-slate-400 font-semibold">{partner.percentage.toFixed(2)}% share</p>
                   </div>
-                )}
-                {partnerBreakdown.map((partner, idx) => (
-                  <div key={idx} className="flex items-center justify-between rounded-xl bg-white border border-emerald-100/40 p-3 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-                    <div>
-                      <p className="font-bold text-slate-800 uppercase">{partner.name}</p>
-                      <p className="text-[10px] text-slate-400 font-semibold">{partner.percentage.toFixed(2)}% share</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-mono text-sm font-black ${partner.payout >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {formatCost(partner.payout)}
-                      </p>
-                    </div>
+                  <div className="text-right">
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Net Profit</p>
+                    <p className={`font-mono text-sm font-black ${partner.payout >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {formatCost(partner.payout)}
+                    </p>
                   </div>
-                ))}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Volume (g)</p>
+                    <p className="font-mono text-xs font-semibold text-slate-700">{partner.volumeShare.toFixed(3)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Purchase</p>
+                    <p className="font-mono text-xs font-semibold text-slate-700">{formatCost(partner.purchaseShare)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Sales</p>
+                    <p className="font-mono text-xs font-semibold text-slate-700">{formatCost(partner.salesShare)}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+
+            {managerShare > 0 && (
+              <div className="flex justify-between items-center rounded-xl bg-emerald-50/50 border border-emerald-500/20 p-3 shadow-sm mt-1">
+                <div>
+                  <p className="font-bold text-slate-800 uppercase text-xs">Management</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">{managerShare}% fee</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] text-emerald-600/70 font-bold uppercase tracking-wider mb-0.5">Net Profit</p>
+                  <p className={`font-mono text-sm font-black ${calculations.managementProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatCost(calculations.managementProfit)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Modal>

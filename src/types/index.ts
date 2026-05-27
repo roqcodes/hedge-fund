@@ -163,6 +163,7 @@ export interface Deal {
   totalPL: number;
   expense: number;
   managerShare: number;
+  goldVolume?: number;
   leadName?: string;
   leadPhone?: string;
   leadEmail?: string;
@@ -174,6 +175,7 @@ export interface DealTransactionExpense {
   dealTransactionId: string;
   key: string;           // Expense label, e.g. "Freight", "Insurance"
   value: number;         // Amount in AED
+  timestamp?: string;    // Date & Time of expense
   createdAt?: string;
 }
 
