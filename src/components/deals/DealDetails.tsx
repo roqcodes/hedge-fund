@@ -74,8 +74,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
     ? filteredTransactions.reduce((sum, txn) => sum + (Number(txn.expenses) || 0), 0)
     : 0;
 
-  const totalPureCost = transactionsForThisDeal.reduce((sum, txn) => sum + (txn.pureCostAed || 0), 0);
-  const availableCapital = deal.amount - totalPureCost;
+  const groupCapital = deal.amount;
 
   // Calculate total management profit and investor payouts dynamically by summing the payouts of all transactions
   const profitDistributions = React.useMemo(() => {
@@ -211,9 +210,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             bgColor="var(--warning-light)"
           />
           <KPICard
-            label="Available Capital"
-            value={formatAED(availableCapital)}
-            subValue={`Total: ${formatAEDStr(deal.amount)}`}
+            label="Group Capital"
+            value={formatAED(groupCapital)}
+            subValue="Total Initial Investment"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -255,8 +254,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
             }
-            color={(deal.totalPL || 0) >= 0 ? 'var(--success)' : 'var(--action)'}
-            bgColor={(deal.totalPL || 0) >= 0 ? 'var(--success-light)' : 'var(--action-light)'}
+            color={filteredTotalPL >= 0 ? 'var(--profit)' : 'var(--loss)'}
+            bgColor={filteredTotalPL >= 0 ? 'var(--profit-light)' : 'var(--loss-light)'}
+            cardClassName={filteredTotalPL >= 0 ? 'bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-100' : 'bg-gradient-to-br from-rose-50/50 to-rose-100/30 border-rose-100'}
           />
         </div>
 

@@ -240,8 +240,9 @@ export default function DealsManagement() {
                 <polyline points="17 6 23 6 23 12" />
               </svg>
             }
-            color="var(--success)"
-            bgColor="var(--success-light)"
+            color={totalPL >= 0 ? 'var(--profit)' : 'var(--loss)'}
+            bgColor={totalPL >= 0 ? 'var(--profit-light)' : 'var(--loss-light)'}
+            cardClassName={totalPL >= 0 ? 'bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-100' : 'bg-gradient-to-br from-rose-50/50 to-rose-100/30 border-rose-100'}
           />
           <KPICard
             label="Total Expense"

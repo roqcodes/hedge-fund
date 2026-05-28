@@ -14,6 +14,7 @@ interface KPICardProps {
   color?: string;
   bgColor?: string;
   valueClassName?: string;
+  cardClassName?: string;
   onClick?: () => void;
 }
 
@@ -26,6 +27,7 @@ export default function KPICard({
   color = 'var(--accent)',
   bgColor = 'var(--accent-light)',
   valueClassName,
+  cardClassName,
   onClick,
 }: KPICardProps) {
   const plColor =
@@ -43,7 +45,7 @@ export default function KPICard({
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       onKeyDown={e => onClick && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick())}
-      className={`${kpiCard} ${onClick ? 'cursor-pointer' : ''}`}
+      className={`${kpiCard} ${onClick ? 'cursor-pointer' : ''} ${cardClassName || ''}`}
     >
       <div className="text-[11px] font-semibold text-slate-600 sm:text-xs">{label}</div>
       <div

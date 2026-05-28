@@ -11,9 +11,9 @@ import { badgeClass } from '@/lib/badgeClass';
 import CurrencySwitcher from './CurrencySwitcher';
 import { pageHeader, pageTitle, pageSubtitle, tableWrap, dataTable } from '@/lib/ui';
 
-function KPICard({ label, value, colorClass, icon }: { label: string; value: React.ReactNode; colorClass: string; icon: React.ReactNode }) {
+function KPICard({ label, value, colorClass, icon, cardClassName }: { label: string; value: React.ReactNode; colorClass: string; icon: React.ReactNode; cardClassName?: string }) {
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-100 bg-white p-3 sm:p-5 shadow-surface-xs transition-all duration-300 hover:-translate-y-1 hover:border-accent/30 hover:shadow-xl hover:shadow-accent/10">
+    <div className={`group relative flex flex-col overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-100 bg-white p-3 sm:p-5 shadow-surface-xs transition-all duration-300 hover:-translate-y-1 hover:border-accent/30 hover:shadow-xl hover:shadow-accent/10 ${cardClassName || ''}`}>
       <div className="flex items-center justify-between mb-2 sm:mb-3">
         <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">{label}</span>
         <div className={`flex size-8 sm:size-10 items-center justify-center rounded-lg sm:rounded-xl ${colorClass}`}>
@@ -186,6 +186,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           label="Profit/Loss"
           value={formatAED(txn.grossProfit, true)}
           colorClass={txn.grossProfit >= 0 ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"}
+          cardClassName={txn.grossProfit >= 0 ? 'bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-100' : 'bg-gradient-to-br from-rose-50/50 to-rose-100/30 border-rose-100'}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 6l-9.5 9.5-5-5L1 18" />

@@ -71,18 +71,18 @@ export default function SellDealModal({
 
   const calculations = useMemo(() => {
     // Determine the conversion multiplier (handles both 3851 and 0.03851 forms)
-    const conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1; 
-    
+    const conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1;
+
     // 1. Sales AED (Total Sales before expenses)
     const salesAed = liveSellRateInr * conversionMultiplier;
-    
+
     // 2. Gross Profit = Sales AED - Purchase AED
     const grossProfit = salesAed - pureCostAed;
 
     // 3. Net Profit = Gross Profit - Expenses
     const netProfit = grossProfit - expenses;
-    const netProfitPerGram = weight > 0 ? netProfit / weight : 0;
-    
+    const netProfitPerGram = weight > 0 ? netProfit / weight : 0; 
+
     // 4. Management & Investor Pool (from Net Profit)
     const managementProfit = netProfit > 0 ? netProfit * (managerShare / 100) : 0;
     const investorProfitPool = netProfit - managementProfit;
@@ -131,7 +131,7 @@ export default function SellDealModal({
     });
     const sign = amount < 0 ? '-' : '';
     return `${sign}${numStr}`;
-  };    
+  };
 
   const handleSubmit = async () => {
     setError('');
