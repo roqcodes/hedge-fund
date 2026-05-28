@@ -30,8 +30,7 @@ export default function EditDealModal({
   const router = useRouter();
 
   const [groupName, setGroupName] = useState('');
-  const [liveRateOzStr, setLiveRateOzStr] = useState('');
-  const [goldVolumeStr, setGoldVolumeStr] = useState('');
+
   const [amountStr, setAmountStr] = useState('');
   const [managerShareStr, setManagerShareStr] = useState('20');
   const [toBranchId, setToBranchId] = useState('');
@@ -52,12 +51,7 @@ export default function EditDealModal({
     if (deal && open) {
       setGroupName(deal.groupName || '');
       
-      let initLiveRate = '';
-      if (deal.amount > 0 && deal.goldVolume && deal.goldVolume > 0) {
-        initLiveRate = (deal.amount / (deal.goldVolume / 31.1035)).toFixed(2);
-      }
-      setLiveRateOzStr(initLiveRate);
-      setGoldVolumeStr(deal.goldVolume ? deal.goldVolume.toString() : '');
+
       setAmountStr(deal.amount.toString());
       
       if (deal.toBranchId.startsWith('custom-')) {
@@ -80,7 +74,7 @@ export default function EditDealModal({
           investorId: inv.investorId,
           percentageStr: deal.amount > 0 ? ((inv.amount / deal.amount) * 100).toFixed(2).replace(/\.00$/, '') : '0',
           amountStr: inv.amount.toString(),
-          goldVolumeStr: inv.goldVolume ? inv.goldVolume.toString() : '',
+
           inputMode: 'percentage' as const,
         }))
       );
@@ -97,14 +91,7 @@ export default function EditDealModal({
     }
   }, [deal, open]);
 
-  useEffect(() => {
-    if (Number(goldVolumeStr) > 0 && Number(liveRateOzStr) > 0) {
-      const calc = (Number(goldVolumeStr) / 31.1035) * Number(liveRateOzStr);
-      setAmountStr(calc.toFixed(2));
-    } else {
-      setAmountStr('');
-    }
-  }, [goldVolumeStr, liveRateOzStr]);
+
 
   const dealAmount = Number(amountStr) || 0;
 
@@ -129,39 +116,10 @@ export default function EditDealModal({
     setDealInvestors(newInvestors);
   };
 
-  const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr' | 'amountStr' | 'goldVolumeStr', value: string) => {
+  const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr' | 'amountStr', value: string) => {
     const newInvestors = [...dealInvestors];
     const inv = newInvestors[index];
     inv[field] = value;
-    
-    // Auto-calculate logic
-    const liveRate = Number(liveRateOzStr) || 0;
-    
-    if (liveRate > 0) {
-      if (field === 'amountStr' || field === 'percentageStr') {
-        let invAmount = 0;
-        if (inv.inputMode === 'amount') {
-          invAmount = Number(inv.amountStr) || 0;
-        } else {
-          invAmount = ((Number(inv.percentageStr) || 0) / 100) * dealAmount;
-        }
-        
-        const calculatedGold = (invAmount / liveRate) * 31.1035;
-        inv.goldVolumeStr = calculatedGold > 0 ? calculatedGold.toFixed(3) : '';
-      } else if (field === 'goldVolumeStr') {
-        const goldGrams = Number(value) || 0;
-        const calculatedCapital = (goldGrams / 31.1035) * liveRate;
-        if (inv.inputMode === 'amount') {
-          inv.amountStr = calculatedCapital > 0 ? calculatedCapital.toFixed(2) : '';
-        } else {
-          if (dealAmount > 0) {
-            const perc = (calculatedCapital / dealAmount) * 100;
-            inv.percentageStr = perc > 0 ? perc.toFixed(2) : '';
-          }
-        }
-      }
-    }
-    
     setDealInvestors(newInvestors);
   };
 
@@ -198,7 +156,7 @@ export default function EditDealModal({
     // Validate investors
     const validInvestors: DealInvestor[] = [];
     for (let i = 0; i < dealInvestors.length; i++) {
-      const { investorId, percentageStr, amountStr: invAmountStr, goldVolumeStr, inputMode } = dealInvestors[i];
+      const { investorId, percentageStr, amountStr: invAmountStr, inputMode } = dealInvestors[i];
       if (!investorId) continue; // skip empty rows
 
       let invAmount: number;
@@ -211,8 +169,7 @@ export default function EditDealModal({
         invAmount = (invPercentage / 100) * dealAmount;
       }
 
-      const goldVolume = goldVolumeStr ? Number(goldVolumeStr) : 0;
-      if (goldVolumeStr && (isNaN(goldVolume) || goldVolume < 0)) return setError(`Gold volume for investor row ${i + 1} must be a positive number.`);
+
 
       const investor = investors.find(inv => inv.id === investorId);
       if (!investor) return setError(`Investor not found for row ${i + 1}.`);
@@ -221,8 +178,8 @@ export default function EditDealModal({
         investorId,
         investorName: investor.name,
         amount: invAmount,
-        isGold: goldVolume > 0,
-        goldVolume: goldVolume > 0 ? Number(goldVolume.toFixed(4)) : undefined,
+        isGold: false,
+        goldVolume: 0,
       });
     }
 
@@ -241,7 +198,7 @@ export default function EditDealModal({
       name: groupName.trim() || 'General',
       groupName: groupName.trim() || 'General',
       amount: dealAmount,
-      goldVolume: Number(goldVolumeStr) || 0,
+      goldVolume: 0,
       investors: validInvestors,
       totalInvestment,
       balance,
@@ -369,28 +326,7 @@ export default function EditDealModal({
           />
         </div>
       </div>
-      <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Live Rate (per Ounce)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="e.g. 2350.50"
-            value={liveRateOzStr}
-            onChange={e => setLiveRateOzStr(e.target.value)}
-          />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Gold Volume (g)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="e.g. 1000"
-            value={goldVolumeStr}
-            onChange={e => setGoldVolumeStr(e.target.value)}
-          />
-        </div>
-      </div>
+
       <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Group Capital (AED)</label>
@@ -525,21 +461,7 @@ export default function EditDealModal({
                     )}
                   </div>
                 </div>
-                {/* Gold Volume Input */}
-                <div className="flex-1 min-w-0">
-                  <div className="relative">
-                    <input
-                      className={`${formInput} !pr-8`}
-                      type="number"
-                      placeholder="Gold volume"
-                      value={inv.goldVolumeStr}
-                      onChange={e => handleInvestorChange(index, 'goldVolumeStr', e.target.value)}
-                      min="0"
-                      step="0.0001"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">g</span>
-                  </div>
-                </div>
+
               </div>
             </div>
           ))}

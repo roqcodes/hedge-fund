@@ -71,33 +71,31 @@ export default function SellDealModal({
 
   const calculations = useMemo(() => {
     // Determine the conversion multiplier (handles both 3851 and 0.03851 forms)
-    const conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1; // Default to 1 if no conversion rate
-    const liveSellRateAed = liveSellRateInr * conversionMultiplier;
+    const conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1; 
+    
+    // Total selling amount in AED is directly calculated
+    const totalSalesAed = liveSellRateInr * conversionMultiplier;
+    
+    // Reduce the expense from AED sales amount
+    const salesAed = totalSalesAed - expenses;
 
-    // 1 troy oz = 31.1035 grams
-    const liveSellRatePerGram = liveSellRateAed / 31.1035;
-    const sellPremiumDiscountPerGram = sellPremiumDiscount / 31.1035;
-    const effectiveSellRate = liveSellRatePerGram + sellPremiumDiscountPerGram;
-    const salesAed = weight * effectiveSellRate;
-
-    const grossProfit = salesAed - pureCostAed - expenses;
+    const grossProfit = salesAed - pureCostAed;
     const netProfitPerGram = weight > 0 ? grossProfit / weight : 0;
-    // Management only takes a cut of positive profit. If it's a loss, they get 0 and investors absorb it.
+    
+    // Management only takes a cut of positive profit.
     const managementProfit = grossProfit > 0 ? grossProfit * (managerShare / 100) : 0;
     const investorProfitPool = grossProfit - managementProfit;
 
     return {
-      liveSellRateAed,
       conversionMultiplier,
-      sellPremiumDiscountPerGram,
-      effectiveSellRate,
+      totalSalesAed,
       salesAed,
       grossProfit,
       netProfitPerGram,
       managementProfit,
       investorProfitPool,
     };
-  }, [liveSellRateInr, conversionRateInput, sellPremiumDiscount, expenses, pureCostAed, weight, managerShare]);
+  }, [liveSellRateInr, conversionRateInput, expenses, pureCostAed, weight, managerShare]);
 
   const partnerBreakdown = useMemo(() => {
     if (!deal || !deal.investors) return [];
@@ -127,27 +125,27 @@ export default function SellDealModal({
     };
     const converted = amount * (rates[currency] || 1);
     const numStr = Math.abs(converted).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 4,
     });
     const sign = amount < 0 ? '-' : '';
     return `${sign}${numStr}`;
-  };
+  };    
 
   const handleSubmit = async () => {
     setError('');
 
-    if (liveSellRateInr <= 0) return setError('Live selling rate is required.');
+    if (liveSellRateInr <= 0) return setError('Selling rate INR is required.');
 
     const updatedTxn: DealTransaction = {
       ...transaction,
-      liveSellRate: calculations.liveSellRateAed,
-      sellPremiumDiscount,
-      salesAed: Number(calculations.salesAed.toFixed(2)),
-      expenses,
-      grossProfit: Number(calculations.grossProfit.toFixed(2)),
-      netProfitPerGram: Number(calculations.netProfitPerGram.toFixed(4)),
-      managementProfit: Number(calculations.managementProfit.toFixed(2)),
+      liveSellRate: Number(calculations.salesAed.toFixed(7)),
+      sellPremiumDiscount: 0,
+      salesAed: Number(calculations.salesAed.toFixed(7)),
+      expenses: Number(expenses.toFixed(7)),
+      grossProfit: Number(calculations.grossProfit.toFixed(7)),
+      netProfitPerGram: Number(calculations.netProfitPerGram.toFixed(7)),
+      managementProfit: Number(calculations.managementProfit.toFixed(7)),
       fixOrUnfix: 'fixed', // Mark as settled
     };
 
@@ -188,7 +186,7 @@ export default function SellDealModal({
 
       <div className={formRow}>
         <div className={formGroup}>
-          <label className={formLabel}>Live Selling Rate (INR per Ounce)</label>
+          <label className={formLabel}>Selling Rate INR</label>
           <input
             className={formInput}
             type="number"
@@ -209,18 +207,7 @@ export default function SellDealModal({
         </div>
       </div>
 
-      <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Sell Premium / Discount (AED/oz)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={sellPremiumDiscountStr}
-            onChange={e => setSellPremiumDiscountStr(e.target.value)}
-          />
-        </div>
-      </div>
+
 
       <div className={formRow}>
         <div className={formGroup}>
@@ -281,16 +268,10 @@ export default function SellDealModal({
         </h4>
 
         {/* 1. Rates & Overalls */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+
           <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Effective Sell Rate</p>
-            <p className="font-mono text-sm font-bold text-slate-900 mt-1">{formatCost(calculations.effectiveSellRate)} /g</p>
-            <p className="text-[9px] text-slate-400 font-medium mt-1">
-              (AED Rate: {calculations.liveSellRateAed.toFixed(2)}/oz + Prem: {sellPremiumDiscount.toFixed(2)}/oz)
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Sales (AED)</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Net Sales (AED)</p>
             <p className="font-mono text-sm font-bold text-slate-900 mt-1">{formatCost(calculations.salesAed)}</p>
           </div>
           <div>

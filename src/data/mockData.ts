@@ -114,8 +114,8 @@ export function formatAED(amount: number, showPlus = false): React.ReactNode {
   const absAmount = Math.abs(convertedAmount);
   
   const numStr = absAmount.toLocaleString('en-US', {
-    maximumFractionDigits: currency === 'USD' ? 2 : 0,
-    minimumFractionDigits: currency === 'USD' ? 2 : 0,
+    maximumFractionDigits: 4,
+    minimumFractionDigits: 0,
   });
   
   const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
@@ -135,8 +135,8 @@ export function formatAEDStr(amount: number, showPlus = false): string {
   const absAmount = Math.abs(convertedAmount);
   
   const numStr = absAmount.toLocaleString('en-US', {
-    maximumFractionDigits: currency === 'USD' ? 2 : 0,
-    minimumFractionDigits: currency === 'USD' ? 2 : 0,
+    maximumFractionDigits: 4,
+    minimumFractionDigits: 0,
   });
   
   const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';

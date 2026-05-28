@@ -136,7 +136,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
       </div>
 
       {/* Top Row of KPI Cards */}
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <KPICard
           label="Purchase Volume"
           value={`${txn.weight.toLocaleString()} g`}
@@ -160,16 +160,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </svg>
           }
         />
-        <KPICard
-          label="Buy Premium/Disc"
-          value={formatAED(txn.premiumDiscount)}
-          colorClass="bg-amber-100 text-amber-700"
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          }
-        />
+
         <KPICard
           label="Expense"
           value={formatAED(txn.expenses)}
@@ -217,18 +208,10 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             {/* Purchase Details */}
             <div>
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-3 border-b border-slate-100 pb-2">Purchase Details</h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] text-slate-400 font-medium">Weight</p>
                   <p className="font-mono text-sm font-bold text-slate-900">{txn.weight.toLocaleString()} g</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400 font-medium">Live Rate /oz</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{txn.rate.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400 font-medium">Premium/Disc</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{txn.premiumDiscount.toFixed(2)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-medium">Purchase Cost (AED)</p>
@@ -240,17 +223,9 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             {/* Selling Details */}
             <div>
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-rose-800 mb-3 border-b border-slate-100 pb-2">Selling Details</h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-[10px] text-slate-400 font-medium">Live Sell Rate /oz</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{txn.liveSellRate > 0 ? txn.liveSellRate.toFixed(2) : '-'}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400 font-medium">Sell Prem/Disc</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{txn.liveSellRate > 0 ? txn.sellPremiumDiscount.toFixed(2) : '-'}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400 font-medium">Sales (AED)</p>
+                  <p className="text-[10px] text-slate-400 font-medium">Net Sales (AED)</p>
                   <p className="font-mono text-sm font-bold text-slate-900">{txn.salesAed > 0 ? formatAED(txn.salesAed) : '-'}</p>
                 </div>
                 <div>

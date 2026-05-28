@@ -26,8 +26,6 @@ export default function CreateDealModal({
   const { branches, investors, addDeal } = useApp();
 
   const [groupName, setGroupName] = useState('');
-  const [liveRateOzStr, setLiveRateOzStr] = useState('');
-  const [goldVolumeStr, setGoldVolumeStr] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [toBranchId, setToBranchId] = useState('');
   const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
@@ -36,8 +34,8 @@ export default function CreateDealModal({
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [leadAddress, setLeadAddress] = useState('');
-  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; goldVolumeStr: string; inputMode: 'percentage' | 'amount' }[]>([
-    { investorId: '', percentageStr: '', amountStr: '', goldVolumeStr: '', inputMode: 'percentage' },
+  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; inputMode: 'percentage' | 'amount' }[]>([
+    { investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' },
   ]);
   const [error, setError] = useState('');
   const [date, setDate] = useState(() => {
@@ -45,15 +43,6 @@ export default function CreateDealModal({
     const tzoffset = d.getTimezoneOffset() * 60000;
     return new Date(d.getTime() - tzoffset).toISOString().slice(0, 16);
   });
-
-  useEffect(() => {
-    if (Number(goldVolumeStr) > 0 && Number(liveRateOzStr) > 0) {
-      const calc = (Number(goldVolumeStr) / 31.1035) * Number(liveRateOzStr);
-      setAmountStr(calc.toFixed(2));
-    } else {
-      setAmountStr('');
-    }
-  }, [goldVolumeStr, liveRateOzStr]);
 
   const dealAmount = Number(amountStr) || 0;
 
@@ -70,7 +59,7 @@ export default function CreateDealModal({
   const balance = totalInvestment - dealAmount;
 
   const handleAddInvestorRow = () => {
-    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', goldVolumeStr: '', inputMode: 'percentage' }]);
+    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
   };
 
   const handleRemoveInvestorRow = (index: number) => {
@@ -79,38 +68,10 @@ export default function CreateDealModal({
     setDealInvestors(newInvestors);
   };
 
-  const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr' | 'amountStr' | 'goldVolumeStr', value: string) => {
+  const handleInvestorChange = (index: number, field: 'investorId' | 'percentageStr' | 'amountStr', value: string) => {
     const newInvestors = [...dealInvestors];
     const inv = newInvestors[index];
     inv[field] = value;
-    
-    // Auto-calculate logic
-    const liveRate = Number(liveRateOzStr) || 0;
-    
-    if (liveRate > 0) {
-      if (field === 'amountStr' || field === 'percentageStr') {
-        let invAmount = 0;
-        if (inv.inputMode === 'amount') {
-          invAmount = Number(inv.amountStr) || 0;
-        } else {
-          invAmount = ((Number(inv.percentageStr) || 0) / 100) * dealAmount;
-        }
-        
-        const calculatedGold = (invAmount / liveRate) * 31.1035;
-        inv.goldVolumeStr = calculatedGold > 0 ? calculatedGold.toFixed(3) : '';
-      } else if (field === 'goldVolumeStr') {
-        const goldGrams = Number(value) || 0;
-        const calculatedCapital = (goldGrams / 31.1035) * liveRate;
-        if (inv.inputMode === 'amount') {
-          inv.amountStr = calculatedCapital > 0 ? calculatedCapital.toFixed(2) : '';
-        } else {
-          if (dealAmount > 0) {
-            const perc = (calculatedCapital / dealAmount) * 100;
-            inv.percentageStr = perc > 0 ? perc.toFixed(2) : '';
-          }
-        }
-      }
-    }
     
     setDealInvestors(newInvestors);
   };
@@ -142,7 +103,7 @@ export default function CreateDealModal({
     // Validate investors
     const validInvestors: DealInvestor[] = [];
     for (let i = 0; i < dealInvestors.length; i++) {
-      const { investorId, percentageStr, amountStr: invAmountStr, goldVolumeStr, inputMode } = dealInvestors[i];
+      const { investorId, percentageStr, amountStr: invAmountStr, inputMode } = dealInvestors[i];
       if (!investorId) continue; // skip empty rows
 
       let invAmount: number;
@@ -155,9 +116,6 @@ export default function CreateDealModal({
         invAmount = (invPercentage / 100) * dealAmount;
       }
 
-      const goldVolume = goldVolumeStr ? Number(goldVolumeStr) : 0;
-      if (goldVolumeStr && (isNaN(goldVolume) || goldVolume < 0)) return setError(`Gold volume for investor row ${i + 1} must be a positive number.`);
-
       const investor = investors.find(inv => inv.id === investorId);
       if (!investor) return setError(`Investor not found for row ${i + 1}.`);
 
@@ -165,8 +123,7 @@ export default function CreateDealModal({
         investorId,
         investorName: investor.name,
         amount: invAmount,
-        isGold: goldVolume > 0,
-        goldVolume: goldVolume > 0 ? Number(goldVolume.toFixed(4)) : undefined,
+        isGold: false,
       });
     }
 
@@ -189,7 +146,7 @@ export default function CreateDealModal({
       totalPL: 0,
       expense: 0,
       managerShare: 20, // Default management share
-      goldVolume: Number(goldVolumeStr) || 0,
+      goldVolume: 0,
       leadName: leadName.trim() || undefined,
       leadPhone: leadPhone.trim() || undefined,
       leadEmail: leadEmail.trim(),
@@ -199,8 +156,6 @@ export default function CreateDealModal({
 
     // Reset and close
     setGroupName('');
-    setLiveRateOzStr('');
-    setGoldVolumeStr('');
     setAmountStr('');
     setToBranchId('');
     setTargetType('branch');
@@ -209,7 +164,7 @@ export default function CreateDealModal({
     setLeadPhone('');
     setLeadEmail('');
     setLeadAddress('');
-    setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', goldVolumeStr: '', inputMode: 'percentage' }]);
+    setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
     const d = new Date();
     const tzoffset = d.getTimezoneOffset() * 60000;
     setDate(new Date(d.getTime() - tzoffset).toISOString().slice(0, 16));
@@ -246,16 +201,6 @@ export default function CreateDealModal({
         <div className={formGroup}>
           <label className={formLabel}>Group Name</label>
           <input className={formInput} type="text" placeholder="e.g. Q3 Syndicate" value={groupName} onChange={e => setGroupName(e.target.value)} />
-        </div>
-      </div>
-      <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Live Rate (per Ounce)</label>
-          <input className={formInput} type="number" placeholder="0.00" value={liveRateOzStr} onChange={e => setLiveRateOzStr(e.target.value)} />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Gold Volume (Grams)</label>
-          <input className={formInput} type="number" placeholder="0.00" value={goldVolumeStr} onChange={e => setGoldVolumeStr(e.target.value)} />
         </div>
       </div>
       <div className={formRow}>
@@ -384,21 +329,6 @@ export default function CreateDealModal({
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">AED</span>
                       </>
                     )}
-                  </div>
-                </div>
-                {/* Gold Volume Input */}
-                <div className="flex-1 min-w-0">
-                  <div className="relative">
-                    <input
-                      className={`${formInput} !pr-8`}
-                      type="number"
-                      placeholder="Gold volume"
-                      value={inv.goldVolumeStr}
-                      onChange={e => handleInvestorChange(index, 'goldVolumeStr', e.target.value)}
-                      min="0"
-                      step="0.0001"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">g</span>
                   </div>
                 </div>
               </div>

@@ -21,7 +21,7 @@ import {
   formInput,
 } from '@/lib/ui';
 
-type SortField = 'groupName' | 'amount' | 'goldVolume' | 'totalDeals' | 'completedDeals' | 'onTransitDeals' | 'grossProfit' | 'status';
+type SortField = 'groupName' | 'amount' | 'totalDeals' | 'completedDeals' | 'onTransitDeals' | 'grossProfit' | 'status';
 type SortDirection = 'asc' | 'desc';
 
 export default function DealsManagement() {
@@ -287,9 +287,7 @@ export default function DealsManagement() {
                     <th className={getThClass('center')} onClick={() => handleSort('amount')}>
                       <div className="flex items-center justify-center gap-2">Capital <SortIcon field="amount" /></div>
                     </th>
-                    <th className={getThClass('center')} onClick={() => handleSort('goldVolume')}>
-                      <div className="flex items-center justify-center gap-2">Volume Gold <SortIcon field="goldVolume" /></div>
-                    </th>
+
                     <th className={getThClass('center')} onClick={() => handleSort('totalDeals')}>
                       <div className="flex items-center justify-center gap-2">Total Deals <SortIcon field="totalDeals" /></div>
                     </th>
@@ -329,9 +327,7 @@ export default function DealsManagement() {
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
                           {formatAED(deal.amount)}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
-                          {dealGold} g
-                        </td>
+
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
                           {totalDealsInGroup}
                         </td>
@@ -369,7 +365,7 @@ export default function DealsManagement() {
                   })}
                   {filteredAndSortedDeals.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={8} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
                         {searchTerm ? 'No groups found matching your search query.' : 'No groups found. Create a new group to get started.'}
                       </td>
                     </tr>
@@ -404,10 +400,7 @@ export default function DealsManagement() {
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capital</span>
                           <span className="font-mono text-sm font-bold text-slate-900">{formatAED(deal.amount)}</span>
                         </div>
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Volume Gold</span>
-                          <span className="font-mono text-sm font-bold text-slate-900">{dealGoldKg} kg</span>
-                        </div>
+
                         <div className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross P&L</span>
                           <span className="font-mono text-sm font-bold text-emerald-600">{formatAED(totalGrossProfit)}</span>

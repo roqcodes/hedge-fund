@@ -70,9 +70,7 @@ export default function CreateDealTransactionModal({
   const [dealNum, setDealNum] = useState('');
   const [weightStr, setWeightStr] = useState('');
   const [purchaseCostStr, setPurchaseCostStr] = useState('');
-  const [rateStr, setRateStr] = useState('');
   const [fixOrUnfix, setFixOrUnfix] = useState<'fixed' | 'unfixed'>('unfixed');
-  const [premiumDiscountStr, setPremiumDiscountStr] = useState('0');
 
   const [error, setError] = useState('');
 
@@ -85,9 +83,7 @@ export default function CreateDealTransactionModal({
         setDealNum(editTransaction.deal);
         setWeightStr(editTransaction.weight.toString());
         setPurchaseCostStr(editTransaction.pureCostAed.toString());
-        setRateStr(editTransaction.rate.toString());
         setFixOrUnfix(editTransaction.fixOrUnfix === 'unfixed' ? 'unfixed' : 'fixed');
-        setPremiumDiscountStr(editTransaction.premiumDiscount.toString());
       } else {
         setDate(getLocalDateString());
         setTime(getLocalTimeString());
@@ -106,58 +102,24 @@ export default function CreateDealTransactionModal({
 
         setWeightStr('');
         setPurchaseCostStr('');
-        setRateStr('');
         setFixOrUnfix('unfixed');
-        setPremiumDiscountStr('0');
       }
       setError('');
       setConfirmDelete(false);
     }
   }, [deal, open, editTransaction, dealTransactions]);
 
-  // Handle bidirectional updates for Weight and Purchase Cost
-  const handleFieldChange = (field: 'weight' | 'purchaseCost' | 'rate' | 'premium', value: string) => {
-    let newWeight = weightStr;
-    let newCost = purchaseCostStr;
-    let newRate = rateStr;
-    let newPrem = premiumDiscountStr;
-
+  // Handle field changes directly without auto-calculations
+  const handleFieldChange = (field: 'weight' | 'purchaseCost', value: string) => {
     if (field === 'weight') {
-      newWeight = value;
       setWeightStr(value);
     } else if (field === 'purchaseCost') {
-      newCost = value;
       setPurchaseCostStr(value);
-    } else if (field === 'rate') {
-      newRate = value;
-      setRateStr(value);
-    } else if (field === 'premium') {
-      newPrem = value;
-      setPremiumDiscountStr(value);
-    }
-
-    const currentRate = Number(newRate) || 0;
-    const currentPrem = Number(newPrem) || 0;
-
-    const ratePerGram = currentRate / 31.1035;
-    const premiumPerGram = currentPrem / 31.1035;
-    const effectiveRate = ratePerGram + premiumPerGram;
-
-    if (effectiveRate > 0) {
-      if (field === 'weight' || field === 'rate' || field === 'premium') {
-        const calculatedCost = (Number(newWeight) || 0) * effectiveRate;
-        setPurchaseCostStr(calculatedCost > 0 ? calculatedCost.toFixed(2) : '');
-      } else if (field === 'purchaseCost') {
-        const calculatedWeight = (Number(newCost) || 0) / effectiveRate;
-        setWeightStr(calculatedWeight > 0 ? calculatedWeight.toFixed(4) : '');
-      }
     }
   };
 
   // Numerical conversions
   const weight = Number(weightStr) || 0;
-  const rate = Number(rateStr) || 0;
-  const premiumDiscount = Number(premiumDiscountStr) || 0;
 
   const availableCapital = useMemo(() => {
     const groupTxns = dealTransactions.filter(t => t.dealId === deal.id);
@@ -170,19 +132,12 @@ export default function CreateDealTransactionModal({
 
   // Real-time calculations
   const calculations = useMemo(() => {
-    // 1 troy oz = 31.1035 grams
-    const ratePerGram = rate / 31.1035;
-    const premiumDiscountPerGram = premiumDiscount / 31.1035;
-    const effectiveRate = ratePerGram + premiumDiscountPerGram;
     const pureCostAed = Number(purchaseCostStr) || 0;
 
     return {
-      ratePerGram,
-      premiumDiscountPerGram,
-      effectiveRate,
       pureCostAed,
     };
-  }, [rate, premiumDiscount, purchaseCostStr]);
+  }, [purchaseCostStr]);
 
   useEffect(() => {
     if (calculations.pureCostAed > availableCapital) {
@@ -215,7 +170,7 @@ export default function CreateDealTransactionModal({
     if (!date) return setError('Date is required.');
     if (!dealNum.trim()) return setError('Deal number is required.');
     if (weight <= 0) return setError('Weight must be greater than zero.');
-    if (rate <= 0) return setError('Purchase rate must be greater than zero.');
+
 
     if (calculations.pureCostAed > availableCapital) {
       return setError(`Purchase cost (${formatCost(calculations.pureCostAed)}) cannot exceed available capital (${formatCost(availableCapital)}).`);
@@ -227,7 +182,7 @@ export default function CreateDealTransactionModal({
       time: time || undefined,
       deal: dealNum.trim(),
       weight,
-      rate,
+      rate: 0,
       pureCostAed: Number(calculations.pureCostAed.toFixed(2)),
       liveSellRate: editTransaction?.liveSellRate || 0,
       sellPremiumDiscount: editTransaction?.sellPremiumDiscount || 0,
@@ -238,7 +193,7 @@ export default function CreateDealTransactionModal({
       managementProfit: editTransaction?.managementProfit || 0,
       fixOrUnfix,
       marginDeposit: editTransaction?.marginDeposit || 0,
-      premiumDiscount,
+      premiumDiscount: 0,
       dealId: deal.id,
     };
 
@@ -340,28 +295,7 @@ export default function CreateDealTransactionModal({
         </div>
       </div>
 
-      <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Live Rate (per Ounce)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={rateStr}
-            onChange={e => handleFieldChange('rate', e.target.value)}
-          />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Premium / Discount (per troy oz)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={premiumDiscountStr}
-            onChange={e => handleFieldChange('premium', e.target.value)}
-          />
-        </div>
-      </div>
+
 
       <div className={formRow}>
         <div className={formGroup}>
@@ -433,46 +367,11 @@ export default function CreateDealTransactionModal({
             </div>
           </div>
 
-          {/* 2. Rate Conversions */}
-          <div className="col-span-1 sm:col-span-2">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-800 border-b border-emerald-100/50 pb-1">Rate Conversions</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <p className="text-slate-400">Live Rate (per gram)</p>
-                <p className="font-mono text-sm font-bold text-slate-900">
-                  {formatCost(calculations.ratePerGram)}
-                </p>
-                <p className="text-[9px] text-slate-400 font-medium mt-0.5">
-                  ({rate.toFixed(2)}/oz ÷ 31.1035)
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-400">Premium/Discount (per gram)</p>
-                <p className="font-mono text-sm font-bold text-slate-900">
-                  {formatCost(calculations.premiumDiscountPerGram)}
-                </p>
-                <p className="text-[9px] text-slate-400 font-medium mt-0.5">
-                  ({premiumDiscount >= 0 ? '+' : ''}{premiumDiscount.toFixed(2)}/oz ÷ 31.1035)
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-400">Effective Rate (per gram)</p>
-                <p className="font-mono text-sm font-bold text-slate-900">
-                  {formatCost(calculations.effectiveRate)}
-                </p>
-                <p className="text-[9px] text-slate-400 font-medium mt-0.5">
-                  ({formatCost(calculations.ratePerGram)} + {formatCost(calculations.premiumDiscountPerGram)})
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. Deal Cost */}
+          {/* 2. Deal Cost */}
           <div className="col-span-1 sm:col-span-2">
             <div className="rounded-xl bg-emerald-100/30 p-4 border border-emerald-100/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-0.5">Purchase Cost (AED)</p>
-                <p className="text-[10px] text-emerald-600/70 font-medium">({weight.toLocaleString()} g × {formatCost(calculations.effectiveRate)})</p>
               </div>
               <p className="font-mono text-2xl font-black text-emerald-700 text-right">
                 {formatCost(calculations.pureCostAed)}
@@ -480,7 +379,7 @@ export default function CreateDealTransactionModal({
             </div>
           </div>
 
-          {/* 4. Investor Cost Shares */}
+          {/* 3. Investor Cost Shares */}
           {partnerBreakdown.length > 0 && (
             <div className="col-span-1 sm:col-span-2">
               <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-emerald-800 border-b border-emerald-100/50 pb-1">Investor Cost Shares</p>
