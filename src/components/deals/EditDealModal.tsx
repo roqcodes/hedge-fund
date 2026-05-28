@@ -41,7 +41,7 @@ export default function EditDealModal({
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [leadAddress, setLeadAddress] = useState('');
-  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; goldVolumeStr: string; inputMode: 'percentage' | 'amount' }[]>([]);
+  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; inputMode: 'percentage' | 'amount' }[]>([]);
   const [error, setError] = useState('');
   const [date, setDate] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -107,7 +107,7 @@ export default function EditDealModal({
   const balance = totalInvestment - dealAmount;
 
   const handleAddInvestorRow = () => {
-    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', goldVolumeStr: '', inputMode: 'percentage' }]);
+    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
   };
 
   const handleRemoveInvestorRow = (index: number) => {
