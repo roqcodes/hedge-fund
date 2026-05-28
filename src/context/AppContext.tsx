@@ -413,29 +413,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const dealTxnsForThisDeal = updatedTransactions.filter(t => t.dealId === txn.dealId);
           const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
           
-          let nextInvestors = s.investors;
-          const prevTxn = s.dealTransactions.find(t => t.id === txn.id);
-          
-          if (prevTxn?.fixOrUnfix === 'unfixed' && txn.fixOrUnfix === 'fixed') {
-             const deal = s.deals.find(d => d.id === txn.dealId);
-             if (deal && deal.amount > 0) {
-                nextInvestors = s.investors.map(inv => {
-                   const dealInv = deal.investors.find(di => di.investorId === inv.id);
-                   if (dealInv) {
-                      const shareRatio = dealInv.amount / deal.amount;
-                      const returnedCapital = txn.pureCostAed * shareRatio;
-                      return { ...inv, cashDeposit: inv.cashDeposit + returnedCapital };
-                   }
-                   return inv;
-                });
-             }
-          }
-
           return {
             ...s,
             dealTransactions: updatedTransactions,
-            deals: s.deals.map(d => d.id === txn.dealId ? { ...d, totalPL } : d),
-            investors: nextInvestors
+            deals: s.deals.map(d => d.id === txn.dealId ? { ...d, totalPL } : d)
           };
         });
         showToast(`Deal transaction updated successfully`);

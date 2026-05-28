@@ -73,24 +73,25 @@ export default function SellDealModal({
     // Determine the conversion multiplier (handles both 3851 and 0.03851 forms)
     const conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1; 
     
-    // Total selling amount in AED is directly calculated
-    const totalSalesAed = liveSellRateInr * conversionMultiplier;
+    // 1. Sales AED (Total Sales before expenses)
+    const salesAed = liveSellRateInr * conversionMultiplier;
     
-    // Reduce the expense from AED sales amount
-    const salesAed = totalSalesAed - expenses;
-
+    // 2. Gross Profit = Sales AED - Purchase AED
     const grossProfit = salesAed - pureCostAed;
-    const netProfitPerGram = weight > 0 ? grossProfit / weight : 0;
+
+    // 3. Net Profit = Gross Profit - Expenses
+    const netProfit = grossProfit - expenses;
+    const netProfitPerGram = weight > 0 ? netProfit / weight : 0;
     
-    // Management only takes a cut of positive profit.
-    const managementProfit = grossProfit > 0 ? grossProfit * (managerShare / 100) : 0;
-    const investorProfitPool = grossProfit - managementProfit;
+    // 4. Management & Investor Pool (from Net Profit)
+    const managementProfit = netProfit > 0 ? netProfit * (managerShare / 100) : 0;
+    const investorProfitPool = netProfit - managementProfit;
 
     return {
       conversionMultiplier,
-      totalSalesAed,
       salesAed,
       grossProfit,
+      netProfit,
       netProfitPerGram,
       managementProfit,
       investorProfitPool,
@@ -143,7 +144,7 @@ export default function SellDealModal({
       sellPremiumDiscount: 0,
       salesAed: Number(calculations.salesAed.toFixed(7)),
       expenses: Number(expenses.toFixed(7)),
-      grossProfit: Number(calculations.grossProfit.toFixed(7)),
+      grossProfit: Number(calculations.netProfit.toFixed(7)), // DB gross_profit stores Net Profit
       netProfitPerGram: Number(calculations.netProfitPerGram.toFixed(7)),
       managementProfit: Number(calculations.managementProfit.toFixed(7)),
       fixOrUnfix: 'fixed', // Mark as settled
@@ -268,15 +269,19 @@ export default function SellDealModal({
         </h4>
 
         {/* 1. Rates & Overalls */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
 
           <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Net Sales (AED)</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Sales (AED)</p>
             <p className="font-mono text-sm font-bold text-slate-900 mt-1">{formatCost(calculations.salesAed)}</p>
           </div>
           <div>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Gross Profit</p>
             <p className={`font-mono text-sm font-bold mt-1 ${calculations.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCost(calculations.grossProfit)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Net Profit</p>
+            <p className={`font-mono text-sm font-bold mt-1 ${calculations.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{formatCost(calculations.netProfit)}</p>
           </div>
           <div>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Net Profit / g</p>

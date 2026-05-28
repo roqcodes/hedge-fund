@@ -926,9 +926,6 @@ export async function dbUpdateDealTransactionAction(
   try {
     await client.query('BEGIN');
 
-    const prevRes = await client.query('SELECT fix_or_unfix FROM deal_transactions WHERE id = $1', [txn.id]);
-    const prevStatus = prevRes.rows[0]?.fix_or_unfix;
-
     await client.query(
       `UPDATE deal_transactions SET
         deal_number = $1, date = $2, time = $3, weight = $4, rate = $5, pure_cost_aed = $6, live_sell_rate = $7, sell_premium_discount = $8,
@@ -969,24 +966,6 @@ export async function dbUpdateDealTransactionAction(
       [totalPL, txn.dealId]
     );
 
-    if (prevStatus === 'unfixed' && txn.fixOrUnfix === 'fixed') {
-      const dealRes = await client.query('SELECT amount FROM deals WHERE id = $1', [txn.dealId]);
-      const dealTotalAmount = parseFloat(dealRes.rows[0]?.amount || '0');
-      
-      if (dealTotalAmount > 0) {
-        const diRes = await client.query('SELECT investor_id, amount FROM deal_investors WHERE deal_id = $1', [txn.dealId]);
-        for (const row of diRes.rows) {
-           const shareRatio = parseFloat(row.amount) / dealTotalAmount;
-           const returnedCapital = txn.pureCostAed * shareRatio;
-           if (returnedCapital > 0) {
-             await client.query(
-               'UPDATE investors SET cash_deposit = cash_deposit + $1 WHERE id = $2',
-               [returnedCapital, row.investor_id]
-             );
-           }
-        }
-      }
-    }
 
     await client.query('COMMIT');
     return { success: true, data: txn };

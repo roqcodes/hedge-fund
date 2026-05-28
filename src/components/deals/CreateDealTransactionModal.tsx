@@ -121,14 +121,7 @@ export default function CreateDealTransactionModal({
   // Numerical conversions
   const weight = Number(weightStr) || 0;
 
-  const availableCapital = useMemo(() => {
-    const groupTxns = dealTransactions.filter(t => t.dealId === deal.id);
-    const totalSpent = groupTxns.reduce((sum, t) => {
-      if (editTransaction && t.id === editTransaction.id) return sum;
-      return sum + (t.pureCostAed || 0);
-    }, 0);
-    return deal.amount - totalSpent;
-  }, [dealTransactions, deal, editTransaction]);
+
 
   // Real-time calculations
   const calculations = useMemo(() => {
@@ -138,16 +131,6 @@ export default function CreateDealTransactionModal({
       pureCostAed,
     };
   }, [purchaseCostStr]);
-
-  useEffect(() => {
-    if (calculations.pureCostAed > availableCapital) {
-      setError(`Purchase cost (${formatCost(calculations.pureCostAed)}) cannot exceed available capital (${formatCost(availableCapital)}).`);
-    } else {
-      setError(prev => prev.includes('exceed available capital') ? '' : prev);
-    }
-  }, [calculations.pureCostAed, availableCapital]);
-
-  const isOverBudget = calculations.pureCostAed > availableCapital;
 
   const partnerBreakdown = useMemo(() => {
     if (!deal || !deal.investors) return [];
@@ -171,10 +154,6 @@ export default function CreateDealTransactionModal({
     if (!dealNum.trim()) return setError('Deal number is required.');
     if (weight <= 0) return setError('Weight must be greater than zero.');
 
-
-    if (calculations.pureCostAed > availableCapital) {
-      return setError(`Purchase cost (${formatCost(calculations.pureCostAed)}) cannot exceed available capital (${formatCost(availableCapital)}).`);
-    }
 
     const newTxn: DealTransaction = {
       id: editTransaction ? editTransaction.id : `txn-${Date.now()}`,
@@ -254,9 +233,8 @@ export default function CreateDealTransactionModal({
           </button>
           <button 
             type="button" 
-            className={`${btnPrimary} ${isOverBudget ? 'opacity-50 cursor-not-allowed' : ''}`} 
+            className={btnPrimary} 
             onClick={handleSubmit} 
-            disabled={isOverBudget}
           >
             {editTransaction ? 'Save Changes' : 'Add Deal'}
           </button>
