@@ -363,12 +363,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                   <div>
                     <p className="text-sm font-bold text-slate-900">
                       Management
-                      {filteredTransactions.length > 0 && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Aggregated</span>}
                     </p>
                     <p className="text-[11px] sm:text-xs font-medium text-slate-400">
-                      {filteredTransactions.length > 0 
-                        ? `Historical Payout • ${(filteredTotalPL > 0 ? ((totalAibakProfit / filteredTotalPL) * 100) : 0).toFixed(1)}%` 
-                        : `Profit Share • ${deal.managerShare ?? 20}%`}
+                      Profit Share • {deal.managerShare ?? 20}%
                     </p>
                   </div>
                 </div>
