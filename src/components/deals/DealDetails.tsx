@@ -40,20 +40,15 @@ export default function DealDetails({ dealId }: { dealId: string }) {
     }
   }, [deal, router]);
 
-  if (!deal) {
-    return (
-      <div className="flex h-[50vh] flex-col items-center justify-center gap-4">
-        <div className="size-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600"></div>
-        <p className="text-sm font-medium text-slate-500">Redirecting to Groups...</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!deal) {
+      router.push('/group');
+    }
+  }, [deal, router]);
 
-  const fundingPercentage = Math.min((deal.totalInvestment / deal.amount) * 100, 100);
+  const fundingPercentage = Math.min(((deal?.totalInvestment || 0) / (deal?.amount || 1)) * 100, 100);
 
-  const dealGoldVolume = Number((deal.goldVolume || 0).toFixed(2)).toString();
-
-  const transactionsForThisDeal = dealTransactions.filter(t => t.dealId === deal.id);
+  const transactionsForThisDeal = dealTransactions.filter(t => t.dealId === deal?.id);
 
   const {
     dateFilter, setDateFilter,
@@ -65,23 +60,26 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const numberOfDeals = filteredTransactions.length;
   const completedDeals = filteredTransactions.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
   const onTransitDeals = numberOfDeals - completedDeals;
+  const unsettledTransactions = filteredTransactions.filter(t => t.fixOrUnfix === 'unfixed');
+  const dealGoldVolume = Number(unsettledTransactions.reduce((sum, t) => sum + t.weight, 0).toFixed(2)).toString();
 
   const filteredTotalPL = filteredTransactions.length > 0
     ? filteredTransactions.reduce((sum, txn) => sum + (txn.grossProfit || 0), 0)
-    : (deal.totalPL || 0);
+    : (deal?.totalPL || 0);
 
   const filteredTotalExpense = filteredTransactions.length > 0
     ? filteredTransactions.reduce((sum, txn) => sum + (Number(txn.expenses) || 0), 0)
     : 0;
 
-  const groupCapital = deal.amount;
+  const unsettledCost = unsettledTransactions.reduce((sum, t) => sum + (t.pureCostAed || 0), 0);
+  const groupCapital = (deal?.amount || 0) - unsettledCost;
 
-  // Calculate total management profit and investor payouts dynamically by summing the payouts of all transactions
+  // Calculate total management profit and investor payouts dynamically using snapshot payouts
   const profitDistributions = React.useMemo(() => {
     let totalManagement = 0;
     const investorTotals: Record<string, number> = {};
 
-    // Initialize all deal investors with 0
+    // Initialize all current deal investors with 0 to ensure they appear in the UI
     if (deal && deal.investors) {
       deal.investors.forEach(inv => {
         investorTotals[inv.investorId] = 0;
@@ -92,14 +90,10 @@ export default function DealDetails({ dealId }: { dealId: string }) {
       const mProfit = txn.managementProfit || 0;
       totalManagement += mProfit;
 
-      // The remaining gross profit after management deduction is distributed to investors
-      const investorProfitPool = (txn.grossProfit || 0) - mProfit;
-
-      // Distribute to each investor based on their capital share in the group
-      if (deal && deal.investors) {
-        deal.investors.forEach(inv => {
-          const shareRatio = deal.amount > 0 ? inv.amount / deal.amount : 0;
-          investorTotals[inv.investorId] = (investorTotals[inv.investorId] || 0) + (investorProfitPool * shareRatio);
+      // Use snapshotted payouts if available (for fixed deals)
+      if (txn.payouts && txn.payouts.length > 0) {
+        txn.payouts.forEach(p => {
+          investorTotals[p.investorId] = (investorTotals[p.investorId] || 0) + p.payoutAmount;
         });
       }
     });
@@ -111,6 +105,53 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   }, [deal, filteredTransactions]);
 
   const totalAibakProfit = profitDistributions.totalManagement;
+
+  // Build a unified list of investors: current group members + anyone who has historical payouts
+  const displayInvestors = React.useMemo(() => {
+    const map = new Map<string, { id: string, name: string, amount: number, isHistoricalOnly: boolean }>();
+    
+    // Add current investors
+    if (deal && deal.investors) {
+      deal.investors.forEach(inv => {
+        map.set(inv.investorId, {
+          id: inv.investorId,
+          name: investors.find(i => i.id === inv.investorId)?.name || inv.investorName,
+          amount: inv.amount,
+          isHistoricalOnly: false
+        });
+      });
+    }
+
+    // Add historical investors who received payouts but left the group
+    Object.keys(profitDistributions.investorTotals).forEach(investorId => {
+      if (!map.has(investorId)) {
+        // Find them in the global investors list, or use a fallback name
+        const globalInv = investors.find(i => i.id === investorId);
+        map.set(investorId, {
+          id: investorId,
+          name: globalInv?.name || 'Former Investor',
+          amount: 0, // They have 0 current capital in the group
+          isHistoricalOnly: true
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+      // Sort by current capital first, then by historical only
+      if (a.isHistoricalOnly && !b.isHistoricalOnly) return 1;
+      if (!a.isHistoricalOnly && b.isHistoricalOnly) return -1;
+      return b.amount - a.amount;
+    });
+  }, [deal, investors, profitDistributions.investorTotals]);
+
+  if (!deal) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-4">
+        <div className="size-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600"></div>
+        <p className="text-sm font-medium text-slate-500">Redirecting to Groups...</p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -212,7 +253,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           <KPICard
             label="Group Capital"
             value={formatAED(groupCapital)}
-            subValue="Total Initial Investment"
+            subValue="Available Capital"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -320,8 +361,15 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                     M
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900">Management</p>
-                    <p className="text-[11px] sm:text-xs font-medium text-slate-400">Profit Share • {deal.managerShare ?? 20}%</p>
+                    <p className="text-sm font-bold text-slate-900">
+                      Management
+                      {filteredTransactions.length > 0 && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Aggregated</span>}
+                    </p>
+                    <p className="text-[11px] sm:text-xs font-medium text-slate-400">
+                      {filteredTransactions.length > 0 
+                        ? `Historical Payout • ${(filteredTotalPL > 0 ? ((totalAibakProfit / filteredTotalPL) * 100) : 0).toFixed(1)}%` 
+                        : `Profit Share • ${deal.managerShare ?? 20}%`}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right pr-6 sm:pr-8 relative z-10">
@@ -333,11 +381,25 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               </div>
 
               {/* Investor Cards */}
-              {[...deal.investors].sort((a, b) => b.amount - a.amount).map((inv, idx) => {
-                const partnerProfit = profitDistributions.investorTotals[inv.investorId] ?? 0;
-                const ratio = ((inv.amount / deal.amount) * 100).toFixed(1);
-                const investorGold = deal.goldVolume && deal.amount > 0 ? (deal.goldVolume * (inv.amount / deal.amount)) : 0;
-                const resolvedName = investors.find(i => i.id === inv.investorId)?.name || inv.investorName;
+              {displayInvestors.map((inv, idx) => {
+                const partnerProfit = profitDistributions.investorTotals[inv.id] ?? 0;
+                
+                let capitalDisplay: React.ReactNode = null;
+                if (inv.isHistoricalOnly) {
+                  capitalDisplay = 'Historical Investor (Left Group)';
+                } else {
+                  const ratio = deal.amount > 0 ? ((inv.amount / deal.amount) * 100).toFixed(1) : '0.0';
+                  // To keep UI consistent, if the group currently holds gold, show an approximate share
+                  const groupCurrentGold = unsettledTransactions.reduce((sum, t) => sum + t.weight, 0);
+                  const investorGold = groupCurrentGold > 0 && deal.amount > 0 ? (groupCurrentGold * (inv.amount / deal.amount)) : 0;
+                  capitalDisplay = (
+                    <>
+                      Capital: {formatAED(inv.amount)} • {ratio}%
+                      {investorGold > 0 && ` • Gold: ${Number(investorGold.toFixed(3))} g`}
+                    </>
+                  );
+                }
+
                 return (
                   <div
                     key={idx}
@@ -345,13 +407,15 @@ export default function DealDetails({ dealId }: { dealId: string }) {
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-sm sm:text-base font-black text-slate-700">
-                        {resolvedName.charAt(0)}
+                        {inv.name.charAt(0)}
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-900 uppercase">{resolvedName}</p>
+                        <p className="text-sm font-bold text-slate-900 uppercase">
+                          {inv.name}
+                          {inv.isHistoricalOnly && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Past</span>}
+                        </p>
                         <p className="text-[11px] sm:text-xs font-medium text-slate-400">
-                          Capital: {formatAED(inv.amount)} • {ratio}%
-                          {investorGold > 0 && <span> • Gold: {Number(investorGold.toFixed(3))} g</span>}
+                          {capitalDisplay}
                         </p>
                       </div>
                     </div>

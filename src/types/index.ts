@@ -156,8 +156,8 @@ export interface Deal {
   investors: DealInvestor[];
   totalInvestment: number;
   balance: number;
-  toBranchId: string;
-  toBranchName: string;
+  toBranchId?: string;
+  toBranchName?: string;
   status: DealStatus;
   date: string;
   totalPL: number;
@@ -198,4 +198,14 @@ export interface DealTransaction {
   marginDeposit: number;
   premiumDiscount: number;
   dealId?: string; // Foreign key linking to deals(id)
+  payouts?: DealTransactionPayout[]; // Snapshot of investor payouts at settlement
+}
+
+export interface DealTransactionPayout {
+  id: string;
+  dealTransactionId: string;
+  investorId: string;
+  investorName: string;
+  payoutAmount: number;
+  createdAt?: string;
 }

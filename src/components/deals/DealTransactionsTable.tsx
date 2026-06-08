@@ -97,21 +97,21 @@ export default function DealTransactionsTable({
     return result;
   }, [searchTerm, sortField, sortDirection, dealName, transactions, activeTab]);
 
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const renderSortIcon = (field: SortField) => {
     if (sortField !== field) {
       return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
+          <path d="M7 15l5 5 5-5M7 9l5-5 5 5" />
         </svg>
       );
     }
     return sortDirection === 'asc' ? (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
+        <path d="M5 15l7-7 7 7" />
       </svg>
     ) : (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
+        <path d="M19 9l-7 7-7-7" />
       </svg>
     );
   };
@@ -184,28 +184,28 @@ export default function DealTransactionsTable({
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
                 <th className={thClass} onClick={() => handleSort('deal')}>
-                  <div className="flex items-center gap-2">Deal Number <SortIcon field="deal" /></div>
+                  <div className="flex items-center gap-2">Deal Number {renderSortIcon('deal')}</div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('date')}>
-                  <div className="flex items-center gap-2">Date & Time <SortIcon field="date" /></div>
+                  <div className="flex items-center gap-2">Date & Time {renderSortIcon('date')}</div>
                 </th>
                 <th className={thClass}>
                   Status
                 </th>
                 <th className={thClass} onClick={() => handleSort('weight')}>
-                  <div className="flex items-center gap-2">Volume <SortIcon field="weight" /></div>
+                  <div className="flex items-center gap-2">Volume {renderSortIcon('weight')}</div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('pureCostAed')}>
-                  <div className="flex items-center gap-2">Purchase Cost <SortIcon field="pureCostAed" /></div>
+                  <div className="flex items-center gap-2">Purchase Cost {renderSortIcon('pureCostAed')}</div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('expenses')}>
-                  <div className="flex items-center gap-2">Expense <SortIcon field="expenses" /></div>
+                  <div className="flex items-center gap-2">Expense {renderSortIcon('expenses')}</div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('salesAed')}>
-                  <div className="flex items-center gap-2">Sales <SortIcon field="salesAed" /></div>
+                  <div className="flex items-center gap-2">Sales {renderSortIcon('salesAed')}</div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('grossProfit')}>
-                  <div className="flex items-center gap-2">P&L Gross <SortIcon field="grossProfit" /></div>
+                  <div className="flex items-center gap-2">P&L Gross {renderSortIcon('grossProfit')}</div>
                 </th>
                 <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   Actions

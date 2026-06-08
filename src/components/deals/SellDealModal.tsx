@@ -37,6 +37,12 @@ export default function SellDealModal({
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const parseSafeNumber = (val: string | number) => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const parsed = parseFloat(val.replace(/,/g, ''));
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   useEffect(() => {
     if (open) {
       setLiveSellRateStr(transaction.liveSellRate ? transaction.liveSellRate.toString() : '');
@@ -61,10 +67,10 @@ export default function SellDealModal({
     }
   }, [open, transaction]);
 
-  const liveSellRateInr = Number(liveSellRateStr) || 0; // Live rate in INR per ounce
-  const conversionRateInput = Number(conversionRateStr) || 0;
-  const sellPremiumDiscount = Number(sellPremiumDiscountStr) || 0; // Sell premium/discount (per troy oz)
-  const expenses = Number(expensesStr) || 0;
+  const liveSellRateInr = parseSafeNumber(liveSellRateStr); // Live rate in INR per ounce
+  const conversionRateInput = parseSafeNumber(conversionRateStr);
+  const sellPremiumDiscount = parseSafeNumber(sellPremiumDiscountStr); // Sell premium/discount (per troy oz)
+  const expenses = parseSafeNumber(expensesStr);
   const weight = transaction.weight;
   const pureCostAed = transaction.pureCostAed;
   const managerShare = deal.managerShare ?? 20;
@@ -148,6 +154,13 @@ export default function SellDealModal({
       netProfitPerGram: Number(calculations.netProfitPerGram.toFixed(7)),
       managementProfit: Number(calculations.managementProfit.toFixed(7)),
       fixOrUnfix: 'fixed', // Mark as settled
+      payouts: partnerBreakdown.map(p => ({
+        id: `payout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        dealTransactionId: transaction.id,
+        investorId: deal.investors.find(i => i.investorName === p.name)?.investorId || '',
+        investorName: p.name,
+        payoutAmount: p.payout,
+      })),
     };
 
     const success = await updateDealTransaction(updatedTxn);
@@ -160,7 +173,7 @@ export default function SellDealModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Sell Deal #${transaction.deal}`}
+      title="Settle / Sell Deal"
       footer={
         <>
           <button type="button" className={btnSecondary} onClick={onClose}>
@@ -172,6 +185,11 @@ export default function SellDealModal({
         </>
       }
     >
+      {transaction.fixOrUnfix === 'fixed' && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800">
+          ⚠️ This deal has already been settled. Confirming the sale will override the previous settlement data.
+        </div>
+      )}
       {error && <div className={`${formError} mb-4`}>{error}</div>}
 
       <div className="mb-4 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-100 rounded-xl p-3 grid grid-cols-2 gap-3">

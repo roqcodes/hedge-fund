@@ -47,14 +47,19 @@ export default function DealsManagement() {
       const totalDealsInGroup = groupDeals.length;
       const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
       const onTransitDeals = totalDealsInGroup - completedDeals;
+      const unsettledDeals = groupDeals.filter(t => t.fixOrUnfix === 'unfixed');
+      
       const totalGrossProfit = groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
-      const dealGoldGrams = deal.investors.reduce((acc, inv) => acc + (inv.isGold ? inv.amount : 0), 0);
-      const dealGoldKg = dealGoldGrams / 1000;
+      
+      const unsettledCost = unsettledDeals.reduce((sum, t) => sum + (t.pureCostAed || 0), 0);
+      const currentCapital = deal.amount - unsettledCost;
+      const unsettledGoldVolume = unsettledDeals.reduce((sum, t) => sum + (t.weight || 0), 0);
 
       return {
         ...deal,
+        amount: currentCapital,
         groupNameCalculated: deal.groupName || 'General',
-        goldVolume: dealGoldKg,
+        goldVolume: unsettledGoldVolume,
         totalDeals: totalDealsInGroup,
         completedDeals,
         onTransitDeals,
@@ -64,7 +69,11 @@ export default function DealsManagement() {
   }, [deals, filteredTransactions]);
 
   const totalDeals = processedDeals.reduce((acc, d) => acc + d.totalDeals, 0);
-  const totalDealAmount = deals.reduce((acc, d) => acc + d.amount, 0);
+  const totalDealAmount = deals.reduce((acc, deal) => {
+    const unsettledDeals = filteredTransactions.filter(t => t.dealId === deal.id && t.fixOrUnfix === 'unfixed');
+    const unsettledCost = unsettledDeals.reduce((sum, t) => sum + (t.pureCostAed || 0), 0);
+    return acc + (deal.amount - unsettledCost);
+  }, 0);
   const totalPL = processedDeals.reduce((acc, d) => acc + d.grossProfit, 0);
   const totalExpense = deals.reduce((acc, deal) => {
     const groupDeals = filteredTransactions.filter(t => t.dealId === deal.id);
@@ -75,7 +84,8 @@ export default function DealsManagement() {
   }, 0);
 
   const totalGoldGrams = deals.reduce((acc, deal) => {
-    return acc + deal.investors.reduce((invAcc, inv) => invAcc + (inv.isGold ? inv.amount : 0), 0);
+    const unsettledDeals = filteredTransactions.filter(t => t.dealId === deal.id && t.fixOrUnfix === 'unfixed');
+    return acc + unsettledDeals.reduce((sum, t) => sum + t.weight, 0);
   }, 0);
   const totalGoldKg = (totalGoldGrams / 1000).toFixed(4);
 

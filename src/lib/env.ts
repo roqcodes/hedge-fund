@@ -16,8 +16,7 @@ const envSchema = z.object({
   // ── Database (required) ────────────────────────────────────────────
   DATABASE_URL: z
     .string()
-    .url('DATABASE_URL must be a valid connection URL')
-    .optional(),
+    .url('DATABASE_URL must be a valid connection URL'),
 
   // ── Session (required) ─────────────────────────────────────────────
   SESSION_SECRET: z

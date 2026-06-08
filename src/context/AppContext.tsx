@@ -25,6 +25,7 @@ import {
   dbAddExpenseAction,
   dbAddInvestorAction,
   dbUpdateInvestorAction,
+  dbDeleteInvestorAction,
   dbAddDealAction,
   dbUpdateDealAction,
   dbDeleteDealAction,
@@ -91,6 +92,7 @@ interface AppContextType extends AppState {
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
   updateInvestor: (investor: Investor) => void;
+  deleteInvestor: (id: string) => Promise<boolean>;
   addDeal: (deal: Omit<Deal, 'id' | 'date'> & { date?: string }) => void;
   updateDeal: (deal: Deal) => void;
   deleteDeal: (id: string) => Promise<boolean>;
@@ -147,7 +149,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const dbRes = await fetchInitialDataAction();
-        if (dbRes.success && dbRes.data && !dbRes.isMockFallback) {
+        if (dbRes.success && dbRes.data) {
           const data = dbRes.data;
           setState(s => ({
             ...s,
@@ -165,12 +167,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             isInitialLoading: false,
           }));
           return;
+        } else {
+          console.error('Failed to fetch initial database data:', dbRes.error);
         }
       } catch (e) {
-        console.error('Failed to fetch database data, falling back to mock data', e);
+        console.error('Failed to fetch database data', e);
       }
 
-      // If database is not configured or fails, keep the default mock data initialized in state
       setState(s => ({
         ...s,
         user: currentUser,
@@ -251,7 +254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newInvestor: Investor = {
       id: mock.generateId('INV'),
       ...input,
-      status: hasDeposits ? 'active' : 'pending',
+      status: 'active',
       kycStatus: 'pending',
       joinedDate: now.slice(0, 10),
       lastActivity: now,
@@ -264,14 +267,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (dbRes.success) {
         setState(s => ({ ...s, investors: [newInvestor, ...s.investors] }));
         showToast(`Investor "${newInvestor.name}" added successfully`);
-        return;
+      } else {
+        showToast(dbRes.error || 'Failed to add investor', 'error');
       }
     } catch (e) {
-      console.warn('DB addInvestor failed, running client-side only', e);
+      console.error('DB addInvestor failed', e);
+      showToast('Failed to add investor', 'error');
     }
-
-    setState(s => ({ ...s, investors: [newInvestor, ...s.investors] }));
-    showToast(`Investor "${newInvestor.name}" added locally (Mock Mode)`);
   }, [showToast, state.branches]);
 
   const updateInvestor = useCallback(async (updatedInvestor: Investor) => {
@@ -294,18 +296,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
           investors: s.investors.map(inv => inv.id === finalInvestor.id ? finalInvestor : inv)
         }));
         showToast(`Investor "${finalInvestor.name}" updated successfully`);
-        return;
+      } else {
+        showToast(dbRes.error || 'Failed to update investor', 'error');
       }
     } catch (e) {
-      console.warn('DB updateInvestor failed, running client-side only', e);
+      console.error('DB updateInvestor failed', e);
+      showToast('Failed to update investor', 'error');
     }
-
-    setState(s => ({
-      ...s,
-      investors: s.investors.map(inv => inv.id === finalInvestor.id ? finalInvestor : inv)
-    }));
-    showToast(`Investor "${finalInvestor.name}" updated locally (Mock Mode)`);
   }, [showToast, state.branches]);
+
+  const deleteInvestor = useCallback(async (id: string) => {
+    try {
+      const dbRes = await dbDeleteInvestorAction(id);
+      if (dbRes.success) {
+        setState(s => ({
+          ...s,
+          investors: s.investors.filter(inv => inv.id !== id),
+          selectedInvestorId: s.selectedInvestorId === id ? null : s.selectedInvestorId
+        }));
+        showToast('Investor deleted successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to delete investor', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB deleteInvestor failed', e);
+      showToast('Failed to delete investor', 'error');
+      return false;
+    }
+  }, [showToast]);
 
   const addDeal = useCallback(async (deal: Omit<Deal, 'id' | 'date'> & { date?: string }) => {
     const dealId = `deal-${Date.now()}`;
@@ -500,19 +520,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           hqBalance: s.hqBalance - b.openingBalance,
         }));
         showToast(`Branch "${newBranch.name}" created with AED ${b.openingBalance.toLocaleString('en-AE')} allocated`);
-        return;
+      } else {
+        showToast(dbRes.error || 'Failed to create branch', 'error');
       }
     } catch (e) {
-      console.warn('DB addBranch failed, running client-side only', e);
+      console.error('DB addBranch failed', e);
+      showToast('Failed to create branch', 'error');
     }
-
-    setState(s => ({
-      ...s,
-      branches: [...s.branches, newBranch],
-      transactions: [txn, ...s.transactions],
-      hqBalance: s.hqBalance - b.openingBalance,
-    }));
-    showToast(`Branch "${newBranch.name}" created locally (Mock Mode)`);
   }, [showToast]);
 
   const transferFunds = useCallback(async (fromId: string, toId: string, amount: number, notes: string) => {
@@ -541,38 +555,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
         });
         showToast(`AED ${amount.toLocaleString('en-AE')} transferred successfully`);
-        return;
+      } else {
+        showToast(dbRes.error || 'Failed to transfer funds', 'error');
       }
     } catch (e) {
-      console.warn('DB transferFunds failed, running client-side only', e);
+      console.error('DB transferFunds failed', e);
+      showToast('Failed to transfer funds', 'error');
     }
-
-    // Fallback
-    setState(s => {
-      let nextHqBalance = s.hqBalance;
-      const branches = s.branches.map(b => {
-        if (b.id === fromId) return { ...b, currentBalance: b.currentBalance - amount, closingBalance: b.closingBalance - amount, lastActivity: timestamp };
-        if (b.id === toId) return { ...b, currentBalance: b.currentBalance + amount, closingBalance: b.closingBalance + amount, lastActivity: timestamp };
-        return b;
-      });
-
-      if (fromId === 'HQ_TREASURY') {
-        nextHqBalance -= amount;
-      }
-
-      const txn: Transaction = {
-        id: txnId,
-        date: timestamp,
-        from: fromName,
-        to: toName,
-        amount,
-        type: fromId === 'HQ_TREASURY' ? 'allocation' : 'transfer',
-        status: 'completed',
-        notes,
-      };
-      return { ...s, branches, hqBalance: nextHqBalance, transactions: [txn, ...s.transactions] };
-    });
-    showToast(`AED ${amount.toLocaleString('en-AE')} transferred locally (Mock Mode)`);
   }, [showToast, state.branches, state.hqBalance]);
 
   const addInvoice = useCallback(async (inv: Omit<Invoice, 'id' | 'status'>) => {
@@ -584,14 +573,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (dbRes.success) {
         setState(s => ({ ...s, invoices: [newInv, ...s.invoices] }));
         showToast(`Invoice ${newInv.id} created`);
-        return;
+      } else {
+        showToast(dbRes.error || 'Failed to create invoice', 'error');
       }
     } catch (e) {
-      console.warn('DB addInvoice failed, running client-side only', e);
+      console.error('DB addInvoice failed', e);
+      showToast('Failed to create invoice', 'error');
     }
-
-    setState(s => ({ ...s, invoices: [newInv, ...s.invoices] }));
-    showToast(`Invoice ${newInv.id} created locally (Mock Mode)`);
   }, [showToast, state.invoices.length]);
 
   const addExpense = useCallback(async (exp: Omit<Expense, 'id'>) => {
@@ -631,34 +619,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
         });
         showToast(`Expense of AED ${exp.amount.toLocaleString('en-AE')} recorded against ${exp.branchName}`);
-        return;
+      } else {
+        showToast(dbRes.error || 'Failed to record expense', 'error');
       }
     } catch (e) {
-      console.warn('DB addExpense failed, running client-side only', e);
+      console.error('DB addExpense failed', e);
+      showToast('Failed to record expense', 'error');
     }
-
-    setState(s => {
-      let nextHqBalance = s.hqBalance;
-      const nextBranches = s.branches.map(b => {
-        if (b.id === exp.branchId) {
-          return { ...b, currentBalance: b.currentBalance - exp.amount, lastActivity: timestamp };
-        }
-        return b;
-      });
-
-      if (exp.branchId === 'HQ_TREASURY') {
-        nextHqBalance -= exp.amount;
-      }
-
-      return { 
-        ...s, 
-        expenses: [newExp, ...s.expenses], 
-        hqBalance: nextHqBalance, 
-        branches: nextBranches,
-        transactions: [txn, ...s.transactions]
-      };
-    });
-    showToast(`Expense of AED ${exp.amount.toLocaleString('en-AE')} recorded locally (Mock Mode)`);
   }, [showToast, state.hqBalance]);
 
   const getTotalCapital = useCallback(() => state.branches.reduce((sum, b) => sum + b.currentBalance, 0) + state.hqBalance, [state.branches, state.hqBalance]);
@@ -673,7 +640,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency,
+      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency,
     }}>
       {children}
     </AppContext.Provider>

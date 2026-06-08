@@ -175,3 +175,15 @@ CREATE TABLE IF NOT EXISTS deal_transaction_expenses (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dte_deal_transaction_id ON deal_transaction_expenses(deal_transaction_id);
+
+-- 13. Deal Transaction Payouts (Snapshot of exact profit splits at time of settlement)
+CREATE TABLE IF NOT EXISTS deal_transaction_payouts (
+    id VARCHAR(50) PRIMARY KEY,
+    deal_transaction_id VARCHAR(50) NOT NULL REFERENCES deal_transactions(id) ON DELETE CASCADE,
+    investor_id VARCHAR(50) NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
+    investor_name VARCHAR(255) NOT NULL,
+    payout_amount DECIMAL(15, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dtp_deal_transaction_id ON deal_transaction_payouts(deal_transaction_id);

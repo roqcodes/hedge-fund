@@ -68,7 +68,7 @@ export default function LoginPage() {
         <form className="space-y-6 px-6 pb-10 sm:px-12 sm:pb-12" onSubmit={handleSubmit}>
           <div className="group space-y-2.5">
             <label htmlFor="login-email" className="block text-sm font-semibold text-slate-600 transition group-focus-within:translate-x-1 group-focus-within:text-accent">
-              Terminal ID / Email
+              Email
             </label>
             <input
               id="login-email"
@@ -92,9 +92,8 @@ export default function LoginPage() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className={`w-full rounded-[18px] border bg-slate-50 px-5 py-4 text-[15px] font-medium text-slate-900 outline-none transition focus:scale-[1.02] focus:bg-white focus:shadow-[0_0_0_5px_rgba(209,20,57,0.06)] ${
-                error ? 'border-red-400 focus:border-red-500' : 'border-black/[0.06] focus:border-accent'
-              }`}
+              className={`w-full rounded-[18px] border bg-slate-50 px-5 py-4 text-[15px] font-medium text-slate-900 outline-none transition focus:scale-[1.02] focus:bg-white focus:shadow-[0_0_0_5px_rgba(209,20,57,0.06)] ${error ? 'border-red-400 focus:border-red-500' : 'border-black/[0.06] focus:border-accent'
+                }`}
             />
             {error && <p className="text-[13px] font-semibold text-red-600">{error}</p>}
           </div>

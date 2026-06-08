@@ -41,6 +41,18 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
     const managementProfit = txn.managementProfit;
     const investorProfitPool = txn.grossProfit - managementProfit;
 
+    if (txn.fixOrUnfix === 'fixed' && txn.payouts && txn.payouts.length > 0) {
+      const breakdown = txn.payouts.map(p => ({
+        investorId: p.investorId,
+        investorName: p.investorName,
+        payout: p.payoutAmount,
+        shareRatio: investorProfitPool !== 0 ? p.payoutAmount / investorProfitPool : 0,
+        amount: 0, // historical capital unknown at this specific txn time
+        isHistorical: true,
+      }));
+      return { managementProfit, investorProfitPool, breakdown };
+    }
+
     const breakdown = deal.investors.map(inv => {
       const shareRatio = deal.amount > 0 ? inv.amount / deal.amount : 0;
       const payout = investorProfitPool * shareRatio;
@@ -48,6 +60,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         ...inv,
         shareRatio,
         payout,
+        isHistorical: false,
       };
     });
 
@@ -269,7 +282,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         <div className="flex flex-col md:rounded-3xl md:border md:border-slate-100 md:bg-white md:p-6 md:shadow-surface">
           <div className="mb-6">
             <h3 className="text-lg font-bold text-slate-900">Profit Distribution</h3>
-            <p className="text-xs text-slate-500">Distribution of the deal's net profit</p>
+            <p className="text-xs text-slate-500">Distribution of the deal&apos;s net profit</p>
           </div>
 
           <div className="flex flex-col gap-3 flex-1">
@@ -286,8 +299,15 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                   M
                 </div>
                 <div>
-                  <p className="text-sm sm:text-base font-bold text-slate-900">Management</p>
-                  <p className="text-[11px] sm:text-xs font-medium text-slate-400">Profit Share • {deal.managerShare ?? 20}%</p>
+                  <p className="text-sm sm:text-base font-bold text-slate-900">
+                    Management
+                    {txn.fixOrUnfix === 'fixed' && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Snapshot</span>}
+                  </p>
+                  <p className="text-[11px] sm:text-xs font-medium text-slate-400">
+                    {txn.fixOrUnfix === 'fixed' 
+                      ? `Historical Payout • ${(txn.grossProfit > 0 ? ((txn.managementProfit / txn.grossProfit) * 100) : 0).toFixed(1)}%` 
+                      : `Profit Share • ${deal.managerShare ?? 20}%`}
+                  </p>
                 </div>
               </div>
               <div className="text-right pr-6 sm:pr-8 relative z-10">
@@ -311,8 +331,17 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                     {resolvedName.charAt(0)}
                   </div>
                   <div>
-                    <p className="text-sm sm:text-base font-bold text-slate-900 uppercase">{resolvedName}</p>
-                    <p className="text-[11px] sm:text-xs font-medium text-slate-400">Capital: {formatAED(inv.amount)} • {(inv.shareRatio * 100).toFixed(1)}%</p>
+                    <p className="text-sm sm:text-base font-bold text-slate-900 uppercase">
+                      {resolvedName}
+                      {inv.isHistorical && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Snapshot</span>}
+                    </p>
+                    <p className="text-[11px] sm:text-xs font-medium text-slate-400">
+                      {inv.isHistorical ? (
+                        `Historical Payout • ${(inv.shareRatio * 100).toFixed(1)}%`
+                      ) : (
+                        <>Capital: {formatAED(inv.amount)} • {(inv.shareRatio * 100).toFixed(1)}%</>
+                      )}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -346,6 +375,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         onClose={() => setShowExpensesModal(false)}
         dealTransactionId={txn.id}
         dealLabel={`Deal #${txn.deal} — ${deal.groupName || deal.name}`}
+        readOnly={txn.fixOrUnfix === 'fixed'}
       />
     </>
   );

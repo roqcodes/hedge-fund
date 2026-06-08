@@ -118,14 +118,18 @@ export default function CreateDealTransactionModal({
     }
   };
 
+  const parseSafeNumber = (val: string | number) => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const parsed = parseFloat(val.replace(/,/g, ''));
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   // Numerical conversions
-  const weight = Number(weightStr) || 0;
-
-
+  const weight = parseSafeNumber(weightStr);
 
   // Real-time calculations
   const calculations = useMemo(() => {
-    const pureCostAed = Number(purchaseCostStr) || 0;
+    const pureCostAed = parseSafeNumber(purchaseCostStr);
 
     return {
       pureCostAed,
@@ -153,6 +157,7 @@ export default function CreateDealTransactionModal({
     if (!date) return setError('Date is required.');
     if (!dealNum.trim()) return setError('Deal number is required.');
     if (weight <= 0) return setError('Weight must be greater than zero.');
+    if (calculations.pureCostAed <= 0) return setError('Purchase cost must be greater than zero.');
 
 
     const newTxn: DealTransaction = {

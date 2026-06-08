@@ -45,6 +45,8 @@ interface ExpensesModalProps {
   dealTransactionId: string;
   /** Human-readable label shown in the header, e.g. "Deal #3" */
   dealLabel: string;
+  /** If true, the modal is in view-only mode */
+  readOnly?: boolean;
 }
 
 export default function ExpensesModal({
@@ -52,6 +54,7 @@ export default function ExpensesModal({
   onClose,
   dealTransactionId,
   dealLabel,
+  readOnly = false,
 }: ExpensesModalProps) {
   const [rows, setRows] = useState<Row[]>([makeBlankRow()]);
   const [loading, setLoading] = useState(false);
@@ -132,6 +135,7 @@ export default function ExpensesModal({
   // ── save ──────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
+    if (readOnly) return;
     setError(null);
     setSaving(true);
     setSuccess(false);
@@ -207,8 +211,8 @@ export default function ExpensesModal({
               </svg>
             </div>
             <div>
-              <h2 className="text-base font-black text-slate-900">Add Expenses</h2>
-              <p className="text-xs text-slate-400">{dealLabel}</p>
+              <h2 className="text-base font-black text-slate-900">{readOnly ? 'View Expenses' : 'Add Expenses'}</h2>
+              <p className="text-xs text-slate-400">{dealLabel} {readOnly && '(Settled)'}</p>
             </div>
           </div>
           <button
@@ -247,14 +251,16 @@ export default function ExpensesModal({
                       placeholder={`e.g. Freight, Insurance…`}
                       value={row.key}
                       onChange={(e) => updateRow(row.localId, 'key', e.target.value)}
-                      className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-900 placeholder:text-slate-300 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all"
+                      disabled={readOnly}
+                      className={`h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-900 placeholder:text-slate-300 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
                     />
                     {/* timestamp */}
                     <input
                       type="datetime-local"
                       value={row.timestamp}
                       onChange={(e) => updateRow(row.localId, 'timestamp', e.target.value)}
-                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-2 text-[11px] font-medium text-slate-900 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all"
+                      disabled={readOnly}
+                      className={`h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-2 text-[11px] font-medium text-slate-900 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
                     />
                     {/* value */}
                     <div className="relative">
@@ -266,39 +272,44 @@ export default function ExpensesModal({
                         placeholder="0.00"
                         value={row.value}
                         onChange={(e) => updateRow(row.localId, 'value', e.target.value)}
-                        className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-mono font-bold text-slate-900 placeholder:text-slate-300 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all"
+                        disabled={readOnly}
+                        className={`h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-mono font-bold text-slate-900 placeholder:text-slate-300 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100 transition-all ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
                       />
                     </div>
                     {/* delete */}
-                    <button
-                      type="button"
-                      onClick={() => removeRow(row.localId, row.dbId)}
-                      disabled={rows.length === 1 && idx === 0}
-                      className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-white text-slate-300 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                      aria-label="Remove row"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14H6L5 6" />
-                        <path d="M10 11v6M14 11v6" />
-                        <path d="M9 6V4h6v2" />
-                      </svg>
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => removeRow(row.localId, row.dbId)}
+                        disabled={rows.length === 1 && idx === 0}
+                        className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-white text-slate-300 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        aria-label="Remove row"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14H6L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4h6v2" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
 
               {/* add row */}
-              <button
-                type="button"
-                onClick={addRow}
-                className="mt-3 flex items-center gap-1.5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all w-full justify-center"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Another Expense
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={addRow}
+                  className="mt-3 flex items-center gap-1.5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-500 transition-all w-full justify-center"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Add Another Expense
+                </button>
+              )}
 
               {/* total */}
               {totalAed > 0 && (
@@ -338,30 +349,32 @@ export default function ExpensesModal({
           >
             Close
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || loading}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-rose-700 active:scale-[0.99] disabled:opacity-60 transition-all"
-          >
-            {saving ? (
-              <>
-                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-                Saving…
-              </>
-            ) : (
-              <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
-                Save Expenses
-              </>
-            )}
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || loading}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-rose-700 active:scale-[0.99] disabled:opacity-60 transition-all"
+            >
+              {saving ? (
+                <>
+                  <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  Save Expenses
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

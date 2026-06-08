@@ -29,6 +29,30 @@ export interface DbActionResult<T> {
   isMockFallback?: boolean;
 }
 
+/**
+ * Helper to convert raw Postgres errors into human-readable messages.
+ */
+function formatPgError(error: unknown): string {
+  if (error instanceof Error) {
+    const pgError = error as { code?: string; constraint?: string; message?: string };
+    // Check for foreign key constraint violations
+    if (pgError.code === '23503') {
+      if (pgError.constraint === 'deal_investors_investor_id_fkey') {
+        return 'Selected investor does not exist in the database. Please refresh the page to sync your data.';
+      }
+      return 'A related record does not exist in the database.';
+    }
+    // Check for unique constraint violations
+    if (pgError.code === '23505') {
+      if (pgError.constraint?.includes('email')) return 'An investor with this email already exists.';
+      if (pgError.constraint?.includes('branches_name')) return 'A branch with this name already exists.';
+      return 'A record with these details already exists.';
+    }
+    return error.message;
+  }
+  return 'An unknown database error occurred.';
+}
+
 export interface InitialDataPayload {
   branches: Branch[];
   transactions: Transaction[];
@@ -47,10 +71,6 @@ export interface InitialDataPayload {
  * Uses JOINs + json_agg for investors/deals to eliminate N+1 queries.
  */
 export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDataPayload>> {
-  if (!pool) {
-    return { success: true, isMockFallback: true };
-  }
-
   try {
     // 1. Fetch HQ Balance
     const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
@@ -236,7 +256,26 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
     }));
 
-    const dealTxRes = await query('SELECT * FROM deal_transactions ORDER BY date DESC');
+    const dealTxRes = await query(`
+      SELECT dt.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', dtp.id,
+              'dealTransactionId', dtp.deal_transaction_id,
+              'investorId', dtp.investor_id,
+              'investorName', dtp.investor_name,
+              'payoutAmount', dtp.payout_amount,
+              'createdAt', dtp.created_at
+            )
+          ) FILTER (WHERE dtp.id IS NOT NULL),
+          '[]'::json
+        ) as payouts
+      FROM deal_transactions dt
+      LEFT JOIN deal_transaction_payouts dtp ON dtp.deal_transaction_id = dt.id
+      GROUP BY dt.id
+      ORDER BY dt.date DESC
+    `);
     const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) => ({
       id: r.id,
       date: r.date ? new Date(r.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
@@ -255,7 +294,16 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       managementProfit: parseFloat(r.management_profit || '0'),
       fixOrUnfix: r.fix_or_unfix,
       marginDeposit: parseFloat(r.margin_deposit || '0'),
+      marginDeposit: parseFloat(r.margin_deposit || '0'),
       premiumDiscount: parseFloat(r.premium_discount || '0'),
+      payouts: (r.payouts as Array<any>).map((p: any) => ({
+        id: p.id,
+        dealTransactionId: p.dealTransactionId,
+        investorId: p.investorId,
+        investorName: p.investorName,
+        payoutAmount: parseFloat(p.payoutAmount),
+        createdAt: p.createdAt,
+      })),
     }));
 
     return {
@@ -286,8 +334,6 @@ export async function dbAddBranchAction(
   branch: Branch,
   allocationTxn: Transaction
 ): Promise<DbActionResult<{ branch: Branch; transaction: Transaction }>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
-
   // Validate core fields
   const validation = addBranchSchema.safeParse({
     name: branch.name,
@@ -367,8 +413,6 @@ export async function dbTransferFundsAction(
   notes: string,
   txnId: string
 ): Promise<DbActionResult<{ transaction: Transaction; hqBalanceUpdate?: number }>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
-
   // Validate inputs
   const validation = transferFundsSchema.safeParse({ fromId, toId, amount, notes });
   if (!validation.success) {
@@ -441,8 +485,6 @@ export async function dbTransferFundsAction(
  * Creates an invoice.
  */
 export async function dbAddInvoiceAction(invoice: Invoice): Promise<DbActionResult<Invoice>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
-
   // Validate
   const validation = addInvoiceSchema.safeParse({
     clientName: invoice.clientName,
@@ -473,7 +515,7 @@ export async function dbAddInvoiceAction(invoice: Invoice): Promise<DbActionResu
     );
     return { success: true, data: invoice };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error adding invoice:', error);
     return { success: false, error: message };
   }
@@ -486,8 +528,6 @@ export async function dbAddExpenseAction(
   expense: Expense,
   txn: Transaction
 ): Promise<DbActionResult<{ expense: Expense; transaction: Transaction; hqBalanceUpdate?: number }>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
-
   // Validate
   const validation = addExpenseSchema.safeParse({
     date: expense.date,
@@ -549,7 +589,7 @@ export async function dbAddExpenseAction(
     return { success: true, data: { expense, transaction: txn, hqBalanceUpdate: newHqBalance } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error adding expense:', error);
     return { success: false, error: message };
   } finally {
@@ -563,8 +603,6 @@ export async function dbAddExpenseAction(
 export async function dbAddInvestorAction(
   investor: Investor
 ): Promise<DbActionResult<Investor>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
-
   // Validate
   const validation = addInvestorSchema.safeParse({
     name: investor.name,
@@ -637,7 +675,7 @@ export async function dbAddInvestorAction(
     return { success: true, data: investor };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error adding investor:', error);
     return { success: false, error: message };
   } finally {
@@ -651,7 +689,6 @@ export async function dbAddInvestorAction(
 export async function dbUpdateInvestorAction(
   investor: Investor
 ): Promise<DbActionResult<Investor>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
   try {
     await query(
       `UPDATE investors SET
@@ -696,18 +733,53 @@ export async function dbUpdateInvestorAction(
     );
     return { success: true, data: investor };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error updating investor:', error);
     return { success: false, error: message };
   }
 }
 
 /**
+ * Deletes an investor. Fails if the investor is linked to deals.
+ */
+export async function dbDeleteInvestorAction(
+  id: string
+): Promise<DbActionResult<{ id: string }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Check if investor is part of any deal
+    const checkRes = await client.query(
+      `SELECT COUNT(*) FROM deal_investors WHERE investor_id = $1`,
+      [id]
+    );
+    if (parseInt(checkRes.rows[0].count, 10) > 0) {
+      throw new Error('Cannot delete investor because they are involved in active deals or groups.');
+    }
+
+    // Delete the investor
+    await client.query(`DELETE FROM investors WHERE id = $1`, [id]);
+
+    await client.query('COMMIT');
+    return { success: true, data: { id } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = formatPgError(error);
+    console.error('Error deleting investor:', error);
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+
+/**
  * Creates a deal and inserts associated participant investors.
  */
 export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
-
   // Validate
   const validation = addDealSchema.safeParse({
     name: deal.name,
@@ -738,8 +810,8 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
         deal.amount,
         deal.totalInvestment,
         deal.balance,
-        deal.toBranchId,
-        deal.toBranchName,
+        deal.toBranchId || null,
+        deal.toBranchName || 'Group Entity',
         deal.status,
         deal.groupName || 'General',
         deal.totalPL || 0,
@@ -765,7 +837,7 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
     return { success: true, data: deal };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error adding deal:', error);
     return { success: false, error: message };
   } finally {
@@ -777,8 +849,6 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
  * Updates an existing deal and replaces its associated participant investors.
  */
 export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Deal>> {
-  if (!pool) return { success: false, error: 'Database not connected.' };
-
   // Validate
   const validation = updateDealSchema.safeParse(deal);
   if (!validation.success) {
@@ -811,8 +881,8 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         deal.amount,
         deal.totalInvestment,
         deal.balance,
-        deal.toBranchId,
-        deal.toBranchName,
+        deal.toBranchId || null,
+        deal.toBranchName || 'Group Entity',
         deal.status,
         deal.groupName || 'General',
         deal.totalPL || 0,
@@ -842,7 +912,7 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
     return { success: true, data: deal };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error updating deal:', error);
     return { success: false, error: message };
   } finally {
@@ -906,7 +976,7 @@ export async function dbAddDealTransactionAction(
     return { success: true, data: txn };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error adding deal transaction:', error);
     return { success: false, error: message };
   } finally {
@@ -966,12 +1036,28 @@ export async function dbUpdateDealTransactionAction(
       [totalPL, txn.dealId]
     );
 
+    // If there are payouts provided and the deal is fixed, insert them
+    if (txn.fixOrUnfix === 'fixed' && txn.payouts && txn.payouts.length > 0) {
+      // Clear any existing payouts for this transaction
+      await client.query(
+        `DELETE FROM deal_transaction_payouts WHERE deal_transaction_id = $1`,
+        [txn.id]
+      );
+      
+      for (const p of txn.payouts) {
+        await client.query(
+          `INSERT INTO deal_transaction_payouts (id, deal_transaction_id, investor_id, investor_name, payout_amount)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [p.id, p.dealTransactionId, p.investorId, p.investorName, p.payoutAmount]
+        );
+      }
+    }
 
     await client.query('COMMIT');
     return { success: true, data: txn };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error updating deal transaction:', error);
     return { success: false, error: message };
   } finally {
@@ -1013,7 +1099,7 @@ export async function dbDeleteDealTransactionAction(
     return { success: true, data: { id, dealId } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error deleting deal transaction:', error);
     return { success: false, error: message };
   } finally {
@@ -1050,7 +1136,7 @@ export async function dbAddDealExpensesAction(
     return { success: true, data: inserted };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error adding deal transaction expenses:', error);
     return { success: false, error: message };
   } finally {
@@ -1086,7 +1172,7 @@ export async function dbFetchDealExpensesAction(
 
     return { success: true, data };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error fetching deal transaction expenses:', error);
     return { success: false, error: message };
   }
@@ -1104,7 +1190,7 @@ export async function dbDeleteDealExpenseAction(
     await query(`DELETE FROM deal_transaction_expenses WHERE id = $1`, [id]);
     return { success: true, data: { id } };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error deleting deal transaction expense:', error);
     return { success: false, error: message };
   }
@@ -1129,7 +1215,7 @@ export async function dbDeleteDealAction(
     return { success: true, data: { id } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
-    const message = error instanceof Error ? error.message : 'Database error.';
+    const message = formatPgError(error);
     console.error('Error deleting deal:', error);
     return { success: false, error: message };
   } finally {

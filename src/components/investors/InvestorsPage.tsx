@@ -723,16 +723,19 @@ function AddInvestorModal({
 function EditInvestorModal({
   open,
   onClose,
-  branches,
   investor,
+  branches,
   updateInvestor,
 }: {
   open: boolean;
   onClose: () => void;
-  branches: Branch[];
   investor: Investor;
+  branches: Branch[];
   updateInvestor: (investor: Investor) => void;
 }) {
+  const { deleteInvestor, deals } = useApp();
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [name, setName] = useState(investor.name);
   const [email, setEmail] = useState(investor.email);
   const [phone, setPhone] = useState(investor.phone);
@@ -792,20 +795,43 @@ function EditInvestorModal({
     onClose();
   };
 
+  const hasDeals = deals.some(d => d.investors.some(inv => inv.investorId === investor.id));
+
+  const handleDelete = async () => {
+    if (hasDeals) return;
+    if (confirm(`Are you sure you want to delete ${investor.name}? This action cannot be undone.`)) {
+      setIsDeleting(true);
+      const success = await deleteInvestor(investor.id);
+      setIsDeleting(false);
+      if (success) onClose();
+    }
+  };
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="Edit investor details"
       footer={
-        <>
-          <button type="button" className={btnSecondary} onClick={onClose}>
-            Cancel
+        <div className="flex w-full items-center justify-between gap-4">
+          <button 
+            type="button" 
+            className={`px-4 py-2 text-sm font-bold rounded-xl border transition-colors ${hasDeals ? 'border-slate-200 text-slate-400 cursor-not-allowed bg-slate-50' : 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300'}`}
+            onClick={hasDeals ? undefined : handleDelete}
+            disabled={hasDeals || isDeleting}
+            title={hasDeals ? "Cannot delete investor because they are involved in active deals or groups." : "Delete this investor"}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Investor'}
           </button>
-          <button type="button" className={btnPrimary} onClick={handleSubmit}>
-            Save changes
-          </button>
-        </>
+          <div className="flex items-center gap-3">
+            <button type="button" className={btnSecondary} onClick={onClose}>
+              Cancel
+            </button>
+            <button type="button" className={btnPrimary} onClick={handleSubmit}>
+              Save changes
+            </button>
+          </div>
+        </div>
       }
     >
       <p className="mb-5 text-sm font-medium text-slate-500">Modify the contact, identity, status, or portfolio assignment for this investor.</p>

@@ -33,9 +33,6 @@ export default function EditDealModal({
 
   const [amountStr, setAmountStr] = useState('');
   const [managerShareStr, setManagerShareStr] = useState('20');
-  const [toBranchId, setToBranchId] = useState('');
-  const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
-  const [customEntity, setCustomEntity] = useState('');
   const [status, setStatus] = useState<DealStatus>('active');
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
@@ -53,31 +50,25 @@ export default function EditDealModal({
       
 
       setAmountStr(deal.amount.toString());
-      
-      if (deal.toBranchId.startsWith('custom-')) {
-        setTargetType('custom');
-        setToBranchId('');
-        setCustomEntity(deal.toBranchName);
-      } else {
-        setTargetType('branch');
-        setToBranchId(deal.toBranchId);
-        setCustomEntity('');
-      }
+      setAmountStr(deal.amount.toString());
       setStatus(deal.status);
       setManagerShareStr(deal.managerShare?.toString() ?? '20');
       setLeadName(deal.leadName || '');
       setLeadPhone(deal.leadPhone || '');
       setLeadEmail(deal.leadEmail || '');
       setLeadAddress(deal.leadAddress || '');
-      setDealInvestors(
-        deal.investors.map(inv => ({
+      
+      if (deal.investors && deal.investors.length > 0) {
+        setDealInvestors(deal.investors.map(inv => ({
           investorId: inv.investorId,
-          percentageStr: deal.amount > 0 ? ((inv.amount / deal.amount) * 100).toFixed(2).replace(/\.00$/, '') : '0',
+          percentageStr: deal.amount > 0 ? ((inv.amount / deal.amount) * 100).toFixed(2).replace(/\.00$/, '') : '',
           amountStr: inv.amount.toString(),
-
           inputMode: 'percentage' as const,
-        }))
-      );
+        })));
+      } else {
+        setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
+      }
+      
       if (deal.date) {
         const d = new Date(deal.date);
         const tzoffset = d.getTimezoneOffset() * 60000;
@@ -91,16 +82,20 @@ export default function EditDealModal({
     }
   }, [deal, open]);
 
+  const parseSafeNumber = (val: string | number) => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const parsed = parseFloat(val.replace(/,/g, ''));
+    return isNaN(parsed) ? 0 : parsed;
+  };
 
-
-  const dealAmount = Number(amountStr) || 0;
+  const dealAmount = parseSafeNumber(amountStr);
 
   const totalInvestment = useMemo(() => {
     return dealInvestors.reduce((acc, inv) => {
       if (inv.inputMode === 'amount') {
-        return acc + (Number(inv.amountStr) || 0);
+        return acc + parseSafeNumber(inv.amountStr);
       }
-      return acc + ((Number(inv.percentageStr) || 0) / 100) * dealAmount;
+      return acc + (parseSafeNumber(inv.percentageStr) / 100) * dealAmount;
     }, 0);
   }, [dealInvestors, dealAmount]);
 
@@ -127,11 +122,11 @@ export default function EditDealModal({
     const newInvestors = [...dealInvestors];
     const inv = newInvestors[index];
     if (inv.inputMode === 'percentage') {
-      const pct = Number(inv.percentageStr) || 0;
+      const pct = parseSafeNumber(inv.percentageStr);
       inv.amountStr = dealAmount > 0 ? ((pct / 100) * dealAmount).toFixed(2).replace(/\.00$/, '') : '';
       inv.inputMode = 'amount';
     } else {
-      const amt = Number(inv.amountStr) || 0;
+      const amt = parseSafeNumber(inv.amountStr);
       inv.percentageStr = dealAmount > 0 ? ((amt / dealAmount) * 100).toFixed(2).replace(/\.00$/, '') : '';
       inv.inputMode = 'percentage';
     }
@@ -143,33 +138,32 @@ export default function EditDealModal({
 
     if (!groupName.trim()) return setError('Group Name is required.');
     if (dealAmount <= 0) return setError('Group capital must be greater than zero.');
+    if (dealAmount <= 0) return setError('Group capital must be greater than zero.');
 
-    const targetBranch = targetType === 'branch' ? branches.find(b => b.id === toBranchId) : null;
-    if (targetType === 'branch' && !targetBranch) return setError('Selected branch not found.');
-    if (targetType === 'custom' && !customEntity.trim()) return setError('Custom entity name is required.');
-
-    const parsedManagerShare = Number(managerShareStr);
+    const parsedManagerShare = parseSafeNumber(managerShareStr);
     if (isNaN(parsedManagerShare) || parsedManagerShare < 0 || parsedManagerShare > 100) {
       return setError('Manager share must be between 0 and 100.');
     }
 
     // Validate investors
     const validInvestors: DealInvestor[] = [];
+    let sumPercentage = 0;
+
     for (let i = 0; i < dealInvestors.length; i++) {
       const { investorId, percentageStr, amountStr: invAmountStr, inputMode } = dealInvestors[i];
       if (!investorId) continue; // skip empty rows
 
       let invAmount: number;
       if (inputMode === 'amount') {
-        invAmount = Number(invAmountStr) || 0;
+        invAmount = parseSafeNumber(invAmountStr);
         if (invAmount <= 0) return setError(`Amount for investor row ${i + 1} must be greater than zero.`);
+        sumPercentage += (invAmount / dealAmount) * 100;
       } else {
-        const invPercentage = Number(percentageStr);
+        const invPercentage = parseSafeNumber(percentageStr);
         if (invPercentage <= 0 || invPercentage > 100) return setError(`Percentage for investor row ${i + 1} must be between 0 and 100.`);
         invAmount = (invPercentage / 100) * dealAmount;
+        sumPercentage += invPercentage;
       }
-
-
 
       const investor = investors.find(inv => inv.id === investorId);
       if (!investor) return setError(`Investor not found for row ${i + 1}.`);
@@ -185,11 +179,14 @@ export default function EditDealModal({
 
     if (validInvestors.length === 0) return setError('At least one investor must be added.');
 
+    // Ensure sum matches 100% exactly (with a small floating point tolerance)
+    if (Math.abs(sumPercentage - 100) > 0.01) {
+      return setError(`Total investor share must equal exactly 100%. Currently it is ${sumPercentage.toFixed(2)}%.`);
+    }
+
     // Ensure no duplicates
     const uniqueIds = new Set(validInvestors.map(v => v.investorId));
     if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
-
-    // Removed original targetBranch check since it's handled above
 
     if (!date) return setError('Creation date is required.');
 
@@ -200,10 +197,10 @@ export default function EditDealModal({
       amount: dealAmount,
       goldVolume: 0,
       investors: validInvestors,
-      totalInvestment,
-      balance,
-      toBranchId: targetType === 'branch' ? toBranchId : (deal.toBranchId.startsWith('custom-') ? deal.toBranchId : `custom-${Date.now()}`),
-      toBranchName: targetType === 'branch' ? targetBranch!.name : customEntity.trim(),
+      totalInvestment: dealAmount,
+      balance: 0,
+      toBranchId: undefined,
+      toBranchName: undefined,
       status,
       managerShare: parsedManagerShare,
       leadName: leadName.trim(),

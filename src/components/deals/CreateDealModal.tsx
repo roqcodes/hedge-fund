@@ -27,9 +27,6 @@ export default function CreateDealModal({
 
   const [groupName, setGroupName] = useState('');
   const [amountStr, setAmountStr] = useState('');
-  const [toBranchId, setToBranchId] = useState('');
-  const [targetType, setTargetType] = useState<'branch' | 'custom'>('branch');
-  const [customEntity, setCustomEntity] = useState('');
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
@@ -44,15 +41,21 @@ export default function CreateDealModal({
     return new Date(d.getTime() - tzoffset).toISOString().slice(0, 16);
   });
 
-  const dealAmount = Number(amountStr) || 0;
+  const parseSafeNumber = (val: string | number) => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const parsed = parseFloat(val.replace(/,/g, ''));
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  const dealAmount = parseSafeNumber(amountStr);
 
   // Calculate total investment
   const totalInvestment = useMemo(() => {
     return dealInvestors.reduce((acc, inv) => {
       if (inv.inputMode === 'amount') {
-        return acc + (Number(inv.amountStr) || 0);
+        return acc + parseSafeNumber(inv.amountStr);
       }
-      return acc + ((Number(inv.percentageStr) || 0) / 100) * dealAmount;
+      return acc + (parseSafeNumber(inv.percentageStr) / 100) * dealAmount;
     }, 0);
   }, [dealInvestors, dealAmount]);
 
@@ -81,12 +84,12 @@ export default function CreateDealModal({
     const inv = newInvestors[index];
     if (inv.inputMode === 'percentage') {
       // Convert percentage to amount
-      const pct = Number(inv.percentageStr) || 0;
+      const pct = parseSafeNumber(inv.percentageStr);
       inv.amountStr = dealAmount > 0 ? ((pct / 100) * dealAmount).toFixed(2).replace(/\.00$/, '') : '';
       inv.inputMode = 'amount';
     } else {
       // Convert amount to percentage
-      const amt = Number(inv.amountStr) || 0;
+      const amt = parseSafeNumber(inv.amountStr);
       inv.percentageStr = dealAmount > 0 ? ((amt / dealAmount) * 100).toFixed(2).replace(/\.00$/, '') : '';
       inv.inputMode = 'percentage';
     }
@@ -102,18 +105,22 @@ export default function CreateDealModal({
 
     // Validate investors
     const validInvestors: DealInvestor[] = [];
+    let sumPercentage = 0;
+
     for (let i = 0; i < dealInvestors.length; i++) {
       const { investorId, percentageStr, amountStr: invAmountStr, inputMode } = dealInvestors[i];
       if (!investorId) continue; // skip empty rows
 
       let invAmount: number;
       if (inputMode === 'amount') {
-        invAmount = Number(invAmountStr) || 0;
+        invAmount = parseSafeNumber(invAmountStr);
         if (invAmount <= 0) return setError(`Amount for investor row ${i + 1} must be greater than zero.`);
+        sumPercentage += (invAmount / dealAmount) * 100;
       } else {
-        const invPercentage = Number(percentageStr);
+        const invPercentage = parseSafeNumber(percentageStr);
         if (invPercentage <= 0 || invPercentage > 100) return setError(`Percentage for investor row ${i + 1} must be between 0 and 100.`);
         invAmount = (invPercentage / 100) * dealAmount;
+        sumPercentage += invPercentage;
       }
 
       const investor = investors.find(inv => inv.id === investorId);
@@ -129,6 +136,11 @@ export default function CreateDealModal({
 
     if (validInvestors.length === 0) return setError('At least one investor must be added.');
 
+    // Ensure sum matches 100% exactly (with a small floating point tolerance)
+    if (Math.abs(sumPercentage - 100) > 0.01) {
+      return setError(`Total investor share must equal exactly 100% or equal the Group Capital exactly. Currently it is ${sumPercentage.toFixed(2)}%.`);
+    }
+
     // Ensure no duplicates
     const uniqueIds = new Set(validInvestors.map(v => v.investorId));
     if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
@@ -138,10 +150,8 @@ export default function CreateDealModal({
       groupName: groupName.trim(),
       amount: dealAmount,
       investors: validInvestors,
-      totalInvestment,
-      balance,
-      toBranchId: `custom-${Date.now()}`,
-      toBranchName: 'Unassigned',
+      totalInvestment: dealAmount, // Explicitly force totalInvestment to match dealAmount due to 100% validation
+      balance: 0,
       status: 'active',
       totalPL: 0,
       expense: 0,
@@ -157,9 +167,6 @@ export default function CreateDealModal({
     // Reset and close
     setGroupName('');
     setAmountStr('');
-    setToBranchId('');
-    setTargetType('branch');
-    setCustomEntity('');
     setLeadName('');
     setLeadPhone('');
     setLeadEmail('');

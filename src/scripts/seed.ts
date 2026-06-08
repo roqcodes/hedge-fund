@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
-import { branches } from '../data/mockData';
 
 // 1. Manually parse `.env` to load connection credentials
 function loadEnv() {
@@ -53,7 +52,7 @@ async function runSeed() {
     console.log('Tables initialized successfully.');
 
     // 3. Clear all existing data to ensure a clean slate
-    console.log('Clearing old mock data from all tables...');
+    console.log('Clearing old data from all tables...');
     await client.query(
       `TRUNCATE TABLE 
         hq_balance, 
@@ -78,33 +77,8 @@ async function runSeed() {
        ON CONFLICT (id) DO NOTHING;`
     );
 
-    // 5. Seed Branches
-    console.log(`Seeding ${branches.length} branches...`);
-    for (const b of branches) {
-      await client.query(
-        `INSERT INTO branches (id, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, closing_balance, daily_pl, status, last_activity, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-        [
-          b.id,
-          b.name,
-          b.location,
-          b.managerName,
-          b.cashBalance,
-          b.goldBalance,
-          b.currentBalance,
-          b.openingBalance,
-          b.closingBalance,
-          b.dailyPL,
-          b.status,
-          b.lastActivity,
-          b.createdAt,
-        ]
-      );
-    }
-    console.log('Branches seeded successfully.');
-
     console.log('════════════════════════════════════════════════');
-    console.log('🎉 DATABASE RESET & BRANCHES SEEDED SUCCESSFULLY!');
+    console.log('🎉 DATABASE RESET & HQ TREASURY INITIALIZED SUCCESSFULLY!');
     console.log('════════════════════════════════════════════════');
   } catch (error) {
     console.error('Seeding encountered an error:', error);
