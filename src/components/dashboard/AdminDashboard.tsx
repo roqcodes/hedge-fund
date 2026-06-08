@@ -490,7 +490,7 @@ export default function AdminDashboard() {
       <div className={pageHeader}>
         <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className={pageTitle}>Executive Dashboard</h2>
+            <h2 className={pageTitle}>Dashboard</h2>
             <div className="mt-1 flex items-center gap-2">
               <span
                 className="size-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(15,169,88,0.45)] animate-[pulse-green_2s_infinite]"
@@ -509,8 +509,8 @@ export default function AdminDashboard() {
                 type="button"
                 onClick={() => setDateRange(opt.value)}
                 className={`rounded-[14px] px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all duration-300 ${dateRange === opt.value
-                    ? 'bg-white text-accent shadow-surface ring-1 ring-slate-200/50'
-                    : 'text-slate-500 hover:text-slate-900'
+                  ? 'bg-white text-accent shadow-surface ring-1 ring-slate-200/50'
+                  : 'text-slate-500 hover:text-slate-900'
                   }`}
               >
                 {opt.label}

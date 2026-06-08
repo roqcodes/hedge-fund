@@ -96,6 +96,31 @@ export default function CreateDealModal({
     setDealInvestors(newInvestors);
   };
 
+  const isDirty = useMemo(() => {
+    return (
+      groupName.trim() !== '' ||
+      amountStr.trim() !== '' ||
+      leadName.trim() !== '' ||
+      leadPhone.trim() !== '' ||
+      leadEmail.trim() !== '' ||
+      leadAddress.trim() !== '' ||
+      dealInvestors.length > 1 ||
+      dealInvestors[0].investorId !== '' ||
+      dealInvestors[0].amountStr !== '' ||
+      dealInvestors[0].percentageStr !== ''
+    );
+  }, [groupName, amountStr, leadName, leadPhone, leadEmail, leadAddress, dealInvestors]);
+
+  const handleClose = () => {
+    if (isDirty) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   const handleSubmit = () => {
     setError('');
 
@@ -182,11 +207,11 @@ export default function CreateDealModal({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Create Group"
       footer={
         <>
-          <button type="button" className={`${btnSecondary}`} onClick={onClose}>
+          <button type="button" className={`${btnSecondary}`} onClick={handleClose}>
             Cancel
           </button>
           <button type="button" className={`${btnPrimary}`} onClick={handleSubmit}>

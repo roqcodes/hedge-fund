@@ -139,6 +139,23 @@ export default function SellDealModal({
     return `${sign}${numStr}`;
   };
 
+  const isDirty = useMemo(() => {
+    if (liveSellRateStr !== (transaction.liveSellRate ? transaction.liveSellRate.toString() : '')) return true;
+    if (conversionRateStr !== '') return true;
+    if (sellPremiumDiscountStr !== (transaction.sellPremiumDiscount ? transaction.sellPremiumDiscount.toString() : '')) return true;
+    return false;
+  }, [liveSellRateStr, conversionRateStr, sellPremiumDiscountStr, transaction]);
+
+  const handleClose = () => {
+    if (isDirty) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   const handleSubmit = async () => {
     setError('');
 
@@ -172,11 +189,11 @@ export default function SellDealModal({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Settle / Sell Deal"
       footer={
         <>
-          <button type="button" className={btnSecondary} onClick={onClose}>
+          <button type="button" className={btnSecondary} onClick={handleClose}>
             Cancel
           </button>
           <button type="button" className={btnPrimary} onClick={handleSubmit}>

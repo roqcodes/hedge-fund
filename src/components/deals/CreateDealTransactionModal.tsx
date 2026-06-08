@@ -151,6 +151,32 @@ export default function CreateDealTransactionModal({
     });
   }, [deal, calculations.pureCostAed, weight]);
 
+  const isDirty = useMemo(() => {
+    if (editTransaction) {
+      if (date !== editTransaction.date.slice(0, 10)) return true;
+      if (dealNum !== editTransaction.deal) return true;
+      if (weightStr !== editTransaction.weight.toString()) return true;
+      if (purchaseCostStr !== editTransaction.pureCostAed.toString()) return true;
+      if (fixOrUnfix !== (editTransaction.fixOrUnfix === 'unfixed' ? 'unfixed' : 'fixed')) return true;
+      return false;
+    } else {
+      if (weightStr !== '') return true;
+      if (purchaseCostStr !== '') return true;
+      if (fixOrUnfix !== 'unfixed') return true;
+      return false;
+    }
+  }, [date, dealNum, weightStr, purchaseCostStr, fixOrUnfix, editTransaction]);
+
+  const handleClose = () => {
+    if (isDirty) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   const handleSubmit = async () => {
     setError('');
 
@@ -192,7 +218,7 @@ export default function CreateDealTransactionModal({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title={editTransaction ? "Edit Deal" : "Add Deal"}
       footer={
         <>
@@ -233,7 +259,7 @@ export default function CreateDealTransactionModal({
             </div>
           )}
           {/* Right side: cancel / save */}
-          <button type="button" className={btnSecondary} onClick={onClose}>
+          <button type="button" className={btnSecondary} onClick={handleClose}>
             Cancel
           </button>
           <button 

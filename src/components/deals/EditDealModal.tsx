@@ -133,6 +133,41 @@ export default function EditDealModal({
     setDealInvestors(newInvestors);
   };
 
+  const isDirty = useMemo(() => {
+    if (!deal) return false;
+    
+    if (groupName !== (deal.groupName || '')) return true;
+    if (amountStr !== deal.amount.toString()) return true;
+    if (status !== deal.status) return true;
+    if (managerShareStr !== (deal.managerShare?.toString() ?? '20')) return true;
+    if (leadName !== (deal.leadName || '')) return true;
+    if (leadPhone !== (deal.leadPhone || '')) return true;
+    if (leadEmail !== (deal.leadEmail || '')) return true;
+    if (leadAddress !== (deal.leadAddress || '')) return true;
+
+    if (deal.investors) {
+      if (dealInvestors.length !== deal.investors.length) return true;
+      for (let i = 0; i < dealInvestors.length; i++) {
+        if (dealInvestors[i].investorId !== deal.investors[i].investorId) return true;
+        if (parseSafeNumber(dealInvestors[i].amountStr) !== deal.investors[i].amount) return true;
+      }
+    } else if (dealInvestors.length > 0 && dealInvestors[0].investorId !== '') {
+      return true;
+    }
+
+    return false;
+  }, [deal, groupName, amountStr, status, managerShareStr, leadName, leadPhone, leadEmail, leadAddress, dealInvestors]);
+
+  const handleClose = () => {
+    if (isDirty) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   const handleSubmit = () => {
     setError('');
 
@@ -230,7 +265,7 @@ export default function EditDealModal({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Edit Group"
       footer={
         <>
@@ -269,7 +304,7 @@ export default function EditDealModal({
           </div>
 
           <div className="flex gap-2 ml-auto">
-            <button type="button" className={`${btnSecondary}`} onClick={onClose} disabled={isDeleting}>
+            <button type="button" className={`${btnSecondary}`} onClick={handleClose} disabled={isDeleting}>
               Cancel
             </button>
             <button type="button" className={`${btnPrimary}`} onClick={handleSubmit} disabled={isDeleting}>

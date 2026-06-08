@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { DealTransactionExpense } from '@/types';
 import {
   dbAddDealExpensesAction,
@@ -97,13 +97,27 @@ export default function ExpensesModal({
     }
   }, [open, fetchExisting]);
 
+  const isDirty = useMemo(() => {
+    return rows.some((r) => !r.saved && (r.key.trim() !== '' || r.value.trim() !== ''));
+  }, [rows]);
+
+  const handleClose = useCallback(() => {
+    if (isDirty) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
   // ── keyboard close ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  }, [open, handleClose]);
 
   if (!open) return null;
 
@@ -194,7 +208,7 @@ export default function ExpensesModal({
     <div
       ref={backdropRef}
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-white/30 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === backdropRef.current) onClose(); }}
+      onClick={(e) => { if (e.target === backdropRef.current) handleClose(); }}
     >
       <div
         className="relative w-full max-w-xl rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl flex flex-col"
@@ -216,7 +230,7 @@ export default function ExpensesModal({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="flex size-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
             aria-label="Close"
           >
@@ -344,7 +358,7 @@ export default function ExpensesModal({
         <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
           >
             Close
