@@ -294,7 +294,6 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       managementProfit: parseFloat(r.management_profit || '0'),
       fixOrUnfix: r.fix_or_unfix,
       marginDeposit: parseFloat(r.margin_deposit || '0'),
-      marginDeposit: parseFloat(r.margin_deposit || '0'),
       premiumDiscount: parseFloat(r.premium_discount || '0'),
       payouts: (r.payouts as Array<any>).map((p: any) => ({
         id: p.id,
