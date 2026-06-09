@@ -25,7 +25,7 @@ export default function DealTransactionsTable({
   const dealId = params?.id as string || '1';
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortField, setSortField] = useState<SortField>('deal');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [activeTab, setActiveTab] = useState<'all' | 'unsettled' | 'settled'>('all');
 
@@ -85,8 +85,8 @@ export default function DealTransactionsTable({
       let valB = b[sortField] ?? '';
 
       if (typeof valA === 'string' && typeof valB === 'string') {
-        valA = valA.toLowerCase();
-        valB = valB.toLowerCase();
+        const compare = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        return sortDirection === 'asc' ? compare : -compare;
       }
 
       if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
@@ -156,25 +156,51 @@ export default function DealTransactionsTable({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search deals..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm`}
-            />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex gap-2 w-full">
+            <div className="relative flex-1">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search deals..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm w-full`}
+              />
+            </div>
+            <button className="flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900 sm:w-auto flex-shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M6 12h12m-9 6h6" />
+              </svg>
+            </button>
           </div>
-          <button className="flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18M6 12h12m-9 6h6" />
-            </svg>
-          </button>
+          <div className="flex md:hidden items-center gap-2">
+            <select
+              value={sortField as string}
+              onChange={(e) => handleSort(e.target.value as SortField)}
+              className={`${formInput} !py-2 !text-sm flex-1 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10`}
+            >
+              <option value="deal">Sort by: Deal Number</option>
+              <option value="date">Sort by: Date & Time</option>
+              <option value="weight">Sort by: Volume</option>
+              <option value="pureCostAed">Sort by: Purchase Cost</option>
+              <option value="expenses">Sort by: Expense</option>
+              <option value="salesAed">Sort by: Sales</option>
+              <option value="grossProfit">Sort by: P&L Gross</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+              className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 ${sortDirection === 'desc' ? 'rotate-180' : ''}`}>
+                <path d="M12 5v14M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 

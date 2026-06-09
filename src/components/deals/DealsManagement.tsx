@@ -271,7 +271,7 @@ export default function DealsManagement() {
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
           <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-lg font-bold text-slate-900">All Groups</h3>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative flex-1">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <circle cx="11" cy="11" r="8" />
@@ -284,6 +284,30 @@ export default function DealsManagement() {
                   onChange={e => setSearchTerm(e.target.value)}
                   className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm`}
                 />
+              </div>
+              <div className="flex md:hidden items-center gap-2">
+                <select
+                  value={sortField}
+                  onChange={(e) => handleSort(e.target.value as SortField)}
+                  className={`${formInput} !py-2 !text-sm flex-1 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10`}
+                >
+                  <option value="groupName">Sort by: Group Name</option>
+                  <option value="amount">Sort by: Capital</option>
+                  <option value="totalDeals">Sort by: Total Deals</option>
+                  <option value="completedDeals">Sort by: Settled Deals</option>
+                  <option value="onTransitDeals">Sort by: Unsettled Deals</option>
+                  <option value="grossProfit">Sort by: Gross P&L</option>
+                  <option value="status">Sort by: Status</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 ${sortDirection === 'desc' ? 'rotate-180' : ''}`}>
+                    <path d="M12 5v14M5 12l7-7 7 7" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
