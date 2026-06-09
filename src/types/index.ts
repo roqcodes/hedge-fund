@@ -133,6 +133,7 @@ export interface Investor {
   lastActivity: string;
   assignedBranchId?: string;
   assignedBranchName?: string;
+  isGlobal?: boolean; // True if the investor can be added to any branch's deals
   preferredContact: 'email' | 'phone' | 'whatsapp';
   notes?: string;
   depositHistory: InvestorDeposit[];
@@ -156,7 +157,8 @@ export interface Deal {
   investors: DealInvestor[];
   totalInvestment: number;
   balance: number;
-  toBranchId?: string;
+  managingBranchId?: string; // The branch that owns/originated the deal
+  toBranchId?: string; // Legacy/Display
   toBranchName?: string;
   status: DealStatus;
   date: string;

@@ -1,5 +1,6 @@
 'use server';
 
+import { getCurrentUserAction } from '@/app/actions/auth';
 import { query, pool } from '@/lib/db';
 import {
   Branch,
@@ -26,7 +27,6 @@ export interface DbActionResult<T> {
   success: boolean;
   data?: T;
   error?: string;
-  isMockFallback?: boolean;
 }
 
 /**
@@ -188,6 +188,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
       assignedBranchId: r.assigned_branch_id || undefined,
       assignedBranchName: r.assigned_branch_name || undefined,
+      isGlobal: r.is_global,
       preferredContact: r.preferred_contact,
       notes: r.notes || undefined,
       depositHistory: (r.deposits as Array<{
@@ -252,6 +253,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       expense: parseFloat(r.expense),
       managerShare: parseFloat(r.manager_share || '20.00'),
       goldVolume: parseFloat(r.gold_volume || '0.00'),
+      managingBranchId: r.managing_branch_id || undefined,
       status: r.status,
       date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
     }));
@@ -305,18 +307,44 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       })),
     }));
 
+    const userRes = await getCurrentUserAction();
+    const currentUser = userRes.success ? userRes.data : null;
+
+    let finalBranches = branches;
+    let finalTransactions = transactions;
+    let finalExpenses = expenses;
+    let finalInvoices = invoices;
+    let finalInvestors = investors;
+    let finalDeals = deals;
+    let finalDealTransactions = dealTransactions;
+
+    if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
+      const bId = currentUser.branchId;
+      const branchName = branches.find(b => b.id === bId)?.name || bId;
+      
+      finalBranches = branches.filter(b => b.id === bId);
+      finalTransactions = transactions.filter(t => t.to === branchName || t.from === branchName);
+      finalExpenses = expenses.filter(e => e.branchId === bId);
+      finalInvoices = invoices.filter(i => i.branchId === bId);
+      finalInvestors = investors.filter(i => i.assignedBranchId === bId || i.isGlobal);
+      finalDeals = deals.filter(d => d.managingBranchId === bId);
+      
+      const dealIds = new Set(finalDeals.map(d => d.id));
+      finalDealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
+    }
+
     return {
       success: true,
       data: {
-        branches,
-        transactions,
-        expenses,
-        invoices,
+        branches: finalBranches,
+        transactions: finalTransactions,
+        expenses: finalExpenses,
+        invoices: finalInvoices,
         notifications,
-        investors,
-        deals,
+        investors: finalInvestors,
+        deals: finalDeals,
         hqBalance,
-        dealTransactions,
+        dealTransactions: finalDealTransactions,
       },
     };
   } catch (error: unknown) {
@@ -631,8 +659,8 @@ export async function dbAddInvestorAction(
 
     // 1. Insert investor
     await client.query(
-      `INSERT INTO investors (id, name, email, phone, nationality, emirates_id, passport_no, address, city, country, cash_deposit, gold_deposit, gold_weight_grams, status, risk_profile, kyc_status, joined_date, last_activity, assigned_branch_id, assigned_branch_name, preferred_contact, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+      `INSERT INTO investors (id, name, email, phone, nationality, emirates_id, passport_no, address, city, country, cash_deposit, gold_deposit, gold_weight_grams, status, risk_profile, kyc_status, joined_date, last_activity, assigned_branch_id, assigned_branch_name, preferred_contact, is_global, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
       [
         investor.id,
         investor.name,
@@ -655,6 +683,7 @@ export async function dbAddInvestorAction(
         investor.assignedBranchId || null,
         investor.assignedBranchName || null,
         investor.preferredContact,
+        investor.isGlobal || false,
         investor.notes || null,
       ]
     );
@@ -707,8 +736,9 @@ export async function dbUpdateInvestorAction(
         assigned_branch_id = $14,
         assigned_branch_name = $15,
         preferred_contact = $16,
-        notes = $17
-       WHERE id = $18`,
+        is_global = $17,
+        notes = $18
+       WHERE id = $19`,
       [
         investor.name,
         investor.email,
@@ -726,6 +756,7 @@ export async function dbUpdateInvestorAction(
         investor.assignedBranchId || null,
         investor.assignedBranchName || null,
         investor.preferredContact,
+        investor.isGlobal || false,
         investor.notes || null,
         investor.id,
       ]
@@ -801,8 +832,8 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
 
     // 1. Insert deal
     await client.query(
-      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, group_name, total_pl, expense, manager_share, gold_volume, date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, group_name, total_pl, expense, manager_share, gold_volume, managing_branch_id, date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         deal.id,
         deal.name,
@@ -817,6 +848,7 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
         deal.expense || 0,
         deal.managerShare ?? 20,
         deal.goldVolume || 0,
+        deal.managingBranchId || null,
         deal.date,
       ]
     );

@@ -12,8 +12,6 @@ async function test() {
   const res = await fetchInitialDataAction();
   if (!res.success) {
     console.error('FAILED:', res.error);
-  } else if (res.isMockFallback) {
-    console.log('MOCK FALLBACK');
   } else {
     console.log('SUCCESS! Branches:', res.data?.branches.length);
   }

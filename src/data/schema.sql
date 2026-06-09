@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS investors (
     assigned_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE SET NULL,
     assigned_branch_name VARCHAR(255),
     preferred_contact VARCHAR(20) NOT NULL CHECK (preferred_contact IN ('email', 'phone', 'whatsapp')),
+    is_global BOOLEAN NOT NULL DEFAULT FALSE,
     notes TEXT
 );
 
@@ -128,6 +129,7 @@ CREATE TABLE IF NOT EXISTS deals (
     expense DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     manager_share DECIMAL(5, 2) NOT NULL DEFAULT 20.00,
     gold_volume DECIMAL(15, 2) DEFAULT 0.00,
+    managing_branch_id VARCHAR(50),
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

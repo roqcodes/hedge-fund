@@ -2,9 +2,14 @@
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { loginAction } from '@/app/actions/auth';
+import { useRouter } from 'next/navigation';
 
-export default function LoginPage() {
-  const { login } = useApp();
+export default function LoginPage({ branchSlug }: { branchSlug?: string }) {
+  const { login, branches } = useApp();
+  const router = useRouter();
+  
+  const branch = branchSlug ? branches.find((b: any) => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === branchSlug) : null;
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -29,6 +34,14 @@ export default function LoginPage() {
       const res = await loginAction(email, password);
       if (res.success && res.data) {
         login(res.data);
+        const user = res.data;
+        if (user.role === 'branch_manager' && user.branchId) {
+          const branch = branches.find((b: any) => b.id === user.branchId);
+          const slug = branch ? branch.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : user.branchId.toLowerCase();
+          router.push(`/${slug}`);
+        } else {
+          router.push('/');
+        }
       } else {
         setError(res.error || 'Authentication failed. Please try again.');
       }
@@ -61,8 +74,12 @@ export default function LoginPage() {
           <div className="relative mx-auto mb-6 flex size-16 items-center justify-center rounded-[20px] border border-accent/15 bg-white transition duration-300 [box-shadow:0_0_0_1px_rgba(209,20,57,0.08)]">
             <img src="/logo.png" alt="AIBAK Logo" className="size-11 object-contain" />
           </div>
-          <h2 className="mb-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px]">Welcome Back</h2>
-          <p className="text-[15px] font-medium text-slate-500">Sign in to the AIBAK terminal</p>
+          <h2 className="mb-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px]">
+            {branch ? branch.name : 'Welcome Back'}
+          </h2>
+          <p className="text-[15px] font-medium text-slate-500">
+            {branch ? `${branch.location} Portal` : 'Sign in to the AIBAK terminal'}
+          </p>
         </div>
 
         <form className="space-y-6 px-6 pb-10 sm:px-12 sm:pb-12" onSubmit={handleSubmit}>

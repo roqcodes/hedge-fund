@@ -24,7 +24,8 @@ import {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { branches, transactions, getTotalCapital, getNetPL, selectBranch, sidebarOpen, dateRange, setDateRange } = useApp();
+  const { branches, transactions, getTotalCapital, getNetPL, selectBranch, sidebarOpen, dateRange, setDateRange, user, deals } = useApp();
+  const isBranchUser = user?.role === 'branch_manager';
 
   const dateOptions = [
     { value: 'today', label: 'Today' },
@@ -359,7 +360,7 @@ export default function AdminDashboard() {
       ctx.fillText('No revenue vs expense data yet', w / 2, h / 2);
       return;
     }
-    const maxV = Math.max(...revenueExpenseData.revenue, ...revenueExpenseData.expense) * 1.1;
+    const maxV = Math.max(1, Math.max(...revenueExpenseData.revenue, ...revenueExpenseData.expense)) * 1.1;
 
     ctx.strokeStyle = 'rgba(0,0,0,0.04)';
     ctx.lineWidth = 1;
@@ -572,21 +573,37 @@ export default function AdminDashboard() {
             color="var(--info)"
             bgColor="var(--info-light)"
           />
-          <KPICard
-            label="Active Branches"
-            value={`${activeBranches} / ${branches.length}`}
-            subValue="All operational"
-            icon={
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <line x1="3" y1="9" x2="21" y2="9" />
-                <line x1="9" y1="21" x2="9" y2="9" />
-              </svg>
-            }
-            color="#8B5CF6"
-            bgColor="rgba(139, 92, 246, 0.1)"
-            onClick={() => router.push('/branches')}
-          />
+          {!isBranchUser ? (
+            <KPICard
+              label="Active Branches"
+              value={`${activeBranches} / ${branches.length}`}
+              subValue="All operational"
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="3" y1="9" x2="21" y2="9" />
+                  <line x1="9" y1="21" x2="9" y2="9" />
+                </svg>
+              }
+              color="#8B5CF6"
+              bgColor="rgba(139, 92, 246, 0.1)"
+              onClick={() => router.push('/branches')}
+            />
+          ) : (
+            <KPICard
+              label="Active Deals"
+              value={`${deals.length}`}
+              subValue="Current operations"
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              }
+              color="#8B5CF6"
+              bgColor="rgba(139, 92, 246, 0.1)"
+              onClick={() => router.push('/group')}
+            />
+          )}
         </div>
       </div>
 

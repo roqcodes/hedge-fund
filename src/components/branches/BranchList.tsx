@@ -6,6 +6,8 @@ import { useApp } from '@/context/AppContext';
 import { formatAED, formatDateTime } from '@/data/mockData';
 import { Branch, Transaction } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
+import { fetchCognitoUsersAction, createCognitoUserAction, updateCognitoUserAttributesAction, CognitoUser } from '@/app/actions/cognitoActions';
+import { validatePassword, PasswordRequirements } from '@/components/users/UserModals';
 import {
   btnGhost,
   btnPrimary,
@@ -24,8 +26,58 @@ import {
 } from '@/lib/ui';
 
 export default function BranchList() {
-  const { branches, selectBranch, selectedBranchId, transactions, addBranch } = useApp();
+  const { branches, selectBranch, selectedBranchId, transactions, addBranch, showToast } = useApp();
   const [showCreate, setShowCreate] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [editingUser, setEditingUser] = useState<CognitoUser | null>(null);
+  
+  const [branchUsers, setBranchUsers] = useState<CognitoUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  React.useEffect(() => {
+    if (selectedBranchId) {
+      setLoadingUsers(true);
+      fetchCognitoUsersAction().then(res => {
+        if (res.success && res.data) {
+          setBranchUsers(res.data.filter(u => u.branchId === selectedBranchId));
+        }
+        setLoadingUsers(false);
+      });
+    } else {
+      setBranchUsers([]);
+    }
+  }, [selectedBranchId]);
+
+  const handleAddBranchUser = async (email: string, name: string, passwordRaw: string) => {
+    if (!selectedBranchId) return;
+    const res = await createCognitoUserAction(email, name, 'branch_manager', selectedBranchId, passwordRaw);
+    if (res.success) {
+      setBranchUsers([{
+        username: email,
+        email,
+        name,
+        role: 'branch_manager',
+        branchId: selectedBranchId,
+        status: 'CONFIRMED',
+        created: new Date().toISOString()
+      }, ...branchUsers]);
+      showToast('User added successfully to Cognito!');
+      setShowAddUser(false);
+    } else {
+      showToast(res.error || 'Failed to add user', 'error');
+    }
+  };
+
+  const handleEditBranchUser = async (email: string, newName: string) => {
+    const res = await updateCognitoUserAttributesAction(email, newName);
+    if (res.success) {
+      setBranchUsers(prev => prev.map(u => u.email === email ? { ...u, name: newName } : u));
+      showToast('User updated successfully!');
+      setEditingUser(null);
+    } else {
+      showToast(res.error || 'Failed to update user', 'error');
+    }
+  };
 
   const totalBalance = branches.reduce((acc: number, b: Branch) => acc + b.currentBalance, 0);
   const totalPL = branches.reduce((acc: number, b: Branch) => acc + b.dailyPL, 0);
@@ -36,25 +88,65 @@ export default function BranchList() {
     const b = branches.find((br: Branch) => br.id === selectedBranchId);
     if (!b) return null;
     const branchTxns = transactions.filter((t: Transaction) => t.from === b.name || t.to === b.name).slice(0, 8);
+    const branchSlug = b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const branchUrl = typeof window !== 'undefined' ? `${window.location.origin}/${branchSlug}` : `/${branchSlug}`;
+
     return (
       <>
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
-          <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
-            <button
-              type="button"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-surface-xs transition hover:bg-slate-50 sm:w-auto"
-              onClick={() => selectBranch(null)}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-                <path d="M19 12H5m0 0l7-7m-7 7l7 7" />
-              </svg>
-              Back to Branches
-            </button>
-            <div className="min-w-0">
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{b.name}</h2>
+          <div className="mb-5 flex flex-col items-start justify-between border-b border-slate-200/80 pb-5 sm:flex-row sm:items-end gap-4">
+            <div>
+              <div className="mb-2 flex items-center gap-3">
+                <button
+                  onClick={() => selectBranch(null)}
+                  className="group flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
+                  aria-label="Back to Branches"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h2 className={pageTitle}>{b.name}</h2>
+                <span className={badgeClass(b.status)}>{b.status.toUpperCase()}</span>
+              </div>
               <p className={pageSubtitle}>
                 {b.location} · Managed by {b.managerName}
               </p>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-1.5 border border-slate-200/60 shadow-sm w-full sm:w-auto">
+              <div className="px-3 py-1.5 text-xs font-mono text-slate-500 truncate max-w-[200px] sm:max-w-xs select-all">
+                {branchUrl}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(branchUrl);
+                    showToast('Branch URL copied to clipboard');
+                  }}
+                  className="flex size-8 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm transition-all hover:text-accent hover:shadow-md border border-slate-200/80"
+                  title="Copy Link"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                </button>
+                <a
+                  href={`/${branchSlug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex size-8 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm transition-all hover:text-accent hover:shadow-md border border-slate-200/80"
+                  title="Open in New Tab"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </a>
+              </div>
             </div>
           </div>
 
@@ -147,7 +239,75 @@ export default function BranchList() {
               </div>
             </div>
           </div>
+
+          <div className="mt-8 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
+            <div className="flex flex-col gap-1 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+              <h3 className="text-lg font-extrabold text-slate-900">Branch Users</h3>
+              <button onClick={() => setShowAddUser(true)} className={`${btnPrimary} ${btnSm}`}>
+                Add User
+              </button>
+            </div>
+            <div className="p-0">
+              <div className={tableWrap}>
+                <table className={dataTable}>
+                  <thead>
+                    <tr>
+                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Name & Email</th>
+                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Role</th>
+                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
+                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Created</th>
+                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingUsers ? (
+                      <tr><td colSpan={5} className="text-center py-4 text-sm text-slate-500">Loading users...</td></tr>
+                    ) : branchUsers.length === 0 ? (
+                      <tr><td colSpan={5} className="text-center py-4 text-sm text-slate-500">No users found for this branch.</td></tr>
+                    ) : branchUsers.map(u => (
+                      <tr key={u.email} data-interactive-row>
+                        <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 first:rounded-l-2xl sm:px-5 sm:py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-900">{u.name}</span>
+                            <span className="text-xs text-slate-500">{u.email}</span>
+                          </div>
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">
+                          <span className={badgeClass(u.role === 'branch_manager' ? 'active' : 'pending')}>{u.role}</span>
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                          <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
+                          {formatDateTime(u.created)}
+                        </td>
+                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4">
+                          <button type="button" className={`${btnGhost} ${btnSm} !font-bold`} onClick={() => setEditingUser(u)}>
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
+        <CreateBranchUserModal 
+          open={showAddUser} 
+          onClose={() => setShowAddUser(false)} 
+          onAdd={handleAddBranchUser}
+          branchName={b.name}
+        />
+        {editingUser && (
+          <EditBranchUserModal
+            open={!!editingUser}
+            onClose={() => setEditingUser(null)}
+            onSave={handleEditBranchUser}
+            user={editingUser}
+          />
+        )}
       </>
     );
   }
@@ -337,3 +497,113 @@ function CreateBranchModal({
     </Modal>
   );
 }
+
+function CreateBranchUserModal({
+  open,
+  onClose,
+  onAdd,
+  branchName
+}: {
+  open: boolean;
+  onClose: () => void;
+  onAdd: (email: string, name: string, passwordRaw: string) => Promise<void>;
+  branchName: string;
+}) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!email || !name || !validatePassword(password).isValid) return;
+    setLoading(true);
+    await onAdd(email, name, password);
+    setLoading(false);
+    setEmail('');
+    setName('');
+    setPassword('');
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Add Manager to ${branchName}`}
+      footer={
+        <>
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose} disabled={loading}>
+            Cancel
+          </button>
+          <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={handleSubmit} disabled={loading || !validatePassword(password).isValid}>
+            {loading ? 'Adding...' : 'Create User'}
+          </button>
+        </>
+      }
+    >
+      <div className={formGroup}>
+        <label className={formLabel}>Email / Username</label>
+        <input className={formInput} placeholder="e.g. manager@aibak.com" value={email} onChange={e => setEmail(e.target.value)} disabled={loading} />
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel}>Full Name</label>
+        <input className={formInput} placeholder="e.g. Ahmed Ali" value={name} onChange={e => setName(e.target.value)} disabled={loading} />
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel}>Permanent Password</label>
+        <input type="password" className={formInput} placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
+        <PasswordRequirements pw={password} />
+      </div>
+    </Modal>
+  );
+}
+
+function EditBranchUserModal({
+  open,
+  onClose,
+  onSave,
+  user
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (email: string, newName: string) => Promise<void>;
+  user: CognitoUser;
+}) {
+  const [name, setName] = useState(user.name);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!name.trim()) return;
+    setLoading(true);
+    await onSave(user.email, name);
+    setLoading(false);
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Edit Branch Manager"
+      footer={
+        <>
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose} disabled={loading}>
+            Cancel
+          </button>
+          <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={handleSubmit} disabled={loading}>
+            {loading ? 'Saving...' : 'Save Changes'}
+          </button>
+        </>
+      }
+    >
+      <div className={formGroup}>
+        <label className={formLabel}>Email / Username</label>
+        <input className={formInput} value={user.email} disabled={true} />
+        <p className={formHint}>Emails cannot be changed once created.</p>
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel}>Full Name</label>
+        <input className={formInput} value={name} onChange={e => setName(e.target.value)} disabled={loading} />
+      </div>
+    </Modal>
+  );
+}
+

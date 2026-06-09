@@ -1,5 +1,5 @@
 import 'server-only';
-import { CognitoIdentityProviderClient, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider';
+import { CognitoIdentityProviderClient, InitiateAuthCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { User, UserRole } from '@/types';
@@ -7,18 +7,17 @@ import { env } from '@/lib/env';
 
 const encodedKey = new TextEncoder().encode(env.SESSION_SECRET);
 
-// Initialise the AWS Cognito Client (optional config if env is present)
-let cognitoClient: CognitoIdentityProviderClient | null = null;
-if (env.COGNITO_REGION) {
-  cognitoClient = new CognitoIdentityProviderClient({ region: env.COGNITO_REGION });
-}
+// Initialise the AWS Cognito Client
+const cognitoClient = env.COGNITO_REGION 
+  ? new CognitoIdentityProviderClient({ region: env.COGNITO_REGION })
+  : null;
 
 export interface SessionPayload {
   email: string;
   role: UserRole;
   name: string;
   branchId?: string;
-  idToken?: string; // We can optionally store the ID Token to present to downstream APIs
+  idToken?: string;
   expiresAt: string;
 }
 
@@ -47,83 +46,15 @@ export async function decrypt(session: string | undefined = '') {
   }
 }
 
-/**
- * Parses user attributes from the Cognito ID Token.
- */
-function parseCognitoIdToken(idToken: string): User {
-  try {
-    const base64Url = idToken.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    const decoded = JSON.parse(jsonPayload);
 
-    const email = decoded.email || '';
-    const name = decoded.name || decoded.given_name || email.split('@')[0] || 'User';
-    
-    // Determine role:
-    // 1. Check custom attribute custom:role
-    // 2. Check cognito:groups array
-    // 3. Fallback based on email content or default to admin
-    let role: UserRole = 'admin';
-    if (decoded['custom:role'] === 'branch_manager' || decoded['custom:role'] === 'admin') {
-      role = decoded['custom:role'] as UserRole;
-    } else if (Array.isArray(decoded['cognito:groups'])) {
-      if (decoded['cognito:groups'].includes('Admins')) {
-        role = 'admin';
-      } else if (decoded['cognito:groups'].includes('BranchManagers')) {
-        role = 'branch_manager';
-      }
-    } else if (email.includes('manager')) {
-      role = 'branch_manager';
-    }
-
-    // Determine branchId:
-    // 1. Check custom attribute custom:branchId
-    // 2. Fallback based on email domain or defaults
-    const branchId = decoded['custom:branchId'] || (role === 'branch_manager' ? 'BR014' : undefined);
-
-    return {
-      email,
-      name,
-      role,
-      branchId,
-    };
-  } catch (e) {
-    console.error('Error parsing Cognito ID Token:', e);
-    throw new Error('Invalid token format');
-  }
-}
 
 /**
  * authenticates with AWS Cognito and creates a local secure session.
  */
 export async function authenticateWithCognito(email: string, securityKey: string): Promise<User> {
-  // If Cognito variables are missing, run in Developer Mock Mode for easy setup/dev
-  if (!env.COGNITO_CLIENT_ID || !cognitoClient) {
-    console.warn(
-      'AWS Cognito client config missing. Running in developer mock mode. Configure COGNITO_CLIENT_ID and COGNITO_REGION to run dynamic AWS auth.'
-    );
-    
-    // Simulate AWS latency
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    // Simple dev credential validation
-    if (securityKey.length < 4) {
-      throw new Error('Invalid credentials. Password must be at least 4 characters.');
-    }
-
-    const isManager = email.includes('manager') || email.includes('branch');
-    return {
-      email,
-      name: isManager ? 'Ahmed Al Maktoum' : 'John Doe',
-      role: isManager ? 'branch_manager' : 'admin',
-      branchId: isManager ? 'BR014' : undefined,
-    };
+  // Strict check for AWS Cognito env variables
+  if (!env.COGNITO_CLIENT_ID || !env.COGNITO_REGION || !env.COGNITO_USER_POOL_ID || !cognitoClient) {
+    throw new Error('Configuration Error: AWS Cognito Client ID, User Pool ID, or Region is missing from your .env file. Authentication is securely locked until properly configured.');
   }
 
   try {
@@ -139,7 +70,7 @@ export async function authenticateWithCognito(email: string, securityKey: string
     const response = await cognitoClient.send(command);
 
     if (response.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
-      throw new Error('New Password Required: This account has a temporary password. Please set a permanent password using the AWS CLI (admin-set-user-password) or log in via the Hosted UI once to set your permanent password.');
+      throw new Error('New Password Required: This account has a temporary password. Please set a permanent password via the Superadmin dashboard or Hosted UI.');
     }
 
     if (response.ChallengeName) {
@@ -149,38 +80,46 @@ export async function authenticateWithCognito(email: string, securityKey: string
     const idToken = response.AuthenticationResult?.IdToken;
 
     if (!idToken) {
-      console.error('Cognito authentication response details:', JSON.stringify(response, null, 2));
-      const responseKeys = Object.keys(response).join(', ');
-      const authResultKeys = response.AuthenticationResult 
-        ? Object.keys(response.AuthenticationResult).join(', ') 
-        : 'undefined';
-      throw new Error(`Authentication succeeded but no ID Token was returned by Cognito. Response keys: [${responseKeys}], AuthenticationResult keys: [${authResultKeys}]. Please check server logs for full response object.`);
+      throw new Error('Authentication succeeded but no ID Token was returned by Cognito.');
     }
 
-    // Parse user properties from ID Token
-    const user = parseCognitoIdToken(idToken);
-    return user;
+    // Securely fetch attributes directly from Cognito
+    const userRes = await cognitoClient.send(new AdminGetUserCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: email
+    }));
+
+    const getAttr = (name: string) => userRes.UserAttributes?.find(a => a.Name === name)?.Value;
+    
+    const roleAttr = getAttr('custom:role') as UserRole | undefined;
+    const branchIdAttr = getAttr('custom:branchId');
+    const nameAttr = getAttr('name') || email.split('@')[0];
+
+    if (!roleAttr || (roleAttr !== 'admin' && roleAttr !== 'branch_manager')) {
+      throw new Error('Access Denied: Your account has not been assigned a valid role by an Administrator.');
+    }
+
+    return {
+      email,
+      name: nameAttr,
+      role: roleAttr,
+      branchId: branchIdAttr,
+    };
   } catch (error: unknown) {
     console.error('AWS Cognito authentication error:', error);
     const err = error instanceof Error ? error : new Error('Authentication failed. Please try again.');
     const errName = (error as { name?: string })?.name;
     if (errName === 'ResourceNotFoundException') {
-      throw new Error('Configuration Error: The authentication client does not exist. Please verify your COGNITO_CLIENT_ID and COGNITO_REGION settings in the .env file.');
+      throw new Error('Configuration Error: The authentication client does not exist. Please verify your COGNITO_CLIENT_ID and COGNITO_REGION settings.');
     }
     if (err.message && err.message.includes('USER_PASSWORD_AUTH')) {
-      throw new Error('Configuration Error: USER_PASSWORD_AUTH flow is not enabled on your AWS Cognito App Client. Please enable it under App Client advanced settings in your AWS console.');
+      throw new Error('Configuration Error: USER_PASSWORD_AUTH flow is not enabled on your AWS Cognito App Client.');
     }
     if (errName === 'NotAuthorizedException') {
-      throw new Error('Invalid email or security key. Please check your credentials.');
+      throw new Error('Invalid email or password. Please check your credentials and try again.');
     }
     if (errName === 'UserNotFoundException') {
-      throw new Error('User account not found.');
-    }
-    if (errName === 'PasswordResetRequiredException') {
-      throw new Error('Password reset is required for this user pool account.');
-    }
-    if (errName === 'UserNotConfirmedException') {
-      throw new Error('User account is not confirmed in Cognito user pool.');
+      throw new Error('Invalid email or password. Please check your credentials and try again.'); // Do not reveal if user exists or not for security
     }
     throw err;
   }
@@ -225,7 +164,6 @@ export async function getSessionUser(): Promise<User | null> {
   const payload = await decrypt(session);
   if (!payload) return null;
 
-  // Check if session has expired
   if (new Date(payload.expiresAt) < new Date()) {
     return null;
   }

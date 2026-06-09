@@ -316,7 +316,7 @@ function InvestorProfile({
           <ProfileRow label="Risk profile" value={investor.riskProfile} />
           <ProfileRow
             label="Assigned branch"
-            value={investor.assignedBranchName ?? '—'}
+            value={investor.isGlobal ? 'Global (All Branches)' : (investor.assignedBranchName ?? '—')}
           />
           {investor.notes && <ProfileRow label="Notes" value={investor.notes} />}
         </ProfileSection>
@@ -518,7 +518,10 @@ function AddInvestorModal({
   const [goldGrams, setGoldGrams] = useState('');
   const [riskProfile, setRiskProfile] = useState<InvestorRiskProfile>('balanced');
   const [preferredContact, setPreferredContact] = useState<'email' | 'phone' | 'whatsapp'>('email');
-  const [branchId, setBranchId] = useState('');
+  const { user } = useApp();
+  const isAdmin = user?.role === 'admin';
+  const [branchId, setBranchId] = useState(isAdmin ? '' : (user?.branchId || ''));
+  const [isGlobal, setIsGlobal] = useState(false);
   const [notes, setNotes] = useState('');
 
   const reset = () => {
@@ -536,7 +539,8 @@ function AddInvestorModal({
     setGoldGrams('');
     setRiskProfile('balanced');
     setPreferredContact('email');
-    setBranchId('');
+    setBranchId(isAdmin ? '' : (user?.branchId || ''));
+    setIsGlobal(false);
     setNotes('');
   };
 
@@ -557,7 +561,8 @@ function AddInvestorModal({
       goldWeightGrams: Number(goldGrams) || 0,
       riskProfile,
       preferredContact,
-      assignedBranchId: branchId || undefined,
+      assignedBranchId: isGlobal ? undefined : (branchId || user?.branchId || undefined),
+      isGlobal: isAdmin ? isGlobal : false,
       notes: notes || undefined,
     });
     reset();
@@ -696,20 +701,38 @@ function AddInvestorModal({
             <option value="aggressive">Aggressive</option>
           </select>
         </div>
-        <div className={formGroup}>
-          <label className={formLabel} htmlFor="inv-branch">
-            Assigned branch
-          </label>
-          <select id="inv-branch" className={formSelect} value={branchId} onChange={e => setBranchId(e.target.value)}>
-            <option value="">— None —</option>
-            {branches.filter(b => b.status === 'active').map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!isGlobal && (
+          <div className={formGroup}>
+            <label className={formLabel} htmlFor="inv-branch">
+              Assigned branch
+            </label>
+            <select id="inv-branch" className={formSelect} value={branchId} onChange={e => setBranchId(e.target.value)}>
+              <option value="">— None —</option>
+              {branches.filter(b => b.status === 'active').map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
+      
+      {isAdmin && (
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="inv-global"
+            className="size-4 rounded border-slate-300 text-accent focus:ring-accent"
+            checked={isGlobal}
+            onChange={e => setIsGlobal(e.target.checked)}
+          />
+          <label htmlFor="inv-global" className="text-sm font-medium text-slate-700">
+            Global Investor (Available to all branches, no specific assigned branch)
+          </label>
+        </div>
+      )}
+      
       <div className={formGroup}>
         <label className={formLabel} htmlFor="inv-notes">
           Internal notes
@@ -750,7 +773,11 @@ function EditInvestorModal({
   const [riskProfile, setRiskProfile] = useState<Investor['riskProfile']>(investor.riskProfile);
   const [preferredContact, setPreferredContact] = useState<'email' | 'phone' | 'whatsapp'>(investor.preferredContact);
   const [branchId, setBranchId] = useState(investor.assignedBranchId || '');
+  const [isGlobal, setIsGlobal] = useState(investor.isGlobal || false);
   const [notes, setNotes] = useState(investor.notes || '');
+
+  const { user } = useApp();
+  const isAdmin = user?.role === 'admin';
 
   React.useEffect(() => {
     if (open) {
@@ -768,6 +795,7 @@ function EditInvestorModal({
       setRiskProfile(investor.riskProfile);
       setPreferredContact(investor.preferredContact);
       setBranchId(investor.assignedBranchId || '');
+      setIsGlobal(investor.isGlobal || false);
       setNotes(investor.notes || '');
     }
   }, [open, investor]);
@@ -789,7 +817,8 @@ function EditInvestorModal({
       kycStatus,
       riskProfile,
       preferredContact,
-      assignedBranchId: branchId || undefined,
+      assignedBranchId: isGlobal ? undefined : (branchId || undefined),
+      isGlobal: isAdmin ? isGlobal : investor.isGlobal,
       notes: notes || undefined,
     });
     onClose();
@@ -946,20 +975,38 @@ function EditInvestorModal({
             <option value="aggressive">Aggressive</option>
           </select>
         </div>
-        <div className={formGroup}>
-          <label className={formLabel} htmlFor="edit-inv-branch">
-            Assigned branch
-          </label>
-          <select id="edit-inv-branch" className={formSelect} value={branchId} onChange={e => setBranchId(e.target.value)}>
-            <option value="">— None —</option>
-            {branches.filter(b => b.status === 'active').map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!isGlobal && (
+          <div className={formGroup}>
+            <label className={formLabel} htmlFor="edit-inv-branch">
+              Assigned branch
+            </label>
+            <select id="edit-inv-branch" className={formSelect} value={branchId} onChange={e => setBranchId(e.target.value)}>
+              <option value="">— None —</option>
+              {branches.filter(b => b.status === 'active').map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
+
+      {isAdmin && (
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="edit-inv-global"
+            className="size-4 rounded border-slate-300 text-accent focus:ring-accent"
+            checked={isGlobal}
+            onChange={e => setIsGlobal(e.target.checked)}
+          />
+          <label htmlFor="edit-inv-global" className="text-sm font-medium text-slate-700">
+            Global Investor (Available to all branches, no specific assigned branch)
+          </label>
+        </div>
+      )}
+
       <div className={formGroup}>
         <label className={formLabel} htmlFor="edit-inv-notes">
           Internal notes

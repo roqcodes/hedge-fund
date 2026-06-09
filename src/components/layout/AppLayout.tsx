@@ -4,12 +4,17 @@ import { useApp } from '@/context/AppContext';
 import LoginPage from '@/components/auth/LoginPage';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
+import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isInitialLoading, toasts, sidebarOpen } = useApp();
+  const pathname = usePathname();
 
   if (isInitialLoading) return null;
-  if (!isAuthenticated) return <LoginPage />;
+  if (!isAuthenticated) {
+    const slug = pathname === '/' ? undefined : pathname.split('/')[1];
+    return <LoginPage branchSlug={slug} />;
+  }
 
   return (
     <div className="flex min-h-dvh">

@@ -45,6 +45,13 @@ export async function proxy(request: NextRequest) {
   // Check for session cookie
   const sessionCookie = request.cookies.get('session')?.value;
   if (!sessionCookie) {
+    // If they are visiting a branch path like /fujairah-west, let it pass through
+    // so AppLayout can render the customized branch login page.
+    // Otherwise, redirect to root /.
+    const pathParts = pathname.split('/').filter(Boolean);
+    if (pathParts.length === 1 && pathParts[0] !== 'users' && pathParts[0] !== 'branches') {
+      return NextResponse.next();
+    }
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -53,8 +60,13 @@ export async function proxy(request: NextRequest) {
     await jwtVerify(sessionCookie, encodedKey, { algorithms: ['HS256'] });
     return NextResponse.next();
   } catch {
-    // Invalid or expired token → redirect to login
-    const response = NextResponse.redirect(new URL('/', request.url));
+    // Invalid or expired token → redirect
+    const pathParts = pathname.split('/').filter(Boolean);
+    const redirectUrl = (pathParts.length === 1 && pathParts[0] !== 'users' && pathParts[0] !== 'branches') 
+      ? request.url 
+      : new URL('/', request.url).toString();
+      
+    const response = NextResponse.redirect(redirectUrl);
     response.cookies.delete('session');
     return response;
   }

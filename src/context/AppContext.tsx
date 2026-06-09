@@ -74,6 +74,7 @@ export type AddInvestorInput = {
   riskProfile: InvestorRiskProfile;
   preferredContact: 'email' | 'phone' | 'whatsapp';
   assignedBranchId?: string;
+  isGlobal?: boolean;
   notes?: string;
 };
 
@@ -102,6 +103,7 @@ interface AppContextType extends AppState {
   getTotalCapital: () => number;
   getNetPL: () => number;
   setActiveCurrency: (c: 'AED' | 'USD' | 'INR') => void;
+  refetchData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -129,6 +131,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dealTransactions: [],
   });
 
+  const refetchData = useCallback(async () => {
+    try {
+      const dbRes = await fetchInitialDataAction();
+      if (dbRes.success && dbRes.data) {
+        const data = dbRes.data;
+        
+        setState(s => {
+          let { branches, transactions, expenses, invoices, notifications, investors, deals, hqBalance } = data;
+          let dealTransactions = data.dealTransactions || [];
+          const currentUser = s.user;
+
+          if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
+            const bId = currentUser.branchId;
+            const branchName = branches.find(b => b.id === bId)?.name || bId;
+            
+            branches = branches.filter(b => b.id === bId);
+            transactions = transactions.filter(t => t.to === branchName || t.from === branchName);
+            expenses = expenses.filter(e => e.branchId === bId);
+            invoices = invoices.filter(i => i.branchId === bId);
+            investors = investors.filter(i => i.assignedBranchId === bId || i.isGlobal);
+            deals = deals.filter(d => d.managingBranchId === bId);
+            
+            const dealIds = new Set(deals.map(d => d.id));
+            dealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
+          }
+
+          return {
+            ...s,
+            branches,
+            transactions,
+            expenses,
+            invoices,
+            notifications,
+            investors,
+            deals,
+            hqBalance,
+            dealTransactions,
+          };
+        });
+      }
+    } catch (e) {
+      console.error('Failed to refetch data:', e);
+    }
+  }, []);
+
   // Load session and database data on mount
   React.useEffect(() => {
     async function initApp() {
@@ -151,19 +198,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const dbRes = await fetchInitialDataAction();
         if (dbRes.success && dbRes.data) {
           const data = dbRes.data;
+          let { branches, transactions, expenses, invoices, notifications, investors, deals, hqBalance } = data;
+          let dealTransactions = data.dealTransactions || [];
+
+          if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
+            const bId = currentUser.branchId;
+            const branchName = branches.find(b => b.id === bId)?.name || bId;
+            
+            branches = branches.filter(b => b.id === bId);
+            transactions = transactions.filter(t => t.to === branchName || t.from === branchName);
+            expenses = expenses.filter(e => e.branchId === bId);
+            invoices = invoices.filter(i => i.branchId === bId);
+            investors = investors.filter(i => i.assignedBranchId === bId || i.isGlobal);
+            deals = deals.filter(d => d.managingBranchId === bId);
+            
+            const dealIds = new Set(deals.map(d => d.id));
+            dealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
+          }
+
           setState(s => ({
             ...s,
             user: currentUser,
             isAuthenticated,
-            branches: data.branches,
-            transactions: data.transactions,
-            expenses: data.expenses,
-            invoices: data.invoices,
-            notifications: data.notifications,
-            investors: data.investors,
-            deals: data.deals,
-            hqBalance: data.hqBalance,
-            dealTransactions: data.dealTransactions || [],
+            branches,
+            transactions,
+            expenses,
+            invoices,
+            notifications,
+            investors,
+            deals,
+            hqBalance,
+            dealTransactions,
             isInitialLoading: false,
           }));
           return;
@@ -259,6 +324,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       joinedDate: now.slice(0, 10),
       lastActivity: now,
       assignedBranchName: branch?.name,
+      isGlobal: input.isGlobal,
       depositHistory: history,
     };
 
@@ -334,6 +400,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...deal,
       id: dealId,
       date: deal.date || now,
+      managingBranchId: state.user?.role === 'branch_manager' ? state.user.branchId : deal.managingBranchId,
     };
 
     try {
@@ -628,8 +695,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast, state.hqBalance]);
 
-  const getTotalCapital = useCallback(() => state.branches.reduce((sum, b) => sum + b.currentBalance, 0) + state.hqBalance, [state.branches, state.hqBalance]);
-  const getNetPL = useCallback(() => state.branches.reduce((sum, b) => sum + b.dailyPL, 0), [state.branches]);
+  const getTotalCapital = useCallback(() => {
+    if (state.user?.role === 'branch_manager') {
+      return state.deals.reduce((sum, d) => sum + d.totalInvestment, 0);
+    }
+    return state.branches.reduce((sum, b) => sum + b.currentBalance, 0) + state.hqBalance;
+  }, [state.user, state.deals, state.branches, state.hqBalance]);
+
+  const getNetPL = useCallback(() => {
+    if (state.user?.role === 'branch_manager') {
+      return state.dealTransactions.reduce((sum, dt) => sum + dt.grossProfit, 0);
+    }
+    return state.branches.reduce((sum, b) => sum + b.dailyPL, 0);
+  }, [state.user, state.dealTransactions, state.branches]);
 
   const setActiveCurrency = useCallback((currency: 'AED' | 'USD' | 'INR') => {
     mock.setGlobalCurrency(currency);
@@ -640,7 +718,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency,
+      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
     }}>
       {children}
     </AppContext.Provider>

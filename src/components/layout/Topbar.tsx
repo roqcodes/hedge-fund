@@ -4,10 +4,15 @@ import { useApp } from '@/context/AppContext';
 import { DateRange } from '@/types';
 
 export default function Topbar() {
-  const { notifications, toggleSidebar, logout, user } = useApp();
-  const [notifOpen, setNotifOpen] = useState(false);
+  const { toggleSidebar, logout, user, refetchData } = useApp();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refetchData();
+    setIsRefreshing(false);
+  };
 
 
   return (
@@ -71,58 +76,23 @@ export default function Topbar() {
           </svg>
         </button>
 
-        <div className="relative">
-          <button
-            type="button"
-            className="relative flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-surface-xs transition-[transform,colors,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:-translate-y-px motion-safe:hover:border-slate-300 motion-safe:hover:bg-slate-50 motion-safe:hover:text-accent motion-safe:hover:shadow-surface motion-safe:active:translate-y-0 motion-safe:active:scale-[0.97] motion-safe:active:duration-150"
-            onClick={() => setNotifOpen(!notifOpen)}
-            id="notifications-btn"
-            aria-label="Notifications"
-            aria-expanded={notifOpen}
-          >
-            <svg className="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
-            </svg>
-            {unreadCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full border-2 border-white bg-accent text-[9px] font-extrabold text-white shadow-surface-xs">
-                {unreadCount}
-              </span>
-            )}
-          </button>
-          <div
-            className={`absolute -right-12 top-[calc(100%+12px)] z-[300] w-[calc(100vw-32px)] origin-top-right rounded-2xl border border-slate-200/90 bg-white text-sm shadow-dropdown transition-[opacity,transform,visibility] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:right-0 sm:w-[380px] ${
-              notifOpen
-                ? 'visible scale-100 opacity-100'
-                : 'invisible scale-95 opacity-0 pointer-events-none'
-            }`}
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 text-sm font-bold text-slate-900">
-              Notifications
-            </div>
-            <ul className="max-h-[min(80dvh,400px)] overflow-y-auto overscroll-contain text-xs sm:text-sm">
-              {notifications.map(n => (
-                <li
-                  key={n.id}
-                  className={`flex gap-2 border-b border-slate-100 px-4 py-3 transition-[background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:bg-slate-50 ${
-                    !n.read ? 'bg-accent/[0.06]' : ''
-                  }`}
-                >
-                  {!n.read && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-accent" aria-hidden />}
-                  <div className={!n.read ? '' : 'pl-5'}>
-                    <div className="mb-1 font-semibold text-slate-900">{n.message}</div>
-                    <div className="text-xs font-medium text-slate-500">{n.time}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <button
+          type="button"
+          className="relative flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-surface-xs transition-[transform,colors,box-shadow,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:-translate-y-px motion-safe:hover:border-slate-300 motion-safe:hover:bg-slate-50 motion-safe:hover:text-accent motion-safe:hover:shadow-surface motion-safe:active:translate-y-0 motion-safe:active:scale-[0.97] motion-safe:active:duration-150"
+          onClick={handleRefresh}
+          aria-label="Refresh Data"
+        >
+          <svg className={`size-[18px] ${isRefreshing ? 'animate-spin text-accent' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        </button>
 
         {user && (
           <div className="group relative">
             <div className="flex cursor-pointer items-center gap-2 rounded-xl border border-transparent p-1 transition-colors hover:bg-slate-50 md:gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-bold text-accent shadow-surface-xs ring-1 ring-slate-200/80">
-                {user.name
+                {(user?.name || 'User')
                   .split(' ')
                   .map(n => n[0])
                   .join('')
@@ -130,15 +100,15 @@ export default function Topbar() {
                   .toUpperCase()}
               </div>
               <div className="hidden min-w-0 text-left md:block">
-                <div className="truncate text-sm font-semibold text-slate-900">{user.name}</div>
-                <div className="truncate text-[11px] font-medium capitalize text-slate-500">{user.role.replace('_', ' ')}</div>
+                <div className="truncate text-sm font-semibold text-slate-900">{user?.name || 'User'}</div>
+                <div className="truncate text-[11px] font-medium capitalize text-slate-500">{(user?.role || '').replace('_', ' ')}</div>
               </div>
             </div>
             
             <div className="invisible absolute right-0 top-[calc(100%+4px)] z-[300] w-64 origin-top-right scale-95 rounded-2xl border border-slate-200/90 bg-white p-2 opacity-0 shadow-dropdown transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:visible group-hover:scale-100 group-hover:opacity-100">
               <div className="mb-2 border-b border-slate-100 px-3 pb-3 pt-2">
-                <div className="text-sm font-bold text-slate-900">{user.name}</div>
-                <div className="text-xs text-slate-500">{user.email}</div>
+                <div className="text-sm font-bold text-slate-900">{user?.name || 'User'}</div>
+                <div className="text-xs text-slate-500">{user?.email || ''}</div>
               </div>
               <div className="px-3 py-2 text-xs text-slate-600">
                 <div className="mb-2 flex justify-between">
