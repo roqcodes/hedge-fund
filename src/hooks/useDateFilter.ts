@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 
 export function useDateFilter<T extends { date: string }>(dataSource: T[]) {
-  const [dateFilter, setDateFilter] = useState<string>('this-month');
+  const [dateFilter, setDateFilter] = useState<string>('all-time');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
