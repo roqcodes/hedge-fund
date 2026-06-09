@@ -61,12 +61,12 @@ export default function EditDealModal({
       if (deal.investors && deal.investors.length > 0) {
         setDealInvestors(deal.investors.map(inv => ({
           investorId: inv.investorId,
-          percentageStr: deal.amount > 0 ? ((inv.amount / deal.amount) * 100).toFixed(2).replace(/\.00$/, '') : '',
+          percentageStr: deal.amount > 0 ? ((inv.amount / deal.amount) * 100).toFixed(6).replace(/\.?0+$/, '') : '',
           amountStr: inv.amount.toString(),
-          inputMode: 'percentage' as const,
+          inputMode: 'amount' as const,
         })));
       } else {
-        setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
+        setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' }]);
       }
       
       if (deal.date) {
@@ -102,7 +102,7 @@ export default function EditDealModal({
   const balance = totalInvestment - dealAmount;
 
   const handleAddInvestorRow = () => {
-    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
+    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' }]);
   };
 
   const handleRemoveInvestorRow = (index: number) => {
@@ -123,11 +123,11 @@ export default function EditDealModal({
     const inv = newInvestors[index];
     if (inv.inputMode === 'percentage') {
       const pct = parseSafeNumber(inv.percentageStr);
-      inv.amountStr = dealAmount > 0 ? ((pct / 100) * dealAmount).toFixed(2).replace(/\.00$/, '') : '';
+      inv.amountStr = dealAmount > 0 ? ((pct / 100) * dealAmount).toFixed(6).replace(/\.?0+$/, '') : '';
       inv.inputMode = 'amount';
     } else {
       const amt = parseSafeNumber(inv.amountStr);
-      inv.percentageStr = dealAmount > 0 ? ((amt / dealAmount) * 100).toFixed(2).replace(/\.00$/, '') : '';
+      inv.percentageStr = dealAmount > 0 ? ((amt / dealAmount) * 100).toFixed(6).replace(/\.?0+$/, '') : '';
       inv.inputMode = 'percentage';
     }
     setDealInvestors(newInvestors);

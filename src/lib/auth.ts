@@ -1,5 +1,5 @@
 import 'server-only';
-import { CognitoIdentityProviderClient, InitiateAuthCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
+import { CognitoIdentityProviderClient, InitiateAuthCommand, GetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { User, UserRole } from '@/types';
@@ -83,10 +83,15 @@ export async function authenticateWithCognito(email: string, securityKey: string
       throw new Error('Authentication succeeded but no ID Token was returned by Cognito.');
     }
 
-    // Securely fetch attributes directly from Cognito
-    const userRes = await cognitoClient.send(new AdminGetUserCommand({
-      UserPoolId: env.COGNITO_USER_POOL_ID,
-      Username: email
+    const accessToken = response.AuthenticationResult?.AccessToken;
+
+    if (!accessToken) {
+      throw new Error('Authentication succeeded but no Access Token was returned by Cognito.');
+    }
+
+    // Securely fetch attributes directly from Cognito using the user's own token
+    const userRes = await cognitoClient.send(new GetUserCommand({
+      AccessToken: accessToken
     }));
 
     const getAttr = (name: string) => userRes.UserAttributes?.find(a => a.Name === name)?.Value;

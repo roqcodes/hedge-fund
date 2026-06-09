@@ -32,7 +32,7 @@ export default function CreateDealModal({
   const [leadEmail, setLeadEmail] = useState('');
   const [leadAddress, setLeadAddress] = useState('');
   const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; inputMode: 'percentage' | 'amount' }[]>([
-    { investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' },
+    { investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' },
   ]);
   const [error, setError] = useState('');
   const [date, setDate] = useState(() => {
@@ -62,7 +62,7 @@ export default function CreateDealModal({
   const balance = totalInvestment - dealAmount;
 
   const handleAddInvestorRow = () => {
-    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
+    setDealInvestors([...dealInvestors, { investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' }]);
   };
 
   const handleRemoveInvestorRow = (index: number) => {
@@ -85,12 +85,12 @@ export default function CreateDealModal({
     if (inv.inputMode === 'percentage') {
       // Convert percentage to amount
       const pct = parseSafeNumber(inv.percentageStr);
-      inv.amountStr = dealAmount > 0 ? ((pct / 100) * dealAmount).toFixed(2).replace(/\.00$/, '') : '';
+      inv.amountStr = dealAmount > 0 ? ((pct / 100) * dealAmount).toFixed(6).replace(/\.?0+$/, '') : '';
       inv.inputMode = 'amount';
     } else {
       // Convert amount to percentage
       const amt = parseSafeNumber(inv.amountStr);
-      inv.percentageStr = dealAmount > 0 ? ((amt / dealAmount) * 100).toFixed(2).replace(/\.00$/, '') : '';
+      inv.percentageStr = dealAmount > 0 ? ((amt / dealAmount) * 100).toFixed(6).replace(/\.?0+$/, '') : '';
       inv.inputMode = 'percentage';
     }
     setDealInvestors(newInvestors);
@@ -196,7 +196,7 @@ export default function CreateDealModal({
     setLeadPhone('');
     setLeadEmail('');
     setLeadAddress('');
-    setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'percentage' }]);
+    setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' }]);
     const d = new Date();
     const tzoffset = d.getTimezoneOffset() * 60000;
     setDate(new Date(d.getTime() - tzoffset).toISOString().slice(0, 16));
