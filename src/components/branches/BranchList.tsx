@@ -34,6 +34,33 @@ export default function BranchList() {
   const [branchUsers, setBranchUsers] = useState<CognitoUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const filteredAndSortedBranches = React.useMemo(() => {
+    let result = branches.filter((b: Branch) => 
+      b.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      b.location.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      b.managerName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    result.sort((a, b) => {
+      let aVal = a[sortField as keyof Branch];
+      let bVal = b[sortField as keyof Branch];
+      
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+         return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+         return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return 0;
+    });
+
+    return result;
+  }, [branches, searchTerm, sortField, sortDirection]);
+
   React.useEffect(() => {
     if (selectedBranchId) {
       setLoadingUsers(true);
@@ -202,13 +229,13 @@ export default function BranchList() {
             />
           </div>
 
-          <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
-            <div className="border-b border-slate-100 px-5 py-5 sm:px-8 sm:py-6">
-              <h3 className="text-lg font-extrabold text-slate-900">Recent Transactions</h3>
+        <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+          <div className="pb-4 px-4 md:border-b md:border-slate-100 md:px-8 md:py-6 sm:px-8 sm:py-6">
+            <h3 className="text-lg font-extrabold text-slate-900">Recent Transactions</h3>
             </div>
             <div className="p-0">
               <div className={tableWrap}>
-                <table className={dataTable}>
+                <table className={`${dataTable} hidden md:table`}>
                   <thead>
                     <tr>
                       <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Date</th>
@@ -236,20 +263,43 @@ export default function BranchList() {
                     ))}
                   </tbody>
                 </table>
+                {/* Mobile View */}
+                <div className="flex md:hidden flex-col gap-4 py-4">
+                  {branchTxns.length === 0 ? (
+                    <div className="text-center py-4 text-sm text-slate-500">No recent transactions.</div>
+                  ) : branchTxns.map((t: Transaction) => (
+                    <div key={t.id} className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{formatDateTime(t.date)}</span>
+                        <span className={badgeClass(t.type)}>{t.type}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Route</span>
+                          <span className="text-sm font-medium text-slate-900">{t.from} &rarr; {t.to}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount</span>
+                          <span className="font-mono text-sm font-bold text-slate-900">{formatAED(t.amount)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-8 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
-            <div className="flex flex-col gap-1 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
-              <h3 className="text-lg font-extrabold text-slate-900">Branch Users</h3>
+        <div className="mt-8 md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+          <div className="flex flex-col gap-1 pb-4 px-4 md:border-b md:border-slate-100 md:px-8 md:py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+            <h3 className="text-lg font-extrabold text-slate-900">Branch Users</h3>
               <button onClick={() => setShowAddUser(true)} className={`${btnPrimary} ${btnSm}`}>
                 Add User
               </button>
             </div>
             <div className="p-0">
               <div className={tableWrap}>
-                <table className={dataTable}>
+                <table className={`${dataTable} hidden md:table`}>
                   <thead>
                     <tr>
                       <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Name & Email</th>
@@ -290,6 +340,33 @@ export default function BranchList() {
                     ))}
                   </tbody>
                 </table>
+                {/* Mobile View */}
+                <div className="flex md:hidden flex-col gap-4 py-4">
+                  {loadingUsers ? (
+                    <div className="text-center py-4 text-sm text-slate-500">Loading users...</div>
+                  ) : branchUsers.length === 0 ? (
+                    <div className="text-center py-4 text-sm text-slate-500">No users found for this branch.</div>
+                  ) : branchUsers.map(u => (
+                    <div key={u.email} className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-slate-900">{u.name}</span>
+                          <span className="text-xs text-slate-500">{u.email}</span>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={badgeClass(u.role === 'branch_manager' ? 'active' : 'pending')}>{u.role}</span>
+                          <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-slate-50 pt-3">
+                        <span className="text-xs text-slate-500">Created: {formatDateTime(u.created)}</span>
+                        <button type="button" className={`${btnGhost} ${btnSm} !font-bold`} onClick={() => setEditingUser(u)}>
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -380,14 +457,49 @@ export default function BranchList() {
           />
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:shadow-surface-hover">
-          <div className="flex flex-col gap-1 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
+        <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+          <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-8 md:py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
             <h3 className="text-lg font-bold text-slate-900">Branch Directory</h3>
-            <span className="text-xs font-semibold text-slate-400">{branches.length} TOTAL</span>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.3-4.3" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search branches..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm`}
+                />
+              </div>
+              <div className="flex md:hidden items-center gap-2">
+                <select
+                  value={sortField}
+                  onChange={(e) => setSortField(e.target.value)}
+                  className={`${formInput} !py-2 !text-sm flex-1 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10`}
+                >
+                  <option value="name">Sort by: Name</option>
+                  <option value="location">Sort by: Location</option>
+                  <option value="managerName">Sort by: Manager</option>
+                  <option value="currentBalance">Sort by: Balance</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="flex size-[38px] flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:bg-slate-100"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 ${sortDirection === 'desc' ? 'rotate-180' : ''}`}>
+                    <path d="M12 5v14M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
           <div className="p-0">
             <div className={tableWrap}>
-              <table className={`${dataTable} min-w-[800px]`}>
+              <table className={`${dataTable} min-w-[800px] hidden md:table`}>
                 <thead>
                   <tr>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Branch</th>
@@ -400,7 +512,7 @@ export default function BranchList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {branches.map((b: Branch) => (
+                  {filteredAndSortedBranches.map((b: Branch) => (
                     <tr key={b.id} data-interactive-row>
                       <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm font-bold text-slate-900 first:rounded-l-2xl sm:px-5 sm:py-4">
                         {b.name}
@@ -423,6 +535,57 @@ export default function BranchList() {
                   ))}
                 </tbody>
               </table>
+              {/* Mobile View */}
+              <div className="flex md:hidden flex-col gap-4 py-4">
+                {filteredAndSortedBranches.map((b: Branch) => (
+                  <div 
+                    key={b.id} 
+                    onClick={() => selectBranch(b.id)}
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-slate-900 uppercase">{b.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Active</span>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-y-4 gap-x-4 border-y border-slate-50 py-4 mt-1">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capital</span>
+                        <span className="font-mono text-sm font-bold text-slate-900">{formatAED(b.currentBalance)}</span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Location</span>
+                        <span className="font-mono text-sm font-bold text-emerald-600">{b.location}</span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Manager</span>
+                        <span className="font-mono text-sm font-bold text-slate-900">{b.managerName}</span>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Last Activity</span>
+                        <span className="font-mono text-sm font-bold text-slate-900">{formatDateTime(b.lastActivity)}</span>
+                      </div>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-500"></span>
+                      <button 
+                        type="button" 
+                        className="text-xs font-bold text-accent hover:text-accent-hover flex items-center gap-1 transition-colors"
+                      >
+                        Manage Branch &rarr;
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {filteredAndSortedBranches.length === 0 && (
+                  <div className="text-center py-8 text-sm text-slate-500">
+                    No branches found matching your search.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

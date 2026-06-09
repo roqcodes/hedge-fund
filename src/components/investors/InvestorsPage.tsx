@@ -127,8 +127,8 @@ export default function InvestorsPage() {
           />
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300 motion-safe:hover:shadow-surface-hover">
-          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:motion-safe:hover:shadow-surface-hover">
+          <div className="flex flex-col gap-3 pb-4 px-4 md:border-b md:border-slate-100 md:px-4 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div className="min-w-0 flex-1 sm:max-w-xs">
               <label htmlFor="investor-search" className="sr-only">
                 Search investors
