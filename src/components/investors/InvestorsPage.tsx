@@ -29,15 +29,33 @@ import {
 } from '@/lib/ui';
 
 export default function InvestorsPage() {
-  const { investors, branches, selectedInvestorId, selectInvestor, addInvestor, updateInvestor } = useApp();
+  const { investors, branches, deals, selectedInvestorId, selectInvestor, addInvestor, updateInvestor, isBranchView } = useApp();
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | Investor['status']>('all');
   const [search, setSearch] = useState('');
 
+  const processedInvestors = useMemo(() => {
+    if (!isBranchView || branches.length !== 1) return investors;
+    const branchId = branches[0].id;
+    return investors.map(inv => {
+      if (inv.isGlobal || inv.assignedBranchId !== branchId) {
+        const hasActiveDeals = deals.some(d => 
+          d.managingBranchId === branchId && 
+          d.status === 'active' && 
+          d.investors.some(di => di.investorId === inv.id)
+        );
+        if (!hasActiveDeals) {
+          return { ...inv, cashDeposit: 0, goldDeposit: 0, goldWeightGrams: 0 };
+        }
+      }
+      return inv;
+    });
+  }, [investors, isBranchView, branches, deals]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return investors.filter(inv => {
+    return processedInvestors.filter(inv => {
       if (statusFilter !== 'all' && inv.status !== statusFilter) return false;
       if (!q) return true;
       return (
@@ -47,13 +65,13 @@ export default function InvestorsPage() {
         inv.id.toLowerCase().includes(q)
       );
     });
-  }, [investors, statusFilter, search]);
+  }, [processedInvestors, statusFilter, search]);
 
-  const totalCash = investors.reduce((s, i) => s + i.cashDeposit, 0);
-  const totalGold = investors.reduce((s, i) => s + i.goldDeposit, 0);
-  const activeCount = investors.filter(i => i.status === 'active').length;
+  const totalCash = processedInvestors.reduce((s, i) => s + i.cashDeposit, 0);
+  const totalGold = processedInvestors.reduce((s, i) => s + i.goldDeposit, 0);
+  const activeCount = processedInvestors.filter(i => i.status === 'active').length;
 
-  const selected = selectedInvestorId ? investors.find(i => i.id === selectedInvestorId) : null;
+  const selected = selectedInvestorId ? processedInvestors.find(i => i.id === selectedInvestorId) : null;
 
   if (selected) {
     return (
@@ -69,6 +87,7 @@ export default function InvestorsPage() {
           branches={branches}
           investor={selected}
           updateInvestor={updateInvestor}
+          isBranchView={isBranchView}
         />
       </>
     );
@@ -222,7 +241,7 @@ export default function InvestorsPage() {
         </div>
       </div>
 
-      <AddInvestorModal open={showCreate} onClose={() => setShowCreate(false)} branches={branches} addInvestor={addInvestor} />
+      <AddInvestorModal open={showCreate} onClose={() => setShowCreate(false)} branches={branches} addInvestor={addInvestor} isBranchView={isBranchView} />
     </>
   );
 }
@@ -498,11 +517,13 @@ function AddInvestorModal({
   onClose,
   branches,
   addInvestor,
+  isBranchView,
 }: {
   open: boolean;
   onClose: () => void;
   branches: Branch[];
   addInvestor: (input: AddInvestorInput) => void;
+  isBranchView?: boolean;
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -519,10 +540,18 @@ function AddInvestorModal({
   const [riskProfile, setRiskProfile] = useState<InvestorRiskProfile>('balanced');
   const [preferredContact, setPreferredContact] = useState<'email' | 'phone' | 'whatsapp'>('email');
   const { user } = useApp();
-  const isAdmin = user?.role === 'admin';
-  const [branchId, setBranchId] = useState(isAdmin ? '' : (user?.branchId || ''));
+  const isAdmin = user?.role === 'admin' && !isBranchView;
+  const [branchId, setBranchId] = useState('');
   const [isGlobal, setIsGlobal] = useState(false);
   const [notes, setNotes] = useState('');
+
+  React.useEffect(() => {
+    if (open && isBranchView && branches.length === 1) {
+      setBranchId(branches[0].id);
+    } else if (!open) {
+      setBranchId(isAdmin ? '' : (user?.branchId || ''));
+    }
+  }, [open, isBranchView, branches, isAdmin, user]);
 
   const reset = () => {
     setName('');
@@ -701,7 +730,7 @@ function AddInvestorModal({
             <option value="aggressive">Aggressive</option>
           </select>
         </div>
-        {!isGlobal && (
+        {!isGlobal && !isBranchView && (
           <div className={formGroup}>
             <label className={formLabel} htmlFor="inv-branch">
               Assigned branch
@@ -749,12 +778,14 @@ function EditInvestorModal({
   investor,
   branches,
   updateInvestor,
+  isBranchView,
 }: {
   open: boolean;
   onClose: () => void;
   investor: Investor;
   branches: Branch[];
   updateInvestor: (investor: Investor) => void;
+  isBranchView?: boolean;
 }) {
   const { deleteInvestor, deals } = useApp();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -777,7 +808,7 @@ function EditInvestorModal({
   const [notes, setNotes] = useState(investor.notes || '');
 
   const { user } = useApp();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' && !isBranchView;
 
   React.useEffect(() => {
     if (open) {
@@ -975,7 +1006,7 @@ function EditInvestorModal({
             <option value="aggressive">Aggressive</option>
           </select>
         </div>
-        {!isGlobal && (
+        {!isGlobal && !isBranchView && (
           <div className={formGroup}>
             <label className={formLabel} htmlFor="edit-inv-branch">
               Assigned branch

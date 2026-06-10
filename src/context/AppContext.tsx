@@ -1,5 +1,6 @@
 'use client';
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   User,
   Branch,
@@ -104,6 +105,7 @@ interface AppContextType extends AppState {
   getNetPL: () => number;
   setActiveCurrency: (c: 'AED' | 'USD' | 'INR') => void;
   refetchData: () => Promise<void>;
+  isBranchView: boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -138,36 +140,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const data = dbRes.data;
         
         setState(s => {
-          let { branches, transactions, expenses, invoices, notifications, investors, deals, hqBalance } = data;
-          let dealTransactions = data.dealTransactions || [];
-          const currentUser = s.user;
-
-          if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
-            const bId = currentUser.branchId;
-            const branchName = branches.find(b => b.id === bId)?.name || bId;
-            
-            branches = branches.filter(b => b.id === bId);
-            transactions = transactions.filter(t => t.to === branchName || t.from === branchName);
-            expenses = expenses.filter(e => e.branchId === bId);
-            invoices = invoices.filter(i => i.branchId === bId);
-            investors = investors.filter(i => i.assignedBranchId === bId || i.isGlobal);
-            deals = deals.filter(d => d.managingBranchId === bId);
-            
-            const dealIds = new Set(deals.map(d => d.id));
-            dealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
-          }
-
           return {
             ...s,
-            branches,
-            transactions,
-            expenses,
-            invoices,
-            notifications,
-            investors,
-            deals,
-            hqBalance,
-            dealTransactions,
+            branches: data.branches,
+            transactions: data.transactions,
+            expenses: data.expenses,
+            invoices: data.invoices,
+            notifications: data.notifications,
+            investors: data.investors,
+            deals: data.deals,
+            hqBalance: data.hqBalance,
+            dealTransactions: data.dealTransactions || [],
           };
         });
       }
@@ -198,37 +181,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const dbRes = await fetchInitialDataAction();
         if (dbRes.success && dbRes.data) {
           const data = dbRes.data;
-          let { branches, transactions, expenses, invoices, notifications, investors, deals, hqBalance } = data;
-          let dealTransactions = data.dealTransactions || [];
-
-          if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
-            const bId = currentUser.branchId;
-            const branchName = branches.find(b => b.id === bId)?.name || bId;
-            
-            branches = branches.filter(b => b.id === bId);
-            transactions = transactions.filter(t => t.to === branchName || t.from === branchName);
-            expenses = expenses.filter(e => e.branchId === bId);
-            invoices = invoices.filter(i => i.branchId === bId);
-            investors = investors.filter(i => i.assignedBranchId === bId || i.isGlobal);
-            deals = deals.filter(d => d.managingBranchId === bId);
-            
-            const dealIds = new Set(deals.map(d => d.id));
-            dealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
-          }
-
           setState(s => ({
             ...s,
             user: currentUser,
             isAuthenticated,
-            branches,
-            transactions,
-            expenses,
-            invoices,
-            notifications,
-            investors,
-            deals,
-            hqBalance,
-            dealTransactions,
+            branches: data.branches,
+            transactions: data.transactions,
+            expenses: data.expenses,
+            invoices: data.invoices,
+            notifications: data.notifications,
+            investors: data.investors,
+            deals: data.deals,
+            hqBalance: data.hqBalance,
+            dealTransactions: data.dealTransactions || [],
             isInitialLoading: false,
           }));
           return;
@@ -695,31 +660,85 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast, state.hqBalance]);
 
-  const getTotalCapital = useCallback(() => {
-    if (state.user?.role === 'branch_manager') {
-      return state.deals.reduce((sum, d) => sum + d.totalInvestment, 0);
-    }
-    return state.branches.reduce((sum, b) => sum + b.currentBalance, 0) + state.hqBalance;
-  }, [state.user, state.deals, state.branches, state.hqBalance]);
-
-  const getNetPL = useCallback(() => {
-    if (state.user?.role === 'branch_manager') {
-      return state.dealTransactions.reduce((sum, dt) => sum + dt.grossProfit, 0);
-    }
-    return state.branches.reduce((sum, b) => sum + b.dailyPL, 0);
-  }, [state.user, state.dealTransactions, state.branches]);
-
   const setActiveCurrency = useCallback((currency: 'AED' | 'USD' | 'INR') => {
     mock.setGlobalCurrency(currency);
     setState(s => ({ ...s, activeCurrency: currency }));
   }, []);
 
-  return (
-    <AppContext.Provider value={{
-      ...state, login, logout, setPage, setDateRange, addBranch, transferFunds,
+  const pathname = usePathname();
+
+  const contextValue = useMemo(() => {
+    let filteredState = state;
+    const activeSlug = pathname === '/' ? undefined : pathname?.split('/')[1];
+
+    let filterBranchId: string | undefined = undefined;
+
+    if (!state.isInitialLoading && state.user) {
+      if (state.user.role === 'branch_manager' && state.user.branchId) {
+        filterBranchId = state.user.branchId;
+      } else if (state.user.role !== 'branch_manager' && activeSlug) {
+        const matchingBranch = state.branches.find(b => 
+          b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === activeSlug
+        );
+        if (matchingBranch) {
+          filterBranchId = matchingBranch.id;
+        }
+      }
+
+      if (filterBranchId) {
+        const branchName = state.branches.find(b => b.id === filterBranchId)?.name || filterBranchId;
+        const deals = state.deals.filter(d => 
+          d.managingBranchId === filterBranchId ||
+          d.investors.some(di => {
+            const inv = state.investors.find(i => i.id === di.investorId);
+            return inv && inv.assignedBranchId === filterBranchId;
+          })
+        );
+        const dealIds = new Set(deals.map(d => d.id));
+
+        filteredState = {
+          ...state,
+          branches: state.branches.filter(b => b.id === filterBranchId),
+          transactions: state.transactions.filter(t => t.to === branchName || t.from === branchName),
+          expenses: state.expenses.filter(e => e.branchId === filterBranchId),
+          invoices: state.invoices.filter(i => i.branchId === filterBranchId),
+          investors: state.investors.filter(i => i.assignedBranchId === filterBranchId || i.isGlobal),
+          deals,
+          dealTransactions: state.dealTransactions.filter(dt => dealIds.has(dt.dealId || '')),
+        };
+      }
+    }
+
+    const getTotalCapital = () => {
+      if (filteredState.user?.role === 'branch_manager') {
+        return filteredState.deals.reduce((sum, d) => sum + d.totalInvestment, 0);
+      }
+      if (filterBranchId) {
+        return filteredState.branches.reduce((sum, b) => sum + b.currentBalance, 0);
+      }
+      return filteredState.branches.reduce((sum, b) => sum + b.currentBalance, 0) + filteredState.hqBalance;
+    };
+
+    const getNetPL = () => {
+      if (filteredState.user?.role === 'branch_manager') {
+        return filteredState.dealTransactions.reduce((sum, dt) => sum + dt.grossProfit, 0);
+      }
+      return filteredState.branches.reduce((sum, b) => sum + b.dailyPL, 0);
+    };
+
+    const isBranchView = !!filterBranchId || filteredState.user?.role === 'branch_manager';
+
+    return {
+      ...filteredState,
+      isBranchView,
+      login, logout, setPage, setDateRange, addBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
-    }}>
+    };
+  }, [state, pathname, login, logout, setPage, setDateRange, addBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData]);
+
+  return (
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );

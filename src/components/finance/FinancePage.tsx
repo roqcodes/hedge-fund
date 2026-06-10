@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatDate } from '@/data/mockData';
 import KPICard from '@/components/ui/KPICard';
@@ -26,7 +26,7 @@ import {
 } from '@/lib/ui';
 
 export default function FinancePage() {
-  const { expenses, branches, addExpense } = useApp();
+  const { expenses, branches, addExpense, isBranchView } = useApp();
   const [tab, setTab] = useState<ExpenseType>('opex');
   const [showAdd, setShowAdd] = useState(false);
 
@@ -151,7 +151,7 @@ export default function FinancePage() {
           </div>
         </div>
       </div>
-      <AddExpenseModal open={showAdd} onClose={() => setShowAdd(false)} branches={branches} addExpense={addExpense} />
+      <AddExpenseModal open={showAdd} onClose={() => setShowAdd(false)} branches={branches} addExpense={addExpense} isBranchView={isBranchView} />
     </>
   );
 }
@@ -161,17 +161,27 @@ function AddExpenseModal({
   onClose,
   branches,
   addExpense,
+  isBranchView,
 }: {
   open: boolean;
   onClose: () => void;
   branches: Branch[];
   addExpense: (e: Omit<Expense, 'id'>) => void;
+  isBranchView?: boolean;
 }) {
   const [branchId, setBranchId] = useState('');
   const [type, setType] = useState<ExpenseType>('opex');
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
   const [amount, setAmount] = useState('');
+
+  useEffect(() => {
+    if (open && isBranchView && branches.length === 1) {
+      setBranchId(branches[0].id);
+    } else if (!open) {
+      setBranchId('');
+    }
+  }, [open, isBranchView, branches]);
 
   const handleSubmit = () => {
     if (!branchId || !category || !desc || !amount) return;
@@ -220,19 +230,23 @@ function AddExpenseModal({
       <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Spending Entity</label>
-          <select className={formSelect} value={branchId} onChange={e => setBranchId(e.target.value)}>
-            <option value="">Select entity</option>
-            <optgroup label="Central Treasury">
-              <option value="HQ_TREASURY">HQ Treasury (Corporate)</option>
-            </optgroup>
-            <optgroup label="Branch Network">
-              {branches.map((b: Branch) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </optgroup>
-          </select>
+          {isBranchView ? (
+            <input className={formInput} value={branches[0]?.name || ''} disabled />
+          ) : (
+            <select className={formSelect} value={branchId} onChange={e => setBranchId(e.target.value)}>
+              <option value="">Select entity</option>
+              <optgroup label="Central Treasury">
+                <option value="HQ_TREASURY">HQ Treasury (Corporate)</option>
+              </optgroup>
+              <optgroup label="Branch Network">
+                {branches.map((b: Branch) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          )}
         </div>
         <div className={formGroup}>
           <label className={formLabel}>Expense Class</label>

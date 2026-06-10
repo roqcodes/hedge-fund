@@ -19,11 +19,15 @@ import {
 export default function CreateDealModal({
   open,
   onClose,
+  isBranchView,
+  branches,
 }: {
   open: boolean;
   onClose: () => void;
+  isBranchView?: boolean;
+  branches?: Branch[];
 }) {
-  const { branches, investors, addDeal } = useApp();
+  const { investors, addDeal, user } = useApp();
 
   const [groupName, setGroupName] = useState('');
   const [amountStr, setAmountStr] = useState('');
@@ -40,6 +44,17 @@ export default function CreateDealModal({
     const tzoffset = d.getTimezoneOffset() * 60000;
     return new Date(d.getTime() - tzoffset).toISOString().slice(0, 16);
   });
+  
+  const isAdmin = user?.role === 'admin' && !isBranchView;
+  const [managingBranchId, setManagingBranchId] = useState('');
+
+  useEffect(() => {
+    if (open && isBranchView && branches?.length === 1) {
+      setManagingBranchId(branches[0].id);
+    } else if (!open) {
+      setManagingBranchId(isAdmin ? '' : (user?.branchId || ''));
+    }
+  }, [open, isBranchView, branches, isAdmin, user]);
 
   const parseSafeNumber = (val: string | number) => {
     if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -177,6 +192,7 @@ export default function CreateDealModal({
       investors: validInvestors,
       totalInvestment: dealAmount, // Explicitly force totalInvestment to match dealAmount due to 100% validation
       balance: 0,
+      managingBranchId: isBranchView && branches?.length === 1 ? branches[0].id : (managingBranchId || undefined),
       status: 'active',
       totalPL: 0,
       expense: 0,
@@ -240,7 +256,19 @@ export default function CreateDealModal({
           <label className={formLabel}>Group Capital (AED)</label>
           <input className={formInput} type="number" placeholder="0.00" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
         </div>
-        <div className={formGroup}></div>
+        <div className={formGroup}>
+          {!isBranchView && isAdmin && (
+            <>
+              <label className={formLabel}>Managing Branch (Optional)</label>
+              <select className={formSelect} value={managingBranchId} onChange={e => setManagingBranchId(e.target.value)}>
+                <option value="">Global / Unassigned</option>
+                {branches?.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">

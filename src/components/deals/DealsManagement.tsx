@@ -25,7 +25,7 @@ type SortField = 'groupName' | 'amount' | 'totalDeals' | 'completedDeals' | 'onT
 type SortDirection = 'asc' | 'desc';
 
 export default function DealsManagement() {
-  const { deals, dealTransactions } = useApp();
+  const { deals, dealTransactions, isBranchView, branches } = useApp();
   const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -319,6 +319,11 @@ export default function DealsManagement() {
                     <th className={getThClass('left')} onClick={() => handleSort('groupName')}>
                       <div className="flex items-center gap-2">Group <SortIcon field="groupName" /></div>
                     </th>
+                    {!isBranchView && (
+                      <th className={getThClass('left')}>
+                        <div className="flex items-center gap-2">Branch</div>
+                      </th>
+                    )}
                     <th className={getThClass('center')} onClick={() => handleSort('amount')}>
                       <div className="flex items-center justify-center gap-2">Capital <SortIcon field="amount" /></div>
                     </th>
@@ -359,6 +364,11 @@ export default function DealsManagement() {
                         <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
                           {deal.groupNameCalculated}
                         </td>
+                        {!isBranchView && (
+                          <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
+                            {branches?.find(b => b.id === deal.managingBranchId)?.name || 'Global'}
+                          </td>
+                        )}
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-center text-sm font-bold sm:px-5 sm:py-4">
                           {formatAED(deal.amount)}
                         </td>
@@ -423,7 +433,12 @@ export default function DealsManagement() {
                       className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-slate-900">{deal.groupNameCalculated}</span>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-slate-900">{deal.groupNameCalculated}</span>
+                          {!isBranchView && (
+                            <span className="text-[10px] text-slate-400">{branches?.find(b => b.id === deal.managingBranchId)?.name || 'Global'}</span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2">
                           <span className={`h-2.5 w-2.5 rounded-full ${deal.status === 'active' ? 'bg-green-500' : deal.status === 'pending' ? 'bg-amber-500' : deal.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'}`}></span>
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{deal.status}</span>
@@ -468,7 +483,7 @@ export default function DealsManagement() {
         </div>
       </div>
 
-      <CreateDealModal open={showCreate} onClose={() => setShowCreate(false)} />
+      <CreateDealModal open={showCreate} onClose={() => setShowCreate(false)} isBranchView={isBranchView} branches={branches} />
     </>
   );
 }

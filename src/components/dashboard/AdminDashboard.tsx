@@ -25,7 +25,7 @@ import {
 export default function AdminDashboard() {
   const router = useRouter();
   const { branches, transactions, getTotalCapital, getNetPL, selectBranch, sidebarOpen, dateRange, setDateRange, user, deals } = useApp();
-  const isBranchUser = user?.role === 'branch_manager';
+  const isBranchUser = user?.role === 'branch_manager' || branches.length === 1;
 
   const dateOptions = [
     { value: 'today', label: 'Today' },

@@ -27,7 +27,7 @@ import {
 } from '@/lib/ui';
 
 export default function FundManagement() {
-  const { branches, transactions, transferFunds, hqBalance } = useApp();
+  const { branches, transactions, transferFunds, hqBalance, isBranchView } = useApp();
   const [showTransfer, setShowTransfer] = useState(false);
   const [filter, setFilter] = useState<string>('all');
   const [branchFilter, setBranchFilter] = useState<string>('all');
@@ -67,18 +67,33 @@ export default function FundManagement() {
         </div>
 
         <div className={kpiGrid}>
-          <KPICard
-            label="HQ Treasury Balance"
-            value={formatAED(hqBalance)}
-            subValue="Available for allocation"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M3 21h18M3 10h18M5 21V10m14 11V10M2 7l10-5 10 5M10 14h4v7h-4z" />
-              </svg>
-            }
-            color="var(--accent)"
-            bgColor="var(--accent-light)"
-          />
+          {isBranchView && branches.length === 1 ? (
+            <KPICard
+              label="Branch Balance"
+              value={formatAED(branches[0].currentBalance)}
+              subValue="Current liquid funds"
+              icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M3 21h18M3 10h18M5 21V10m14 11V10M2 7l10-5 10 5M10 14h4v7h-4z" />
+                </svg>
+              }
+              color="var(--accent)"
+              bgColor="var(--accent-light)"
+            />
+          ) : (
+            <KPICard
+              label="HQ Treasury Balance"
+              value={formatAED(hqBalance)}
+              subValue="Available for allocation"
+              icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M3 21h18M3 10h18M5 21V10m14 11V10M2 7l10-5 10 5M10 14h4v7h-4z" />
+                </svg>
+              }
+              color="var(--accent)"
+              bgColor="var(--accent-light)"
+            />
+          )}
           <KPICard
             label="Total Fund Volume"
             value={formatAED(totalVolume)}
@@ -196,6 +211,7 @@ export default function FundManagement() {
         branches={branches}
         hqBalance={hqBalance}
         transferFunds={transferFunds}
+        isBranchView={isBranchView}
       />
     </>
   );
@@ -207,18 +223,28 @@ function TransferFundsModal({
   branches,
   hqBalance,
   transferFunds,
+  isBranchView,
 }: {
   open: boolean;
   onClose: () => void;
   branches: Branch[];
   hqBalance: number;
   transferFunds: (fromId: string, toId: string, amount: number, notes: string) => void;
+  isBranchView?: boolean;
 }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+
+  React.useEffect(() => {
+    if (open && isBranchView && branches.length === 1) {
+      setFrom(branches[0].id);
+    } else if (!open) {
+      setFrom('');
+    }
+  }, [open, isBranchView, branches]);
 
   const fromBranch = branches.find((b: Branch) => b.id === from);
   const isHqTransfer = from === 'HQ_TREASURY';
@@ -272,19 +298,23 @@ function TransferFundsModal({
       <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Source Account</label>
-          <select className={formSelect} value={from} onChange={e => setFrom(e.target.value)}>
-            <option value="">Select source</option>
-            <optgroup label="Central Treasury">
-              <option value="HQ_TREASURY">HQ Treasury — {formatAEDStr(hqBalance)}</option>
-            </optgroup>
-            <optgroup label="Branch Balances">
-              {branches.map((b: Branch) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </optgroup>
-          </select>
+          {isBranchView ? (
+            <input className={formInput} value={branches[0]?.name || ''} disabled />
+          ) : (
+            <select className={formSelect} value={from} onChange={e => setFrom(e.target.value)}>
+              <option value="">Select source</option>
+              <optgroup label="Central Treasury">
+                <option value="HQ_TREASURY">HQ Treasury — {formatAEDStr(hqBalance)}</option>
+              </optgroup>
+              <optgroup label="Branch Balances">
+                {branches.map((b: Branch) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          )}
           {from ? <p className={formHint}>Available: {formatAED(availableBalance)}</p> : null}
         </div>
         <div className={formGroup}>
