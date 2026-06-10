@@ -63,7 +63,7 @@ export function useDateFilter<T extends { date: string }>(dataSource: T[]) {
     }
 
     return dataSource.filter(item => {
-      const itemDate = item.date;
+      const itemDate = item.date.slice(0, 10);
       return itemDate >= startLimit && itemDate <= endLimit;
     });
   }, [dataSource, dateFilter, customStartDate, customEndDate]);

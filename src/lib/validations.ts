@@ -25,6 +25,15 @@ export const addBranchSchema = z.object({
 
 export type AddBranchInput = z.infer<typeof addBranchSchema>;
 
+export const updateBranchSchema = z.object({
+  id: nonEmptyString,
+  name: nonEmptyString,
+  location: nonEmptyString,
+  managerName: nonEmptyString,
+});
+
+export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
+
 // ── Fund Transfer ────────────────────────────────────────────────────
 
 export const transferFundsSchema = z.object({

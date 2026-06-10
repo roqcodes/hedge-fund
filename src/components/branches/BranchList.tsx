@@ -1,10 +1,11 @@
 'use client';
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatDateTime } from '@/data/mockData';
-import { Branch, Transaction } from '@/types';
+import { Branch, Transaction, Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import { fetchCognitoUsersAction, createCognitoUserAction, updateCognitoUserAttributesAction, CognitoUser } from '@/app/actions/cognitoActions';
 import { validatePassword, PasswordRequirements } from '@/components/users/UserModals';
@@ -26,8 +27,10 @@ import {
 } from '@/lib/ui';
 
 export default function BranchList() {
-  const { branches, selectBranch, selectedBranchId, transactions, addBranch, showToast } = useApp();
+  const { branches, selectBranch, selectedBranchId, transactions, addBranch, updateBranch, deleteBranch, showToast, deals, investors } = useApp();
+  const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingUser, setEditingUser] = useState<CognitoUser | null>(null);
   
@@ -37,6 +40,17 @@ export default function BranchList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const branchDeals = React.useMemo(() => {
+    if (!selectedBranchId) return [];
+    return deals.filter((d: Deal) => 
+      d.managingBranchId === selectedBranchId ||
+      d.investors.some(di => {
+        const inv = investors.find(i => i.id === di.investorId);
+        return inv && inv.assignedBranchId === selectedBranchId;
+      })
+    );
+  }, [deals, investors, selectedBranchId]);
 
   const filteredAndSortedBranches = React.useMemo(() => {
     let result = branches.filter((b: Branch) => 
@@ -290,6 +304,71 @@ export default function BranchList() {
             </div>
           </div>
 
+        {/* Groups & Deals Section */}
+        <div className="mt-8 md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+          <div className="pb-4 px-4 md:border-b md:border-slate-100 md:px-8 md:py-6 sm:px-8 sm:py-6">
+            <h3 className="text-lg font-extrabold text-slate-900">Groups & Deals</h3>
+          </div>
+          <div className="p-0">
+            <div className={tableWrap}>
+              <table className={`${dataTable} hidden md:table`}>
+                <thead>
+                  <tr>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Name</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Capital</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {branchDeals.length === 0 ? (
+                    <tr><td colSpan={4} className="text-center py-4 text-sm text-slate-500">No deals found for this branch.</td></tr>
+                  ) : branchDeals.map((d: Deal) => (
+                    <tr key={d.id} data-interactive-row onClick={() => router.push(`/group/${d.id}`)} className="cursor-pointer">
+                      <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm font-bold text-slate-900 first:rounded-l-2xl sm:px-5 sm:py-4">
+                        {d.name}
+                      </td>
+                      <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                        <span className={badgeClass(d.status)}>{d.status}</span>
+                      </td>
+                      <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
+                        {formatAED(d.amount)}
+                      </td>
+                      <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4">
+                        <button type="button" className={`${btnGhost} ${btnSm} !font-bold`}>
+                          View Details &rarr;
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* Mobile View */}
+              <div className="flex md:hidden flex-col gap-4 py-4">
+                {branchDeals.length === 0 ? (
+                  <div className="text-center py-4 text-sm text-slate-500">No deals found.</div>
+                ) : branchDeals.map((d: Deal) => (
+                  <div key={d.id} onClick={() => router.push(`/group/${d.id}`)} className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-white p-3 shadow-sm cursor-pointer">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-slate-900">{d.name}</span>
+                      <span className={badgeClass(d.status)}>{d.status}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capital</span>
+                        <span className="font-mono text-sm font-bold text-slate-900">{formatAED(d.amount)}</span>
+                      </div>
+                      <button type="button" className="text-xs font-bold text-accent hover:text-accent-hover flex items-center gap-1">
+                        View &rarr;
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-8 md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
           <div className="flex flex-col gap-1 pb-4 px-4 md:border-b md:border-slate-100 md:px-8 md:py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
             <h3 className="text-lg font-extrabold text-slate-900">Branch Users</h3>
@@ -527,9 +606,17 @@ export default function BranchList() {
                         <span className={badgeClass('active')}>Active</span>
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4">
-                        <button type="button" className={`${btnGhost} ${btnSm} !font-bold`} onClick={() => selectBranch(b.id)}>
-                          Manage
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button type="button" className={`${btnGhost} ${btnSm} !font-bold`} onClick={(e) => { e.stopPropagation(); selectBranch(b.id); }}>
+                            Manage
+                          </button>
+                          <button type="button" className="text-slate-400 hover:text-accent transition-colors" title="Edit Branch" onClick={(e) => { e.stopPropagation(); setEditingBranch(b); }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                          </button>
+                          <button type="button" className="text-slate-400 hover:text-red-500 transition-colors" title="Delete Branch" onClick={async (e) => { e.stopPropagation(); if(window.confirm('Are you sure you want to delete this branch?')) { await deleteBranch(b.id); } }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -570,7 +657,14 @@ export default function BranchList() {
                       </div>
                     </div>
                     <div className="mt-1 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-500"></span>
+                      <div className="flex items-center gap-4">
+                        <button type="button" className="text-slate-400 hover:text-accent transition-colors" title="Edit Branch" onClick={(e) => { e.stopPropagation(); setEditingBranch(b); }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        </button>
+                        <button type="button" className="text-slate-400 hover:text-red-500 transition-colors" title="Delete Branch" onClick={async (e) => { e.stopPropagation(); if(window.confirm('Are you sure you want to delete this branch?')) { await deleteBranch(b.id); } }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                      </div>
                       <button 
                         type="button" 
                         className="text-xs font-bold text-accent hover:text-accent-hover flex items-center gap-1 transition-colors"
@@ -591,6 +685,9 @@ export default function BranchList() {
         </div>
       </div>
       <CreateBranchModal open={showCreate} onClose={() => setShowCreate(false)} addBranch={addBranch} />
+      {editingBranch && (
+        <EditBranchModal open={!!editingBranch} onClose={() => setEditingBranch(null)} updateBranch={updateBranch} branch={editingBranch} />
+      )}
     </>
   );
 }
@@ -656,6 +753,73 @@ function CreateBranchModal({
         <label className={formLabel}>Initial Capital (AED)</label>
         <input className={formInput} type="number" placeholder="e.g. 250000" value={capital} onChange={e => setCapital(e.target.value)} />
         <p className={formHint}>This amount will be allocated from HQ Treasury</p>
+      </div>
+    </Modal>
+  );
+}
+
+function EditBranchModal({
+  open,
+  onClose,
+  updateBranch,
+  branch,
+}: {
+  open: boolean;
+  onClose: () => void;
+  updateBranch: (b: Branch) => Promise<boolean>;
+  branch: Branch;
+}) {
+  const [name, setName] = useState(branch.name);
+  const [location, setLocation] = useState(branch.location);
+  const [manager, setManager] = useState(branch.managerName);
+  const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    setName(branch.name);
+    setLocation(branch.location);
+    setManager(branch.managerName);
+  }, [branch]);
+
+  const handleSubmit = async () => {
+    if (!name || !location || !manager) return;
+    setLoading(true);
+    await updateBranch({
+      ...branch,
+      name,
+      location,
+      managerName: manager,
+    });
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Edit Branch"
+      footer={
+        <>
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose} disabled={loading}>
+            Cancel
+          </button>
+          <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={handleSubmit} disabled={loading}>
+            {loading ? 'Saving...' : 'Save Changes'}
+          </button>
+        </>
+      }
+    >
+      <div className={formGroup}>
+        <label className={formLabel}>Branch Name</label>
+        <input className={formInput} placeholder="e.g. Fujairah West" value={name} onChange={e => setName(e.target.value)} disabled={loading} />
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel}>Location</label>
+        <input className={formInput} placeholder="e.g. Fujairah, UAE" value={location} onChange={e => setLocation(e.target.value)} disabled={loading} />
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel}>Manager Name</label>
+        <input className={formInput} placeholder="e.g. Hassan Al Marzouqi" value={manager} onChange={e => setManager(e.target.value)} disabled={loading} />
       </div>
     </Modal>
   );

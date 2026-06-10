@@ -12,6 +12,7 @@ import {
   Deal,
   DealTransaction,
   DealTransactionExpense,
+  Entity,
 } from '@/types';
 import {
   addBranchSchema,
@@ -63,6 +64,7 @@ export interface InitialDataPayload {
   deals: Deal[];
   hqBalance: number;
   dealTransactions: DealTransaction[];
+  entities: Entity[];
 }
 
 /**
@@ -307,6 +309,16 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       })),
     }));
 
+    // Fetch Entities
+    const entitiesRes = await query('SELECT * FROM entities ORDER BY created_at DESC');
+    const entities: Entity[] = entitiesRes.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone || undefined,
+      branchId: r.branch_id || undefined,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
     const userRes = await getCurrentUserAction();
     const currentUser = userRes.success ? userRes.data : null;
 
@@ -317,6 +329,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
     let finalInvestors = investors;
     let finalDeals = deals;
     let finalDealTransactions = dealTransactions;
+    let finalEntities = entities;
 
     if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
       const bId = currentUser.branchId;
@@ -331,6 +344,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       
       const dealIds = new Set(finalDeals.map(d => d.id));
       finalDealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
+      finalEntities = entities.filter(e => !e.branchId || e.branchId === bId);
     }
 
     return {
@@ -345,6 +359,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
         deals: finalDeals,
         hqBalance,
         dealTransactions: finalDealTransactions,
+        entities: finalEntities,
       },
     };
   } catch (error: unknown) {
@@ -358,9 +373,8 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
  * Creates a new branch and records a capital allocation transaction in an atomic SQL transaction.
  */
 export async function dbAddBranchAction(
-  branch: Branch,
-  allocationTxn: Transaction
-): Promise<DbActionResult<{ branch: Branch; transaction: Transaction }>> {
+  branch: Branch
+): Promise<DbActionResult<{ branch: Branch }>> {
   // Validate core fields
   const validation = addBranchSchema.safeParse({
     name: branch.name,
@@ -397,27 +411,11 @@ export async function dbAddBranchAction(
       ]
     );
 
-    // 2. Insert transaction
-    await client.query(
-      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, status, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        allocationTxn.id,
-        allocationTxn.date,
-        allocationTxn.from,
-        allocationTxn.to,
-        allocationTxn.amount,
-        allocationTxn.type,
-        allocationTxn.status,
-        allocationTxn.notes,
-      ]
-    );
-
-    // 3. Deduct from HQ treasury balance
+    // 2. Deduct from HQ treasury balance
     await client.query('UPDATE hq_balance SET amount = amount - $1 WHERE id = 1', [branch.openingBalance]);
 
     await client.query('COMMIT');
-    return { success: true, data: { branch, transaction: allocationTxn } };
+    return { success: true, data: { branch } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = error instanceof Error ? error.message : 'Database error occurred while adding branch.';
@@ -1251,5 +1249,149 @@ export async function dbDeleteDealAction(
     return { success: false, error: message };
   } finally {
     client.release();
+  }
+}
+
+export async function dbAddEntityAction(entity: Entity): Promise<DbActionResult<Entity>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  try {
+    await query(
+      `INSERT INTO entities (id, name, phone, branch_id, created_at) VALUES ($1, $2, $3, $4, $5)`,
+      [entity.id, entity.name, entity.phone || null, entity.branchId || null, entity.createdAt || new Date().toISOString()]
+    );
+    return { success: true, data: entity };
+  } catch (error: unknown) {
+    console.error('Error adding entity:', error);
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function dbFetchEntitiesAction(): Promise<DbActionResult<Entity[]>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  try {
+    const res = await query(`SELECT * FROM entities ORDER BY created_at DESC`);
+    const data: Entity[] = res.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone || undefined,
+      branchId: r.branch_id || undefined,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+    return { success: true, data };
+  } catch (error: unknown) {
+    console.error('Error fetching entities:', error);
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCash: number, branchId: string): Promise<DbActionResult<Transaction>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, status, notes, category) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.status, txn.notes || '', txn.category]
+    );
+    if (deltaCash !== 0 && txn.status === 'completed') {
+      await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);
+    }
+    await client.query('COMMIT');
+    return { success: true, data: txn };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: formatPgError(error) };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbUpdateBranchAction(id: string, name: string, location: string, managerName: string): Promise<DbActionResult<void>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  try {
+    await query('UPDATE branches SET name = $1, location = $2, manager_name = $3 WHERE id = $4', [name, location, managerName, id]);
+    return { success: true, data: undefined };
+  } catch (error: unknown) {
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function dbUpdateBranchInitialFundAction(id: string, name: string, newFund: number): Promise<DbActionResult<{ delta: number }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const oldRes = await client.query('SELECT opening_balance FROM branches WHERE id = $1', [id]);
+    const oldFund = parseFloat(oldRes.rows[0].opening_balance || 0);
+    const delta = newFund - oldFund;
+    await client.query('UPDATE branches SET opening_balance = $1, current_balance = current_balance + $2, cash_balance = cash_balance + $2 WHERE id = $3', [newFund, delta, id]);
+    await client.query(
+      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, status, category, notes) VALUES ($1, CURRENT_DATE, 'HQ Treasury', $2, $3, 'allocation', 'completed', 'capital_allocation', 'Capital adjustment')`,
+      [`TXN-${Date.now()}`, name, Math.abs(delta)]
+    );
+    await client.query('COMMIT');
+    return { success: true, data: { delta } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: formatPgError(error) };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbUpdateLedgerTransactionAction(txn: Transaction, oldAmount: number, oldCategory: string | undefined, deltaCash: number, branchId: string): Promise<DbActionResult<Transaction>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE transactions SET from_entity = $1, to_entity = $2, amount = $3, notes = $4, category = $5, status = $6 WHERE id = $7`,
+      [txn.from, txn.to, txn.amount, txn.notes || '', txn.category || null, txn.status, txn.id]
+    );
+    if (deltaCash !== 0) {
+      await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);
+    }
+    await client.query('COMMIT');
+    return { success: true, data: txn };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: formatPgError(error) };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbDeleteLedgerTransactionAction(id: string, deltaCash: number, branchId: string): Promise<DbActionResult<{ id: string }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM transactions WHERE id = $1`, [id]);
+    if (deltaCash !== 0) {
+      await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);
+    }
+    await client.query('COMMIT');
+    return { success: true, data: { id } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: formatPgError(error) };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbDeleteBranchAction(id: string): Promise<DbActionResult<void>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  try {
+    const dealsRes = await query('SELECT 1 FROM deals WHERE managing_branch_id = $1 LIMIT 1', [id]);
+    if (dealsRes.rowCount && dealsRes.rowCount > 0) return { success: false, error: 'Cannot delete branch because it has associated deals.' };
+    const expensesRes = await query('SELECT 1 FROM expenses WHERE branch_id = $1 LIMIT 1', [id]);
+    if (expensesRes.rowCount && expensesRes.rowCount > 0) return { success: false, error: 'Cannot delete branch because it has associated expenses.' };
+    const invoicesRes = await query('SELECT 1 FROM invoices WHERE branch_id = $1 LIMIT 1', [id]);
+    if (invoicesRes.rowCount && invoicesRes.rowCount > 0) return { success: false, error: 'Cannot delete branch because it has associated invoices.' };
+    await query('DELETE FROM branches WHERE id = $1', [id]);
+    return { success: true, data: undefined };
+  } catch (error: unknown) {
+    return { success: false, error: formatPgError(error) };
   }
 }

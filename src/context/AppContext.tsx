@@ -21,6 +21,9 @@ import { getCurrentUserAction, logoutAction } from '@/app/actions/auth';
 import {
   fetchInitialDataAction,
   dbAddBranchAction,
+  dbUpdateBranchAction,
+  dbUpdateBranchInitialFundAction,
+  dbDeleteBranchAction,
   dbTransferFundsAction,
   dbAddInvoiceAction,
   dbAddExpenseAction,
@@ -33,6 +36,10 @@ import {
   dbAddDealTransactionAction,
   dbUpdateDealTransactionAction,
   dbDeleteDealTransactionAction,
+  dbAddEntityAction,
+  dbProcessLedgerTransactionAction,
+  dbUpdateLedgerTransactionAction,
+  dbDeleteLedgerTransactionAction,
 } from '@/app/actions/dbActions';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
@@ -57,6 +64,7 @@ interface AppState {
   hqBalance: number;
   activeCurrency: 'AED' | 'USD' | 'INR';
   dealTransactions: DealTransaction[];
+  entities: import('@/types').Entity[];
 }
 
 export type AddInvestorInput = {
@@ -85,6 +93,9 @@ interface AppContextType extends AppState {
   setPage: (page: PageId) => void;
   setDateRange: (range: DateRange) => void;
   addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => void;
+  updateBranch: (branch: Branch) => Promise<boolean>;
+  updateBranchInitialFund: (branchId: string, newAmount: number) => Promise<boolean>;
+  deleteBranch: (id: string) => Promise<boolean>;
   transferFunds: (from: string, to: string, amount: number, notes: string) => void;
   addInvoice: (inv: Omit<Invoice, 'id' | 'status'>) => void;
   addExpense: (exp: Omit<Expense, 'id'>) => void;
@@ -106,6 +117,10 @@ interface AppContextType extends AppState {
   setActiveCurrency: (c: 'AED' | 'USD' | 'INR') => void;
   refetchData: () => Promise<void>;
   isBranchView: boolean;
+  addEntity: (entity: import('@/types').Entity) => Promise<boolean>;
+  processLedgerTransaction: (txn: import('@/types').Transaction, deltaCash: number, branchId: string) => Promise<boolean>;
+  updateLedgerTransaction: (txn: import('@/types').Transaction, oldAmount: number, oldCategory: string | undefined, branchId: string) => Promise<boolean>;
+  deleteLedgerTransaction: (id: string, txnAmount: number, txnCategory: string | undefined, branchId: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -131,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hqBalance: 50000000, // 50M AED initial treasury
     activeCurrency: 'AED',
     dealTransactions: [],
+    entities: [],
   });
 
   const refetchData = useCallback(async () => {
@@ -151,6 +167,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             deals: data.deals,
             hqBalance: data.hqBalance,
             dealTransactions: data.dealTransactions || [],
+            entities: data.entities || [],
           };
         });
       }
@@ -194,6 +211,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             deals: data.deals,
             hqBalance: data.hqBalance,
             dealTransactions: data.dealTransactions || [],
+            entities: data.entities || [],
             isInitialLoading: false,
           }));
           return;
@@ -515,7 +533,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addBranch = useCallback(async (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => {
     const total = b.openingBalance;
     const branchId = mock.generateId('BR');
-    const txnId = mock.generateId('TXN');
     const now = new Date().toISOString();
 
     const newBranch: Branch = {
@@ -531,24 +548,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createdAt: now,
     };
 
-    const txn: Transaction = {
-      id: txnId,
-      date: now,
-      from: 'HQ Treasury',
-      to: newBranch.name,
-      amount: b.openingBalance,
-      type: 'allocation',
-      status: 'completed',
-      notes: `Initial Capital Allocation — ${newBranch.name}`,
-    };
-
     try {
-      const dbRes = await dbAddBranchAction(newBranch, txn);
+      const dbRes = await dbAddBranchAction(newBranch);
       if (dbRes.success) {
         setState(s => ({
           ...s,
           branches: [...s.branches, newBranch],
-          transactions: [txn, ...s.transactions],
           hqBalance: s.hqBalance - b.openingBalance,
         }));
         showToast(`Branch "${newBranch.name}" created with AED ${b.openingBalance.toLocaleString('en-AE')} allocated`);
@@ -558,6 +563,86 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('DB addBranch failed', e);
       showToast('Failed to create branch', 'error');
+    }
+  }, [showToast]);
+
+  const updateBranch = useCallback(async (updatedBranch: Branch) => {
+    try {
+      const dbRes = await dbUpdateBranchAction(updatedBranch.id, updatedBranch.name, updatedBranch.location, updatedBranch.managerName);
+      if (dbRes.success) {
+        setState(s => ({
+          ...s,
+          branches: s.branches.map(b => b.id === updatedBranch.id ? updatedBranch : b)
+        }));
+        showToast(`Branch "${updatedBranch.name}" updated successfully`);
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to update branch', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB updateBranch failed', e);
+      showToast('Failed to update branch', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateBranchInitialFund = useCallback(async (branchId: string, newAmount: number) => {
+    try {
+      const branchName = state.branches.find(b => b.id === branchId)?.name || '';
+      const dbRes = await dbUpdateBranchInitialFundAction(branchId, branchName, newAmount);
+      
+      if (dbRes.success && dbRes.data) {
+        const delta = dbRes.data.delta;
+        
+        setState(s => ({
+          ...s,
+          branches: s.branches.map(b => b.id === branchId ? {
+            ...b,
+            openingBalance: b.openingBalance + delta,
+            currentBalance: b.currentBalance + delta,
+            cashBalance: b.cashBalance + delta,
+            closingBalance: b.closingBalance + delta
+          } : b),
+          transactions: s.transactions.map(t => (t.to === branchName && t.type === 'allocation') ? {
+            ...t,
+            amount: t.amount + delta
+          } : t),
+          hqBalance: s.hqBalance - delta
+        }));
+        
+        showToast(`Branch initial capital updated successfully by AED ${delta.toLocaleString('en-AE')}`);
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to update initial capital', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB updateBranchInitialFund failed', e);
+      showToast('Failed to update initial capital', 'error');
+      return false;
+    }
+  }, [showToast, state.branches]);
+
+  const deleteBranch = useCallback(async (id: string) => {
+    try {
+      const dbRes = await dbDeleteBranchAction(id);
+      if (dbRes.success) {
+        setState(s => ({
+          ...s,
+          branches: s.branches.filter(b => b.id !== id),
+          transactions: s.transactions.filter(t => t.from !== id && t.to !== id) // Remove local associated transactions (allocations) if they reference ID. (Actually they use branch name, but keeping this simple)
+        }));
+        showToast('Branch deleted successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to delete branch', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB deleteBranch failed', e);
+      showToast('Failed to delete branch', 'error');
+      return false;
     }
   }, [showToast]);
 
@@ -595,6 +680,133 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Failed to transfer funds', 'error');
     }
   }, [showToast, state.branches, state.hqBalance]);
+
+  const addEntity = useCallback(async (entity: import('@/types').Entity) => {
+    try {
+      const dbRes = await dbAddEntityAction(entity);
+      if (dbRes.success && dbRes.data) {
+        setState(s => ({ ...s, entities: [dbRes.data!, ...s.entities] }));
+        showToast('Entity created successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to create entity', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB addEntity failed', e);
+      showToast('Failed to create entity', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const processLedgerTransaction = useCallback(async (txn: import('@/types').Transaction, deltaCash: number, branchId: string) => {
+    try {
+      const dbRes = await dbProcessLedgerTransactionAction(txn, deltaCash, branchId);
+      if (dbRes.success && dbRes.data) {
+        setState(s => {
+          const branches = s.branches.map(b => {
+            if (b.id === branchId) {
+              return { ...b, currentBalance: b.currentBalance + deltaCash, cashBalance: b.cashBalance + deltaCash };
+            }
+            return b;
+          });
+          return {
+            ...s,
+            branches,
+            transactions: [dbRes.data!, ...s.transactions]
+          };
+        });
+        showToast('Ledger transaction processed successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to process transaction', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB processLedgerTransaction failed', e);
+      showToast('Failed to process transaction', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateLedgerTransaction = useCallback(async (
+    txn: import('@/types').Transaction,
+    oldAmount: number,
+    oldCategory: string | undefined,
+    branchId: string
+  ) => {
+    // Compute balance delta: new effect minus old effect
+    // debit -> increases locker (+), credit -> decreases locker (-)
+    const oldEffect = oldCategory === 'debit' ? oldAmount : -oldAmount;
+    const newEffect = txn.category === 'debit' ? txn.amount : -txn.amount;
+    const deltaCash = newEffect - oldEffect;
+
+    try {
+      const dbRes = await dbUpdateLedgerTransactionAction(txn, oldAmount, oldCategory, deltaCash, branchId);
+      if (dbRes.success && dbRes.data) {
+        setState(s => {
+          const branches = s.branches.map(b => {
+            if (b.id === branchId) {
+              return { ...b, currentBalance: b.currentBalance + deltaCash, cashBalance: b.cashBalance + deltaCash };
+            }
+            return b;
+          });
+          return {
+            ...s,
+            branches,
+            transactions: s.transactions.map(t => t.id === txn.id ? dbRes.data! : t),
+          };
+        });
+        showToast('Transaction updated successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to update transaction', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB updateLedgerTransaction failed', e);
+      showToast('Failed to update transaction', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const deleteLedgerTransaction = useCallback(async (
+    id: string,
+    txnAmount: number,
+    txnCategory: string | undefined,
+    branchId: string
+  ) => {
+    // Reverse the effect: if it was a debit (+cash), reversing it reduces cash
+    const reversal = txnCategory === 'debit' ? -txnAmount : txnAmount;
+
+    try {
+      const dbRes = await dbDeleteLedgerTransactionAction(id, reversal, branchId);
+      if (dbRes.success) {
+        setState(s => {
+          const branches = s.branches.map(b => {
+            if (b.id === branchId) {
+              return { ...b, currentBalance: b.currentBalance + reversal, cashBalance: b.cashBalance + reversal };
+            }
+            return b;
+          });
+          return {
+            ...s,
+            branches,
+            transactions: s.transactions.filter(t => t.id !== id),
+          };
+        });
+        showToast('Transaction deleted successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to delete transaction', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB deleteLedgerTransaction failed', e);
+      showToast('Failed to delete transaction', 'error');
+      return false;
+    }
+  }, [showToast]);
 
   const addInvoice = useCallback(async (inv: Omit<Invoice, 'id' | 'status'>) => {
     const newInvId = `INV-2026-${String(state.invoices.length + 1).padStart(3, '0')}`;
@@ -687,13 +899,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (filterBranchId) {
         const branchName = state.branches.find(b => b.id === filterBranchId)?.name || filterBranchId;
-        const deals = state.deals.filter(d => 
-          d.managingBranchId === filterBranchId ||
-          d.investors.some(di => {
+        const deals = state.deals.filter(d => {
+          const matchManaging = d.managingBranchId === filterBranchId;
+          const matchInvestor = d.investors.some(di => {
             const inv = state.investors.find(i => i.id === di.investorId);
             return inv && inv.assignedBranchId === filterBranchId;
-          })
-        );
+          });
+          console.log(`Deal ${d.id} ${d.name} | managingBranchId=${d.managingBranchId} | filterBranchId=${filterBranchId} | matchManaging=${matchManaging} | matchInvestor=${matchInvestor}`);
+          return matchManaging || matchInvestor;
+        });
         const dealIds = new Set(deals.map(d => d.id));
 
         filteredState = {
@@ -731,11 +945,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return {
       ...filteredState,
       isBranchView,
-      login, logout, setPage, setDateRange, addBranch, transferFunds,
+      login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
+      addEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction,
     };
-  }, [state, pathname, login, logout, setPage, setDateRange, addBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData]);
+  }, [state, pathname, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction]);
 
   return (
     <AppContext.Provider value={contextValue}>

@@ -27,8 +27,16 @@ export interface Branch {
   createdAt: string;
 }
 
-export type TransactionType = 'transfer' | 'expense' | 'profit' | 'allocation' | 'capex' | 'opex';
+export type TransactionType = 'transfer' | 'expense' | 'profit' | 'allocation' | 'capex' | 'opex' | 'customer_account' | 'temporary_credit';
 export type TransactionStatus = 'completed' | 'pending' | 'failed';
+
+export interface Entity {
+  id: string;
+  name: string;
+  phone?: string;
+  branchId?: string;
+  createdAt?: string;
+}
 
 export interface Transaction {
   id: string;
