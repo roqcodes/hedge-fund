@@ -27,7 +27,8 @@ function KPICard({ label, value, colorClass, icon, cardClassName }: { label: str
 
 export default function TransactionDetails({ dealId, txnId }: { dealId: string; txnId: string }) {
   const router = useRouter();
-  const { deals, investors, isInitialLoading, dealTransactions } = useApp();
+  const { deals, investors, isInitialLoading, dealTransactions, currentSlug } = useApp();
+  const basePath = currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '';
   const [showSellModal, setShowSellModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
 
@@ -98,7 +99,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         <div className="w-full sm:w-auto">
           <div className="mb-2 flex items-center gap-3">
             <button
-              onClick={() => router.push(`/group/${deal.id}`)}
+              onClick={() => router.push(`${basePath}/group/${deal.id}`)}
               className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
               aria-label="Back to Group"
             >

@@ -23,6 +23,7 @@ import {
   dbAddBranchAction,
   dbUpdateBranchAction,
   dbUpdateBranchInitialFundAction,
+  dbUpdateHqBalanceAction,
   dbDeleteBranchAction,
   dbTransferFundsAction,
   dbAddInvoiceAction,
@@ -38,6 +39,7 @@ import {
   dbDeleteDealTransactionAction,
   dbAddEntityAction,
   dbUpdateEntityAction,
+  dbDeleteEntityAction,
   dbProcessLedgerTransactionAction,
   dbUpdateLedgerTransactionAction,
   dbDeleteLedgerTransactionAction,
@@ -93,9 +95,10 @@ interface AppContextType extends AppState {
   logout: () => void;
   setPage: (page: PageId) => void;
   setDateRange: (range: DateRange) => void;
-  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => void;
-  updateBranch: (branch: Branch) => Promise<boolean>;
+  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }, slug: string) => void;
+  updateBranch: (branch: Branch, slug: string) => Promise<boolean>;
   updateBranchInitialFund: (branchId: string, newAmount: number) => Promise<boolean>;
+  updateHqBalance: (newAmount: number) => Promise<boolean>;
   deleteBranch: (id: string) => Promise<boolean>;
   transferFunds: (from: string, to: string, amount: number, notes: string) => void;
   addInvoice: (inv: Omit<Invoice, 'id' | 'status'>) => void;
@@ -118,8 +121,10 @@ interface AppContextType extends AppState {
   setActiveCurrency: (c: 'AED' | 'USD' | 'INR') => void;
   refetchData: () => Promise<void>;
   isBranchView: boolean;
+  currentSlug: string;
   addEntity: (entity: import('@/types').Entity) => Promise<boolean>;
   updateEntity: (entity: import('@/types').Entity) => Promise<boolean>;
+  deleteEntity: (entityName: string, entityId: string) => Promise<boolean>;
   processLedgerTransaction: (txn: import('@/types').Transaction, deltaCash: number, branchId: string) => Promise<boolean>;
   updateLedgerTransaction: (txn: import('@/types').Transaction, oldAmount: number, oldCategory: string | undefined, branchId: string) => Promise<boolean>;
   deleteLedgerTransaction: (id: string, txnAmount: number, txnCategory: string | undefined, branchId: string) => Promise<boolean>;
@@ -558,7 +563,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const addBranch = useCallback(async (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => {
+  const addBranch = useCallback(async (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }, slug: string) => {
     const total = b.openingBalance;
     const branchId = mock.generateId('BR');
     const now = new Date().toISOString();
@@ -566,6 +571,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const newBranch: Branch = {
       ...b,
       id: branchId,
+      slug,
       cashBalance: total,
       goldBalance: 0,
       currentBalance: total,
@@ -594,9 +600,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const updateBranch = useCallback(async (updatedBranch: Branch) => {
+  const updateBranch = useCallback(async (updatedBranch: Branch, slug: string) => {
     try {
-      const dbRes = await dbUpdateBranchAction(updatedBranch.id, updatedBranch.name, updatedBranch.location, updatedBranch.managerName);
+      const dbRes = await dbUpdateBranchAction(updatedBranch.id, slug, updatedBranch.name, updatedBranch.location, updatedBranch.managerName);
       if (dbRes.success) {
         setState(s => ({
           ...s,
@@ -651,6 +657,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false;
     }
   }, [showToast, state.branches]);
+
+  const updateHqBalance = useCallback(async (newAmount: number) => {
+    try {
+      const dbRes = await dbUpdateHqBalanceAction(newAmount);
+      if (dbRes.success) {
+        setState(s => ({ ...s, hqBalance: newAmount }));
+        showToast('Treasury balance updated successfully', 'success');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to update treasury balance', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB updateHqBalance failed', e);
+      showToast('Failed to update treasury balance', 'error');
+      return false;
+    }
+  }, [showToast]);
 
   const deleteBranch = useCallback(async (id: string) => {
     try {
@@ -744,6 +768,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('DB updateEntity failed', e);
       showToast('Failed to update entity', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const deleteEntity = useCallback(async (entityName: string, entityId: string) => {
+    try {
+      const dbRes = await dbDeleteEntityAction(entityName, entityId);
+      if (dbRes.success) {
+        setState(s => ({
+          ...s,
+          entities: s.entities.filter(e => e.id !== entityId)
+        }));
+        showToast('Entity deleted successfully', 'success');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to delete entity', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB deleteEntity failed', e);
+      showToast('Failed to delete entity', 'error');
       return false;
     }
   }, [showToast]);
@@ -991,12 +1036,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return {
       ...filteredState,
       isBranchView,
-      login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, deleteBranch, transferFunds,
+      currentSlug,
+      login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateHqBalance, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
-      addEntity, updateEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction,
+      addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction,
     };
-  }, [state, pathname, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction]);
 
   return (
     <AppContext.Provider value={contextValue}>

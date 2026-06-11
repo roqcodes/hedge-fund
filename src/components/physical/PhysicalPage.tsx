@@ -13,18 +13,13 @@ export default function PhysicalPage() {
       </div>
 
       <div className="flex min-h-[min(50vh,420px)] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-gradient-to-b from-slate-50/80 to-white px-4 py-12 text-center shadow-surface-xs sm:min-h-[min(60vh,520px)] sm:rounded-3xl sm:px-6 sm:py-16">
-        <div className="mb-5 flex size-16 items-center justify-center rounded-2xl bg-white text-3xl shadow-surface ring-1 ring-slate-100 sm:mb-6 sm:size-20 sm:rounded-3xl sm:text-4xl">
-          🏛️
+        <div className="mb-5 flex size-16 items-center justify-center rounded-2xl bg-amber-500/10 text-3xl shadow-surface ring-1 ring-amber-500/20 sm:mb-6 sm:size-20 sm:rounded-3xl sm:text-4xl">
+          🪙
         </div>
-        <span className="mb-3 inline-flex rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-800 sm:text-[11px] sm:tracking-[0.16em]">
-          Coming soon
-        </span>
-        <h3 className="max-w-md text-lg font-bold text-slate-900 sm:text-xl md:text-2xl">
-          Physical asset management is on the way
-        </h3>
+        <h3 className="max-w-md text-lg font-bold text-slate-900 sm:text-xl md:text-2xl">Physical Metals Module</h3>
         <p className="mt-3 max-w-lg px-1 text-sm font-medium leading-relaxed text-slate-500">
-          This module will cover vault locations, bullion serial tracking, audit trails, and reconciliation with gold deposit
-          positions across investors and branches.
+          This module supports branch inventory for physical assets, including unallocated gold
+          balances, specific bar tracking, and physical withdrawal processing.
         </p>
         <ul className="mt-6 grid w-full max-w-md gap-2 text-left text-sm font-medium text-slate-600 sm:mt-8">
           {['Vault & custody registry', 'Bullion serial tracking', 'Physical audit workflows', 'Investor gold reconciliation'].map(

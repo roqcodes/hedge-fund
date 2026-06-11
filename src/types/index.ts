@@ -13,6 +13,7 @@ export interface User {
 
 export interface Branch {
   id: string;
+  slug: string;
   name: string;
   location: string;
   managerName: string;
@@ -209,6 +210,7 @@ export interface DealTransaction {
   premiumDiscount: number;
   dealId?: string; // Foreign key linking to deals(id)
   payouts?: DealTransactionPayout[]; // Snapshot of investor payouts at settlement
+  expensesDetails?: DealTransactionExpense[]; // Snapshot of detailed expenses
 }
 
 export interface DealTransactionPayout {

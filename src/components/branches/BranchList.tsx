@@ -129,7 +129,7 @@ export default function BranchList() {
     const b = branches.find((br: Branch) => br.id === selectedBranchId);
     if (!b) return null;
     const branchTxns = transactions.filter((t: Transaction) => t.from === b.name || t.to === b.name).slice(0, 8);
-    const branchSlug = b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const branchSlug = b.slug;
     const branchUrl = typeof window !== 'undefined' ? `${window.location.origin}/${branchSlug}` : `/${branchSlug}`;
 
     return (
@@ -699,22 +699,25 @@ function CreateBranchModal({
 }: {
   open: boolean;
   onClose: () => void;
-  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }) => void;
+  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }, slug: string) => void;
 }) {
   const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
   const [location, setLocation] = useState('');
   const [manager, setManager] = useState('');
   const [capital, setCapital] = useState('');
 
   const handleSubmit = () => {
-    if (!name || !location || !manager || !capital) return;
+    if (!name || !slug || !location || !manager || !capital) return;
     addBranch({
       name,
+      slug,
       location,
       managerName: manager,
       openingBalance: Number(capital),
-    });
+    }, slug);
     setName('');
+    setSlug('');
     setLocation('');
     setManager('');
     setCapital('');
@@ -739,7 +742,20 @@ function CreateBranchModal({
     >
       <div className={formGroup}>
         <label className={formLabel}>Branch Name</label>
-        <input className={formInput} placeholder="e.g. Fujairah West" value={name} onChange={e => setName(e.target.value)} />
+        <input className={formInput} placeholder="e.g. Fujairah West" value={name} onChange={e => {
+          setName(e.target.value);
+          if (!slug || slug === name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, -1)) {
+            setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+          }
+        }} />
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel}>Branch Slug (URL)</label>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-500 font-mono bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">/</span>
+          <input className={formInput} placeholder="e.g. fujairah-west" value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
+        </div>
+        <p className={formHint}>This will be the URL for the branch portal.</p>
       </div>
       <div className={formGroup}>
         <label className={formLabel}>Location</label>
@@ -766,29 +782,32 @@ function EditBranchModal({
 }: {
   open: boolean;
   onClose: () => void;
-  updateBranch: (b: Branch) => Promise<boolean>;
+  updateBranch: (b: Branch, slug: string) => Promise<boolean>;
   branch: Branch;
 }) {
   const [name, setName] = useState(branch.name);
+  const [slug, setSlug] = useState(branch.slug);
   const [location, setLocation] = useState(branch.location);
   const [manager, setManager] = useState(branch.managerName);
   const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
     setName(branch.name);
+    setSlug(branch.slug);
     setLocation(branch.location);
     setManager(branch.managerName);
   }, [branch]);
 
   const handleSubmit = async () => {
-    if (!name || !location || !manager) return;
+    if (!name || !slug || !location || !manager) return;
     setLoading(true);
     await updateBranch({
       ...branch,
+      slug,
       name,
       location,
       managerName: manager,
-    });
+    }, slug);
     setLoading(false);
     onClose();
   };
@@ -813,6 +832,14 @@ function EditBranchModal({
         <label className={formLabel}>Branch Name</label>
         <input className={formInput} placeholder="e.g. Fujairah West" value={name} onChange={e => setName(e.target.value)} disabled={loading} />
       </div>
+      <div className={formGroup}>
+        <label className={formLabel}>Branch Slug (URL)</label>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-500 font-mono bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">/</span>
+          <input className={formInput} placeholder="e.g. fujairah-west" value={slug} onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} disabled={loading} />
+        </div>
+      </div>
+
       <div className={formGroup}>
         <label className={formLabel}>Location</label>
         <input className={formInput} placeholder="e.g. Fujairah, UAE" value={location} onChange={e => setLocation(e.target.value)} disabled={loading} />

@@ -25,7 +25,8 @@ import {
 } from '@/lib/ui';
 
 export default function DealDetails({ dealId }: { dealId: string }) {
-  const { deals, investors, selectInvestor, dealTransactions, deleteDealTransaction } = useApp();
+  const { deals, investors, selectInvestor, dealTransactions, deleteDealTransaction, currentSlug } = useApp();
+  const basePath = currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '';
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [showAddTxn, setShowAddTxn] = useState(false);
@@ -36,15 +37,15 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
   useEffect(() => {
     if (!deal) {
-      router.push('/group');
+      router.push(`${basePath}/group`);
     }
-  }, [deal, router]);
+  }, [deal, router, basePath]);
 
   useEffect(() => {
     if (!deal) {
-      router.push('/group');
+      router.push(`${basePath}/group`);
     }
-  }, [deal, router]);
+  }, [deal, router, basePath]);
 
   const fundingPercentage = Math.min(((deal?.totalInvestment || 0) / (deal?.amount || 1)) * 100, 100);
 
@@ -160,7 +161,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           <div>
             <div className="mb-2 flex items-center gap-3">
               <button
-                onClick={() => router.push('/group')}
+                onClick={() => router.push(`${basePath}/group`)}
                 className="group flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
                 aria-label="Back to Deals"
               >

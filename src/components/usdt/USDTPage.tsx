@@ -16,12 +16,9 @@ export default function USDTPage() {
         <div className="mb-5 flex size-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-3xl shadow-surface ring-1 ring-emerald-500/20 sm:mb-6 sm:size-20 sm:rounded-3xl sm:text-4xl">
           💵
         </div>
-        <span className="mb-3 inline-flex rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-800 sm:text-[11px] sm:tracking-[0.16em]">
-          Coming soon
-        </span>
-        <h3 className="max-w-md text-lg font-bold text-slate-900 sm:text-xl md:text-2xl">USDT management is on the way</h3>
+        <h3 className="max-w-md text-lg font-bold text-slate-900 sm:text-xl md:text-2xl">USDT Management Module</h3>
         <p className="mt-3 max-w-lg px-1 text-sm font-medium leading-relaxed text-slate-500">
-          This module will support USDT wallet balances per branch, deposit and withdrawal tracking, network selection (TRC20 /
+          This module supports USDT wallet balances per branch, deposit and withdrawal tracking, network selection (TRC20 /
           ERC20), and reconciliation with cash and gold positions.
         </p>
         <ul className="mt-6 grid w-full max-w-md gap-2 text-left text-sm font-medium text-slate-600 sm:mt-8">

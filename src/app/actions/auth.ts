@@ -33,7 +33,7 @@ export async function loginAction(email: string, securityKey: string, branchSlug
       }
       // Resolve slug → branch id from the database
       const branchRes = await query(
-        `SELECT id FROM branches WHERE LOWER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]+', '-', 'g')) = $1 LIMIT 1`,
+        `SELECT id FROM branches WHERE slug = $1 LIMIT 1`,
         [branchSlug]
       );
       if (branchRes.rows.length === 0) {

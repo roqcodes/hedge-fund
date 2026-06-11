@@ -74,6 +74,26 @@ export interface InitialDataPayload {
  */
 export async function fetchInitialDataAction(branchSlug?: string): Promise<DbActionResult<InitialDataPayload>> {
   try {
+    // ── AUTO-MIGRATION: Fix branch ID length (Max 10 chars for Cognito) ──
+    await query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM branches WHERE id = 'br-aibak-office') THEN
+          UPDATE branches SET name = 'Aibak Office Old' WHERE id = 'br-aibak-office';
+          INSERT INTO branches (id, name, location, manager_name, status)
+          VALUES ('BRAIBAKOFF', 'Aibak Office', 'Dubai', 'Aibak', 'active')
+          ON CONFLICT (id) DO NOTHING;
+          
+          UPDATE deals SET managing_branch_id = 'BRAIBAKOFF', to_branch_id = 'BRAIBAKOFF' WHERE managing_branch_id = 'br-aibak-office' OR to_branch_id = 'br-aibak-office';
+          UPDATE investors SET assigned_branch_id = 'BRAIBAKOFF' WHERE assigned_branch_id = 'br-aibak-office';
+          UPDATE entities SET branch_id = 'BRAIBAKOFF' WHERE branch_id = 'br-aibak-office';
+          
+          DELETE FROM branches WHERE id = 'br-aibak-office';
+        END IF;
+      END $$;
+    `);
+    // ─────────────────────────────────────────────────────────────────────
+
     // 1. Fetch HQ Balance
     const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
     const hqBalance = hqRes.rows.length > 0 ? parseFloat(hqRes.rows[0].amount) : 50000000;
@@ -82,6 +102,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const branchesRes = await query('SELECT * FROM branches ORDER BY id ASC');
     const branches: Branch[] = branchesRes.rows.map((r) => ({
       id: r.id,
+      slug: r.slug || r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       name: r.name,
       location: r.location,
       managerName: r.manager_name,
@@ -262,8 +283,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
 
     const dealTxRes = await query(`
       SELECT dt.*,
-        COALESCE(
-          json_agg(
+        (SELECT COALESCE(json_agg(
             json_build_object(
               'id', dtp.id,
               'dealTransactionId', dtp.deal_transaction_id,
@@ -272,12 +292,24 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
               'payoutAmount', dtp.payout_amount,
               'createdAt', dtp.created_at
             )
-          ) FILTER (WHERE dtp.id IS NOT NULL),
-          '[]'::json
-        ) as payouts
+          ), '[]'::json)
+         FROM deal_transaction_payouts dtp 
+         WHERE dtp.deal_transaction_id = dt.id
+        ) as payouts,
+        (SELECT COALESCE(json_agg(
+            json_build_object(
+              'id', dte.id,
+              'dealTransactionId', dte.deal_transaction_id,
+              'key', dte.key,
+              'value', dte.value,
+              'timestamp', dte.timestamp,
+              'createdAt', dte.created_at
+            )
+          ), '[]'::json)
+         FROM deal_transaction_expenses dte 
+         WHERE dte.deal_transaction_id = dt.id
+        ) as expenses_details
       FROM deal_transactions dt
-      LEFT JOIN deal_transaction_payouts dtp ON dtp.deal_transaction_id = dt.id
-      GROUP BY dt.id
       ORDER BY dt.date DESC
     `);
     const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) => ({
@@ -306,6 +338,14 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         investorName: p.investorName,
         payoutAmount: parseFloat(p.payoutAmount),
         createdAt: p.createdAt,
+      })),
+      expensesDetails: (r.expenses_details as Array<any>).map((e: any) => ({
+        id: e.id,
+        dealTransactionId: e.dealTransactionId,
+        key: e.key,
+        value: parseFloat(e.value),
+        timestamp: e.timestamp,
+        createdAt: e.createdAt,
       })),
     }));
 
@@ -392,10 +432,11 @@ export async function dbAddBranchAction(
 
     // 1. Insert branch
     await client.query(
-      `INSERT INTO branches (id, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, closing_balance, daily_pl, status, last_activity, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      `INSERT INTO branches (id, slug, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, closing_balance, daily_pl, status, last_activity, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         branch.id,
+        branch.slug,
         branch.name,
         branch.location,
         branch.managerName,
@@ -542,6 +583,30 @@ export async function dbAddInvoiceAction(invoice: Invoice): Promise<DbActionResu
   } catch (error: unknown) {
     const message = formatPgError(error);
     console.error('Error adding invoice:', error);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Updates the HQ treasury balance directly.
+ */
+export async function dbUpdateHqBalanceAction(amount: number): Promise<DbActionResult<{ hqBalance: number }>> {
+  try {
+    const res = await query(
+      `UPDATE hq_balance SET amount = $1 WHERE id = 1 RETURNING amount`,
+      [amount]
+    );
+    if (res.rows.length === 0) {
+      const insertRes = await query(
+        `INSERT INTO hq_balance (id, amount) VALUES (1, $1) RETURNING amount`,
+        [amount]
+      );
+      return { success: true, data: { hqBalance: parseFloat(insertRes.rows[0].amount) } };
+    }
+    return { success: true, data: { hqBalance: parseFloat(res.rows[0].amount) } };
+  } catch (error: unknown) {
+    const message = formatPgError(error);
+    console.error('Error updating HQ balance:', error);
     return { success: false, error: message };
   }
 }
@@ -1320,10 +1385,10 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
   }
 }
 
-export async function dbUpdateBranchAction(id: string, name: string, location: string, managerName: string): Promise<DbActionResult<void>> {
+export async function dbUpdateBranchAction(id: string, slug: string, name: string, location: string, managerName: string): Promise<DbActionResult<void>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   try {
-    await query('UPDATE branches SET name = $1, location = $2, manager_name = $3 WHERE id = $4', [name, location, managerName, id]);
+    await query('UPDATE branches SET slug = $1, name = $2, location = $3, manager_name = $4 WHERE id = $5', [slug, name, location, managerName, id]);
     return { success: true, data: undefined };
   } catch (error: unknown) {
     return { success: false, error: formatPgError(error) };
@@ -1404,6 +1469,21 @@ export async function dbDeleteBranchAction(id: string): Promise<DbActionResult<v
     const invoicesRes = await query('SELECT 1 FROM invoices WHERE branch_id = $1 LIMIT 1', [id]);
     if (invoicesRes.rowCount && invoicesRes.rowCount > 0) return { success: false, error: 'Cannot delete branch because it has associated invoices.' };
     await query('DELETE FROM branches WHERE id = $1', [id]);
+    return { success: true, data: undefined };
+  } catch (error: unknown) {
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function dbDeleteEntityAction(entityName: string, entityId: string): Promise<DbActionResult<void>> {
+  try {
+    const txRes = await query('SELECT 1 FROM transactions WHERE from_entity = $1 OR to_entity = $1 LIMIT 1', [entityName]);
+    if (txRes.rowCount && txRes.rowCount > 0) return { success: false, error: 'Cannot delete entity because it is part of a ledger transaction.' };
+    
+    const dTxRes = await query('SELECT 1 FROM deal_transactions WHERE entity = $1 LIMIT 1', [entityName]);
+    if (dTxRes.rowCount && dTxRes.rowCount > 0) return { success: false, error: 'Cannot delete entity because it is part of a deal transaction.' };
+    
+    await query('DELETE FROM entities WHERE id = $1', [entityId]);
     return { success: true, data: undefined };
   } catch (error: unknown) {
     return { success: false, error: formatPgError(error) };

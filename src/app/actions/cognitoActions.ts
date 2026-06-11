@@ -89,7 +89,7 @@ export async function createCognitoUserAction(
         { Name: 'email_verified', Value: 'true' },
         { Name: 'name', Value: name },
         { Name: 'custom:role', Value: role },
-        ...(branchId ? [{ Name: 'custom:branchId', Value: branchId }] : [])
+        ...(branchId ? [{ Name: 'custom:branchId', Value: branchId.substring(0, 10) }] : [])
       ],
       MessageAction: 'SUPPRESS',
     });

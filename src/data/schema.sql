@@ -15,6 +15,7 @@ ON CONFLICT (id) DO NOTHING;
 -- 2. Branches
 CREATE TABLE IF NOT EXISTS branches (
     id VARCHAR(50) PRIMARY KEY,
+    slug VARCHAR(255) UNIQUE,
     name VARCHAR(255) UNIQUE NOT NULL,
     location VARCHAR(255) NOT NULL,
     manager_name VARCHAR(255) NOT NULL,

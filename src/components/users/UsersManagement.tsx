@@ -11,9 +11,10 @@ import { CreateUserModal, ResetPasswordModal, EditUserModal } from './UserModals
 interface UsersManagementProps {
   initialUsers: CognitoUser[];
   error?: string;
+  fixedBranchId?: string;
 }
 
-export default function UsersManagement({ initialUsers, error }: UsersManagementProps) {
+export default function UsersManagement({ initialUsers, error, fixedBranchId }: UsersManagementProps) {
   const { showToast, branches } = useApp();
   const [users, setUsers] = useState<CognitoUser[]>(initialUsers);
   
@@ -177,7 +178,7 @@ export default function UsersManagement({ initialUsers, error }: UsersManagement
                   <tr>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Name & Email</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Role</th>
-                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Branch Assignment</th>
+                    {!fixedBranchId && <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Branch Assignment</th>}
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Created</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
@@ -201,9 +202,11 @@ export default function UsersManagement({ initialUsers, error }: UsersManagement
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
                         <span className={badgeClass(u.role === 'admin' ? 'active' : 'pending')}>{u.role}</span>
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">
-                        {getBranchName(u.branchId)}
-                      </td>
+                      {!fixedBranchId && (
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">
+                          {getBranchName(u.branchId)}
+                        </td>
+                      )}
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
                         <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
                       </td>
@@ -278,7 +281,8 @@ export default function UsersManagement({ initialUsers, error }: UsersManagement
       <CreateUserModal 
         open={showCreate} 
         onClose={() => setShowCreate(false)} 
-        onAdd={handleCreate} 
+        onAdd={(email, name, role, branchId, pwd) => handleCreate(email, name, role, fixedBranchId || branchId, pwd)}
+        fixedBranchId={fixedBranchId}
       />
 
       {resetEmail && (

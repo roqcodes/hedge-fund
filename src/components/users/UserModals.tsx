@@ -41,17 +41,19 @@ export function PasswordRequirements({ pw }: { pw: string }) {
 export function CreateUserModal({
   open,
   onClose,
-  onAdd
+  onAdd,
+  fixedBranchId
 }: {
   open: boolean;
   onClose: () => void;
   onAdd: (email: string, name: string, role: string, branchId: string, passwordRaw: string) => Promise<void>;
+  fixedBranchId?: string;
 }) {
   const { branches } = useApp();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState('admin');
-  const [branchId, setBranchId] = useState('');
+  const [role, setRole] = useState(fixedBranchId ? 'branch_manager' : 'admin');
+  const [branchId, setBranchId] = useState(fixedBranchId || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -66,8 +68,8 @@ export function CreateUserModal({
     // reset
     setEmail('');
     setName('');
-    setRole('admin');
-    setBranchId('');
+    setRole(fixedBranchId ? 'branch_manager' : 'admin');
+    setBranchId(fixedBranchId || '');
     setPassword('');
     onClose();
   };
@@ -101,14 +103,16 @@ export function CreateUserModal({
         <input type="password" className={formInput} placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
         <PasswordRequirements pw={password} />
       </div>
-      <div className={formGroup}>
-        <label className={formLabel}>Role</label>
-        <select className={formInput} value={role} onChange={e => setRole(e.target.value)} disabled={loading}>
-          <option value="admin">Superadmin</option>
-          <option value="branch_manager">Branch Manager</option>
-        </select>
-      </div>
-      {role === 'branch_manager' && (
+      {!fixedBranchId && (
+        <div className={formGroup}>
+          <label className={formLabel}>Role</label>
+          <select className={formInput} value={role} onChange={e => setRole(e.target.value)} disabled={loading}>
+            <option value="admin">Superadmin</option>
+            <option value="branch_manager">Branch Manager</option>
+          </select>
+        </div>
+      )}
+      {role === 'branch_manager' && !fixedBranchId && (
         <div className={formGroup}>
           <label className={formLabel}>Assign to Branch</label>
           <select className={formInput} value={branchId} onChange={e => setBranchId(e.target.value)} disabled={loading}>
