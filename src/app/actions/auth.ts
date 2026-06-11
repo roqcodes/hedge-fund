@@ -3,6 +3,7 @@
 import { authenticateWithCognito, createSession, deleteSession, getSessionUser } from '@/lib/auth';
 import { User } from '@/types';
 import { loginSchema } from '@/lib/validations';
+import { query } from '@/lib/db';
 
 export interface AuthActionResult<T> {
   success: boolean;
@@ -12,8 +13,10 @@ export interface AuthActionResult<T> {
 
 /**
  * Server Action to authenticate a user and establish a session.
+ * Enforces authorization: branch managers can only log in at their assigned branch slug,
+ * and admins can only log in at the root (superadmin) context.
  */
-export async function loginAction(email: string, securityKey: string): Promise<AuthActionResult<User>> {
+export async function loginAction(email: string, securityKey: string, branchSlug?: string): Promise<AuthActionResult<User>> {
   try {
     const validation = loginSchema.safeParse({ email, securityKey });
     if (!validation.success) {
@@ -21,7 +24,32 @@ export async function loginAction(email: string, securityKey: string): Promise<A
     }
 
     const user = await authenticateWithCognito(validation.data.email, validation.data.securityKey);
-    await createSession(user);
+
+    // ── Authorization gate ──────────────────────────────────────────────
+    if (branchSlug) {
+      // Branch portal: only branch_managers assigned to THIS branch may enter
+      if (user.role !== 'branch_manager') {
+        return { success: false, error: 'Access denied. Only branch managers can sign in through a branch portal.' };
+      }
+      // Resolve slug → branch id from the database
+      const branchRes = await query(
+        `SELECT id FROM branches WHERE LOWER(REGEXP_REPLACE(name, '[^a-zA-Z0-9]+', '-', 'g')) = $1 LIMIT 1`,
+        [branchSlug]
+      );
+      if (branchRes.rows.length === 0) {
+        return { success: false, error: 'This branch portal does not exist.' };
+      }
+      if (branchRes.rows[0].id !== user.branchId) {
+        return { success: false, error: 'Access denied. You are not authorized to access this branch.' };
+      }
+    } else {
+      // Superadmin portal: only admins may enter
+      if (user.role !== 'admin') {
+        return { success: false, error: 'Access denied. Branch managers should sign in through their branch portal URL.' };
+      }
+    }
+
+    await createSession(user, branchSlug);
     
     return { success: true, data: user };
   } catch (error: unknown) {
@@ -33,9 +61,9 @@ export async function loginAction(email: string, securityKey: string): Promise<A
 /**
  * Server Action to end a session.
  */
-export async function logoutAction(): Promise<AuthActionResult<void>> {
+export async function logoutAction(branchSlug?: string): Promise<AuthActionResult<void>> {
   try {
-    await deleteSession();
+    await deleteSession(branchSlug);
     return { success: true };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An error occurred during logout.';
@@ -46,9 +74,9 @@ export async function logoutAction(): Promise<AuthActionResult<void>> {
 /**
  * Server Action to retrieve the current active user session.
  */
-export async function getCurrentUserAction(): Promise<AuthActionResult<User | null>> {
+export async function getCurrentUserAction(branchSlug?: string): Promise<AuthActionResult<User | null>> {
   try {
-    const user = await getSessionUser();
+    const user = await getSessionUser(branchSlug);
     return { success: true, data: user };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An error occurred while fetching user session.';

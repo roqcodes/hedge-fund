@@ -24,7 +24,7 @@ const navItems: {
   ];
 
 export default function Sidebar() {
-  const { sidebarOpen, toggleSidebar, user, branches } = useApp();
+  const { sidebarOpen, toggleSidebar, user, branches, logout } = useApp();
   const pathname = usePathname();
 
   const isBranchUser = user?.role === 'branch_manager';
@@ -104,7 +104,31 @@ export default function Sidebar() {
           })}
         </nav>
 
-
+        {/* Mobile Sign Out Button */}
+        <div className="mt-auto border-t border-slate-100 p-4 lg:hidden">
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-semibold text-red-600 transition-colors hover:bg-red-50 max-lg:active:scale-[0.99] sm:text-sm"
+            onClick={() => {
+              closeMobile();
+              logout();
+            }}
+          >
+            <svg
+              className="size-[18px] shrink-0 sm:size-5 text-red-500"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.85"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+            </svg>
+            <span className="truncate">Sign Out</span>
+          </button>
+        </div>
 
       </aside>
     </>

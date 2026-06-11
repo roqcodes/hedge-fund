@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
-import { formatAED, formatAEDStr, formatDateTime } from '@/data/mockData';
+import { formatAED, formatAEDStr, formatDateTime, generateId } from '@/data/mockData';
 import { Branch, Transaction } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import {
@@ -25,17 +25,15 @@ import {
   tableWrap,
   dataTable,
 } from '@/lib/ui';
-import { EntityManagementModal } from './EntityManagementModal';
 import { BranchTransferModal } from './BranchTransferModal';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 
 export default function FundManagement() {
-  const { branches, transactions, transferFunds, hqBalance, isBranchView, updateBranchInitialFund, showToast, entities, addEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction } = useApp();
+  const { branches, transactions, transferFunds, hqBalance, isBranchView, updateBranchInitialFund, showToast, entities, addEntity, updateEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction } = useApp();
   const [showTransfer, setShowTransfer] = useState(false);
   const [showEditInitialFund, setShowEditInitialFund] = useState(false);
-  const [showEntityModal, setShowEntityModal] = useState(false);
   const [editFundAmount, setEditFundAmount] = useState('');
   const [isUpdatingFund, setIsUpdatingFund] = useState(false);
   const [filter, setFilter] = useState<string>('all');
@@ -47,6 +45,18 @@ export default function FundManagement() {
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
   const [deletingTxn, setDeletingTxn] = useState<Transaction | null>(null);
   const [isSavingTxn, setIsSavingTxn] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'customer_account' | 'temporary_credit' | 'entities'>('all');
+
+  // Add Entity state
+  const [showAddEntity, setShowAddEntity] = useState(false);
+  const [newEntityName, setNewEntityName] = useState('');
+  const [newEntityPhone, setNewEntityPhone] = useState('');
+  const [isSubmittingEntity, setIsSubmittingEntity] = useState(false);
+
+  // Drilldown entity state
+  const [selectedEntity, setSelectedEntity] = useState<import('@/types').Entity | null>(null);
+  const [editingEntity, setEditingEntity] = useState<import('@/types').Entity | null>(null);
+  const [isSavingEntity, setIsSavingEntity] = useState(false);
 
   const {
     dateFilter, setDateFilter,
@@ -75,9 +85,51 @@ export default function FundManagement() {
   const branchCapital = branches.length === 1 ? branches[0].openingBalance : 0;
   const totalCashInLocker = branchCapital + customerAccountsBalance + temporaryCreditsBalance;
 
+  const branchId = branches.length === 1 ? branches[0].id : undefined;
+
+  const tabCounts = React.useMemo(() => {
+    const src = filteredTransactions || [];
+    const branchEntitiesCount = entities.filter(e => !branchId || e.branchId === branchId).length;
+    return {
+      all: src.length,
+      customer_account: src.filter(t => t.type === 'customer_account').length,
+      temporary_credit: src.filter(t => t.type === 'temporary_credit').length,
+      entities: branchEntitiesCount,
+    };
+  }, [filteredTransactions, entities, branchId]);
+
+  const filteredEntities = React.useMemo(() => {
+    let result = entities.filter(e => {
+      if (branchId && e.branchId !== branchId) return false;
+      if (searchTerm.trim()) {
+        const query = searchTerm.toLowerCase();
+        return (
+          e.name.toLowerCase().includes(query) ||
+          (e.phone && e.phone.includes(query))
+        );
+      }
+      return true;
+    });
+
+    result.sort((a, b) => {
+      let field = sortField;
+      if (field !== 'name' && field !== 'createdAt') {
+        field = 'createdAt';
+      }
+      let valA = field === 'name' ? a.name : a.createdAt || '';
+      let valB = field === 'name' ? b.name : b.createdAt || '';
+
+      const compare = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? compare : -compare;
+    });
+
+    return result;
+  }, [entities, searchTerm, sortField, sortDirection, branchId]);
+
   const filteredAndSortedTxns = React.useMemo(() => {
     let result = filteredTransactions.filter((t: Transaction) => {
-      if (filter !== 'all' && t.type !== filter) return false;
+      if (activeTab !== 'all' && t.type !== activeTab) return false;
+      if (activeTab === 'all' && filter !== 'all' && t.type !== filter) return false;
       if (branchFilter !== 'all' && t.from !== branchFilter && t.to !== branchFilter) return false;
       if (entityFilter !== 'all' && t.from !== entityFilter && t.to !== entityFilter) return false;
       if (searchTerm.trim()) {
@@ -108,7 +160,7 @@ export default function FundManagement() {
     });
     
     return result;
-  }, [transactions, filter, branchFilter, searchTerm, sortField, sortDirection]);
+  }, [transactions, filteredTransactions, filter, branchFilter, entityFilter, searchTerm, sortField, sortDirection, activeTab]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -167,35 +219,20 @@ export default function FundManagement() {
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-3 mt-4 sm:mt-0">
             {isBranchView && branches.length === 1 && (
-              <>
-                <button 
-                  type="button" 
-                  className={`${btnSecondary} w-full sm:w-auto`} 
-                  onClick={() => {
-                    setEditFundAmount(branches[0].openingBalance.toString());
-                    setShowEditInitialFund(true);
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                  Edit Capital
-                </button>
-                <button 
-                  type="button" 
-                  className={`${btnSecondary} w-full sm:w-auto`} 
-                  onClick={() => setShowEntityModal(true)}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                  Manage Entities
-                </button>
-              </>
+              <button 
+                type="button" 
+                className={`${btnSecondary} w-full sm:w-auto`} 
+                onClick={() => {
+                  setEditFundAmount(branches[0].openingBalance.toString());
+                  setShowEditInitialFund(true);
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                Edit Capital
+              </button>
             )}
             <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowTransfer(true)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -325,9 +362,40 @@ export default function FundManagement() {
           )}
         </div>
 
+        <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 w-fit mb-4 flex-wrap sm:flex-nowrap">
+          {([
+            { key: 'all', label: 'All Transactions', count: tabCounts.all },
+            { key: 'customer_account', label: 'Customer Account', count: tabCounts.customer_account },
+            { key: 'temporary_credit', label: 'Temporary Credits', count: tabCounts.temporary_credit },
+            { key: 'entities', label: 'Entities', count: tabCounts.entities },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                activeTab === tab.key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab.label}
+              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-slate-100 text-slate-600'
+                  : 'bg-slate-200/60 text-slate-400'
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
         <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
           <div className="flex flex-col gap-3 pb-4 px-4 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
-            <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">Transaction History</h3>
+            <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">
+              {activeTab === 'entities' ? 'Entities' : 'Transactions'}
+            </h3>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-2">
               <div className="relative w-full sm:w-44">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -336,230 +404,501 @@ export default function FundManagement() {
                 </svg>
                 <input
                   type="text"
-                  placeholder="Search txns..."
+                  placeholder={activeTab === 'entities' ? "Search entities..." : "Search txns..."}
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm w-full`}
                 />
               </div>
-              <div className="grid grid-cols-1 gap-2 w-full min-[480px]:grid-cols-3 sm:flex sm:w-auto sm:flex-row sm:gap-2">
-                <SearchableSelect
-                  options={typeFilters}
-                  value={filter}
-                  onChange={setFilter}
-                  className="w-full sm:w-40"
-                />
-                <SearchableSelect
-                  options={branchOptions}
-                  value={branchFilter}
-                  onChange={setBranchFilter}
-                  className="w-full sm:w-40"
-                />
-                <SearchableSelect
-                  options={entityOptions}
-                  value={entityFilter}
-                  onChange={setEntityFilter}
-                  className="w-full sm:w-40"
-                />
-              </div>
+              
+              {activeTab === 'entities' ? (
+                <button
+                  type="button"
+                  className={`${btnPrimary} w-full sm:w-auto`}
+                  onClick={() => setShowAddEntity(!showAddEntity)}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="mr-1 inline-block">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  {showAddEntity ? 'Cancel' : 'Add Entity'}
+                </button>
+              ) : (
+                <div className={`grid grid-cols-1 gap-2 w-full ${activeTab === 'all' ? 'min-[480px]:grid-cols-3' : 'min-[480px]:grid-cols-2'} sm:flex sm:w-auto sm:flex-row sm:gap-2`}>
+                  {activeTab === 'all' && (
+                    <SearchableSelect
+                      options={typeFilters}
+                      value={filter}
+                      onChange={setFilter}
+                      className="w-full sm:w-40"
+                    />
+                  )}
+                  <SearchableSelect
+                    options={branchOptions}
+                    value={branchFilter}
+                    onChange={setBranchFilter}
+                    className="w-full sm:w-40"
+                  />
+                  <SearchableSelect
+                    options={entityOptions}
+                    value={entityFilter}
+                    onChange={setEntityFilter}
+                    className="w-full sm:w-40"
+                  />
+                </div>
+              )}
             </div>
           </div>
           <div className="p-0">
+            {activeTab === 'entities' && showAddEntity && (
+              <div className="bg-slate-50 p-4 border-b border-slate-100 animate-[fade-in-up_0.3s_ease_both]">
+                <div className="max-w-2xl mx-auto space-y-4">
+                  <h4 className="font-bold text-slate-800 text-sm">Create New Entity</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-slate-500">Name</label>
+                      <input
+                        type="text"
+                        className={formInput}
+                        value={newEntityName}
+                        onChange={e => setNewEntityName(e.target.value)}
+                        placeholder="e.g. John Doe"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-slate-500">Phone Number (Optional)</label>
+                      <input
+                        type="text"
+                        className={formInput}
+                        value={newEntityPhone}
+                        onChange={e => setNewEntityPhone(e.target.value)}
+                        placeholder="e.g. +971 50 123 4567"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className={btnSecondary}
+                      onClick={() => {
+                        setNewEntityName('');
+                        setNewEntityPhone('');
+                        setShowAddEntity(false);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className={btnPrimary}
+                      onClick={async () => {
+                        if (!newEntityName.trim()) return;
+                        setIsSubmittingEntity(true);
+                        const newEntity = {
+                          id: generateId('ENT'),
+                          name: newEntityName.trim(),
+                          phone: newEntityPhone.trim() || undefined,
+                          branchId,
+                          createdAt: new Date().toISOString()
+                        };
+                        const success = await addEntity(newEntity);
+                        setIsSubmittingEntity(false);
+                        if (success) {
+                          setNewEntityName('');
+                          setNewEntityPhone('');
+                          setShowAddEntity(false);
+                          showToast('Entity created successfully', 'success');
+                        }
+                      }}
+                      disabled={!newEntityName.trim() || isSubmittingEntity}
+                    >
+                      {isSubmittingEntity ? 'Saving...' : 'Save Entity'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ── Desktop table ── */}
             <div className={`${tableWrap} hidden md:block`}>
-              <table className={`${dataTable} min-w-[900px]`}>
-                <thead>
-                  <tr>
-                    <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('date')}>
-                      Date &amp; Time <SortIcon field="date" />
-                    </th>
-                    <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('from')}>
-                      From <SortIcon field="from" />
-                    </th>
-                    <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('to')}>
-                      To <SortIcon field="to" />
-                    </th>
-                    <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
-                      Amount <SortIcon field="amount" />
-                    </th>
-                    <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
-                      Type <SortIcon field="type" />
-                    </th>
-                    <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('category')}>
-                      Debit / Credit <SortIcon field="category" />
-                    </th>
-                    {isBranchView && branches.length === 1 && (
+              {activeTab === 'entities' ? (
+                <table className={`${dataTable} min-w-[900px]`}>
+                  <thead>
+                    <tr>
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('name')}>
+                        <div className="flex items-center gap-1">
+                          Name <SortIcon field="name" />
+                        </div>
+                      </th>
+                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
+                        Phone
+                      </th>
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('createdAt')}>
+                        <div className="flex items-center gap-1">
+                          Created At <SortIcon field="createdAt" />
+                        </div>
+                      </th>
                       <th className="px-3 pb-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
                         Actions
                       </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAndSortedTxns.map((t: Transaction) => (
-                    <tr key={t.id} data-interactive-row>
-                      <td className="w-[120px] whitespace-normal border-y border-l border-black/5 bg-white px-3 py-3.5 text-[11px] leading-tight text-slate-600 first:rounded-l-2xl sm:px-4 sm:py-3">
-                        {formatDateTime(t.date).split(',').map((part, i) => (
-                           <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
-                        ))}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.from}</td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.to}</td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                        {formatAED(t.amount)}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
-                      </td>
-                      <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit')) ? ' last:rounded-r-2xl border-r' : ''}`}>
-                        {t.category === 'debit' ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-200">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-                            Debit
-                          </span>
-                        ) : t.category === 'credit' ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-rose-700 ring-1 ring-rose-200">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                            Credit
-                          </span>
-                        ) : (
-                          <span className="text-slate-300 text-sm">—</span>
-                        )}
-                      </td>
-                      {isBranchView && branches.length === 1 && (
-                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-4 sm:py-3">
-                          {(t.type === 'customer_account' || t.type === 'temporary_credit') ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                title="Edit transaction"
-                                onClick={() => setEditingTxn({ ...t })}
-                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                </svg>
-                              </button>
-                              <button
-                                type="button"
-                                title="Delete transaction"
-                                onClick={() => setDeletingTxn(t)}
-                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                  <polyline points="3 6 5 6 21 6" />
-                                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                  <path d="M10 11v6M14 11v6" />
-                                  <path d="M9 6V4h6v2" />
-                                </svg>
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="block text-center text-slate-300">—</span>
-                          )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEntities.map((ent) => (
+                      <tr
+                        key={ent.id}
+                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => setSelectedEntity(ent)}
+                        data-interactive-row
+                      >
+                        <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm font-semibold first:rounded-l-2xl sm:px-5 sm:py-4 text-slate-900">
+                          {ent.name}
                         </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4 text-slate-600">
+                          {ent.phone || <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4 text-slate-500">
+                          {ent.createdAt ? new Date(ent.createdAt).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              title="Edit Entity"
+                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95 lg:gap-1 lg:px-2.5"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingEntity(ent);
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                              <span className="hidden lg:inline text-xs font-bold">Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              title="View Transactions"
+                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95 lg:gap-1 lg:px-2.5"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedEntity(ent);
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                              <span className="hidden lg:inline text-xs font-bold">Transactions</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredEntities.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-10 text-center text-sm text-slate-400">
+                          No entities found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className={`${dataTable} min-w-[900px]`}>
+                  <thead>
+                    <tr>
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('date')}>
+                        <div className="flex items-center gap-1">
+                          Date &amp; Time <SortIcon field="date" />
+                        </div>
+                      </th>
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('from')}>
+                        <div className="flex items-center gap-1">
+                          From <SortIcon field="from" />
+                        </div>
+                      </th>
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('to')}>
+                        <div className="flex items-center gap-1">
+                          To <SortIcon field="to" />
+                        </div>
+                      </th>
+                      {activeTab === 'all' ? (
+                        <>
+                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
+                            <div className="flex items-center gap-1">
+                              Amount <SortIcon field="amount" />
+                            </div>
+                          </th>
+                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
+                            <div className="flex items-center gap-1">
+                              Type <SortIcon field="type" />
+                            </div>
+                          </th>
+                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('category')}>
+                            <div className="flex items-center gap-1">
+                              Debit / Credit <SortIcon field="category" />
+                            </div>
+                          </th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
+                            <div className="flex items-center gap-1">
+                              Debit <SortIcon field="amount" />
+                            </div>
+                          </th>
+                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
+                            <div className="flex items-center gap-1">
+                              Credit <SortIcon field="amount" />
+                            </div>
+                          </th>
+                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
+                            <div className="flex items-center gap-1">
+                              Type <SortIcon field="type" />
+                            </div>
+                          </th>
+                        </>
+                      )}
+                      {isBranchView && branches.length === 1 && (
+                        <th className="px-3 pb-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
+                          Actions
+                        </th>
                       )}
                     </tr>
-                  ))}
-                  {filteredAndSortedTxns.length === 0 && (
-                    <tr>
-                      <td colSpan={isBranchView && branches.length === 1 ? 7 : 6} className="py-10 text-center text-sm text-slate-400">
-                        No transactions found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredAndSortedTxns.map((t: Transaction) => (
+                      <tr key={t.id} data-interactive-row>
+                        <td className="w-[120px] whitespace-normal border-y border-l border-black/5 bg-white px-3 py-3.5 text-[11px] leading-tight text-slate-600 first:rounded-l-2xl sm:px-4 sm:py-3">
+                          {formatDateTime(t.date).split(',').map((part, i) => (
+                             <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
+                          ))}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.from}</td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.to}</td>
+                        {activeTab === 'all' ? (
+                          <>
+                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
+                              {formatAED(t.amount)}
+                            </td>
+                            <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                              <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
+                            </td>
+                            <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit')) ? ' last:rounded-r-2xl border-r' : ''}`}>
+                              {t.category === 'debit' ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-200">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                                  Debit
+                                </span>
+                              ) : t.category === 'credit' ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-rose-700 ring-1 ring-rose-200">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                                  Credit
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 text-sm">—</span>
+                              )}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-emerald-600">
+                              {t.category === 'debit' ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
+                            </td>
+                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-rose-600">
+                              {t.category === 'credit' ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
+                            </td>
+                            <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit')) ? ' last:rounded-r-2xl border-r' : ''}`}>
+                              <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
+                            </td>
+                          </>
+                        )}
+                        {isBranchView && branches.length === 1 && (
+                          <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-4 sm:py-3">
+                            {(t.type === 'customer_account' || t.type === 'temporary_credit') ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  title="Edit transaction"
+                                  onClick={() => setEditingTxn({ ...t })}
+                                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Delete transaction"
+                                  onClick={() => setDeletingTxn(t)}
+                                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                    <path d="M10 11v6M14 11v6" />
+                                    <path d="M9 6V4h6v2" />
+                                  </svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="block text-center text-slate-300">—</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {filteredAndSortedTxns.length === 0 && (
+                      <tr>
+                        <td colSpan={isBranchView && branches.length === 1 ? 7 : 6} className="py-10 text-center text-sm text-slate-400">
+                          No transactions found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {/* ── Mobile card list ── */}
             <div className="flex md:hidden flex-col gap-3 py-4 px-4">
-              {filteredAndSortedTxns.length === 0 ? (
-                <div className="py-8 text-center text-sm text-slate-400">No transactions found.</div>
-              ) : filteredAndSortedTxns.map((t: Transaction) => {
-                const isEditable = isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit');
-                const entityName = t.category === 'debit' ? t.from : t.category === 'credit' ? t.to : null;
-                return (
-                  <div key={t.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] transition-all">
-                    {/* Top row: date + badges */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-slate-800">
-                          {formatDateTime(t.date).split(',')[0]}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          {formatDateTime(t.date).split(',')[1]?.trim()}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                        <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
-                        {t.category === 'debit' ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-200">
-                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-                            Debit
-                          </span>
-                        ) : t.category === 'credit' ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700 ring-1 ring-rose-200">
-                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                            Credit
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Middle: entity route + amount */}
-                    <div className="grid grid-cols-2 gap-3 border-y border-slate-50 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Entity</span>
-                        <span className="text-sm font-semibold text-slate-800 truncate">
-                          {entityName ?? `${t.from} → ${t.to}`}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-0.5 items-end">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount</span>
-                        <span className="font-mono text-sm font-bold text-slate-900">{formatAED(t.amount)}</span>
-                      </div>
-                    </div>
-
-                    {/* Bottom: notes + actions */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-slate-400 truncate flex-1">
-                        {t.notes || <span className="italic">No notes</span>}
-                      </span>
-                      {isEditable && (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            title="Edit"
-                            onClick={() => setEditingTxn({ ...t })}
-                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            title="Delete"
-                            onClick={() => setDeletingTxn(t)}
-                            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                              <path d="M10 11v6M14 11v6" />
-                              <path d="M9 6V4h6v2" />
-                            </svg>
-                          </button>
+              {activeTab === 'entities' ? (
+                filteredEntities.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-slate-400">No entities found.</div>
+                ) : (
+                  filteredEntities.map((ent) => (
+                    <div
+                      key={ent.id}
+                      className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] transition-all hover:shadow-md cursor-pointer active:scale-[0.99]"
+                      onClick={() => setSelectedEntity(ent)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-semibold text-slate-900">{ent.name}</span>
+                          <span className="text-xs text-slate-500">{ent.phone || 'No phone'}</span>
                         </div>
-                      )}
+                        <span className="text-[10px] text-slate-400">
+                          {ent.createdAt ? new Date(ent.createdAt).toLocaleDateString() : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-50">
+                        <button
+                          type="button"
+                          className="text-xs font-bold text-slate-500 hover:text-slate-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingEntity(ent);
+                          }}
+                        >
+                          Edit Entity
+                        </button>
+                        <span className="text-xs font-bold text-accent">View Transactions &rarr;</span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  ))
+                )
+              ) : (
+                filteredAndSortedTxns.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-slate-400">No transactions found.</div>
+                ) : filteredAndSortedTxns.map((t: Transaction) => {
+                  const isEditable = isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit');
+                  const entityName = t.category === 'debit' ? t.from : t.category === 'credit' ? t.to : null;
+                  return (
+                    <div key={t.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] transition-all">
+                      {/* Top row: date + badges */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-semibold text-slate-800">
+                            {formatDateTime(t.date).split(',')[0]}
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {formatDateTime(t.date).split(',')[1]?.trim()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
+                          {activeTab === 'all' && (
+                            t.category === 'debit' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-200">
+                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                                Debit
+                              </span>
+                            ) : t.category === 'credit' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700 ring-1 ring-rose-200">
+                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                                Credit
+                              </span>
+                            ) : null
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Middle: entity route + amount */}
+                      <div className="grid grid-cols-2 gap-3 border-y border-slate-50 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Entity</span>
+                          <span className="text-sm font-semibold text-slate-800 truncate">
+                            {entityName ?? `${t.from} → ${t.to}`}
+                          </span>
+                        </div>
+                        {activeTab === 'all' ? (
+                          <div className="flex flex-col gap-0.5 items-end">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount</span>
+                            <span className="font-mono text-sm font-bold text-slate-900">{formatAED(t.amount)}</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-0.5 items-end">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {t.category === 'debit' ? 'Debit' : t.category === 'credit' ? 'Credit' : 'Amount'}
+                            </span>
+                            <span className={`font-mono text-sm font-bold ${t.category === 'debit' ? 'text-emerald-600' : t.category === 'credit' ? 'text-rose-600' : 'text-slate-900'}`}>
+                              {formatAED(t.amount)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom: notes + actions */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-slate-400 truncate flex-1">
+                          {t.notes || <span className="italic">No notes</span>}
+                        </span>
+                        {isEditable && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              title="Edit"
+                              onClick={() => setEditingTxn({ ...t })}
+                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              title="Delete"
+                              onClick={() => setDeletingTxn(t)}
+                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                <path d="M10 11v6M14 11v6" />
+                                <path d="M9 6V4h6v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
           </div>
@@ -582,10 +921,18 @@ export default function FundManagement() {
         />
       )}
 
-      <EntityManagementModal
-        open={showEntityModal}
-        onClose={() => setShowEntityModal(false)}
-      />
+      {/* Entity Transactions Drilldown Modal */}
+      {selectedEntity && (
+        <EntityTransactionsModal
+          entity={selectedEntity}
+          transactions={transactions}
+          onClose={() => setSelectedEntity(null)}
+          isBranchView={isBranchView}
+          branches={branches}
+          setEditingTxn={setEditingTxn}
+          setDeletingTxn={setDeletingTxn}
+        />
+      )}
 
       {/* Edit Transaction Modal */}
       {editingTxn && isBranchView && branches.length === 1 && (
@@ -726,7 +1073,95 @@ export default function FundManagement() {
           </div>
         </Modal>
       )}
+
+      {/* Edit Entity Modal */}
+      {editingEntity && (
+        <EditEntityModal
+          entity={editingEntity}
+          isSaving={isSavingEntity}
+          onClose={() => setEditingEntity(null)}
+          onSave={async (updated) => {
+            setIsSavingEntity(true);
+            const ok = await updateEntity(updated);
+            setIsSavingEntity(false);
+            if (ok) setEditingEntity(null);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function EditEntityModal({
+  entity,
+  isSaving,
+  onClose,
+  onSave,
+}: {
+  entity: import('@/types').Entity;
+  isSaving: boolean;
+  onClose: () => void;
+  onSave: (updated: import('@/types').Entity) => void;
+}) {
+  const [name, setName] = useState(entity.name);
+  const [phone, setPhone] = useState(entity.phone || '');
+  const [error, setError] = useState('');
+
+  const handleSave = () => {
+    setError('');
+    if (!name.trim()) {
+      setError('Name is required.');
+      return;
+    }
+    onSave({
+      ...entity,
+      name: name.trim(),
+      phone: phone.trim() || undefined,
+    });
+  };
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Edit Entity"
+      footer={
+        <>
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose} disabled={isSaving}>
+            Cancel
+          </button>
+          <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={handleSave} disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className={formRow}>
+          <div className={formGroup}>
+            <label className={formLabel}>Name</label>
+            <input
+              type="text"
+              className={formInput}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. John Doe"
+            />
+          </div>
+          <div className={formGroup}>
+            <label className={formLabel}>Phone Number (Optional)</label>
+            <input
+              type="text"
+              className={formInput}
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="e.g. +971 50 123 4567"
+            />
+          </div>
+        </div>
+        {error && <p className={`${formError} mt-1`}>{error}</p>}
+      </div>
+    </Modal>
   );
 }
 
@@ -1011,5 +1446,228 @@ function EditLedgerTransactionModal({
         {error && <p className={`${formError} mt-1`}>{error}</p>}
       </div>
     </Modal>
+  );
+}
+
+function EntityTransactionsModal({
+  entity,
+  transactions,
+  onClose,
+  isBranchView,
+  branches,
+  setEditingTxn,
+  setDeletingTxn,
+}: {
+  entity: import('@/types').Entity;
+  transactions: import('@/types').Transaction[];
+  onClose: () => void;
+  isBranchView: boolean;
+  branches: import('@/types').Branch[];
+  setEditingTxn: (txn: import('@/types').Transaction | null) => void;
+  setDeletingTxn: (txn: import('@/types').Transaction | null) => void;
+}) {
+  const entityTxns = React.useMemo(() => {
+    return transactions.filter(t => t.from === entity.name || t.to === entity.name)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [transactions, entity.name]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-white/30 backdrop-blur-sm transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 visible opacity-100"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className="flex max-h-[min(90dvh,100%)] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-slate-200/90 bg-white shadow-modal transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:max-h-[90vh] sm:rounded-[1.75rem] translate-y-0 scale-100"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-slate-50/90 px-5 py-4 sm:px-6">
+          <h3 id="modal-title" className="text-base font-bold text-slate-900">
+            {entity.name} — Transactions History
+          </h3>
+          <button
+            type="button"
+            className="flex size-8 items-center justify-center rounded-full bg-slate-200 text-base text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">
+          
+          {/* Desktop view */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <th className="py-3 px-4">Date &amp; Time</th>
+                  <th className="py-3 px-4">From</th>
+                  <th className="py-3 px-4">To</th>
+                  <th className="py-3 px-4">Debit</th>
+                  <th className="py-3 px-4">Credit</th>
+                  <th className="py-3 px-4">Type</th>
+                  {isBranchView && branches.length === 1 && (
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-sm text-slate-800">
+                {entityTxns.length === 0 ? (
+                  <tr>
+                    <td colSpan={isBranchView && branches.length === 1 ? 7 : 6} className="py-8 text-center text-slate-400">
+                      No transactions found for this entity.
+                    </td>
+                  </tr>
+                ) : (
+                  entityTxns.map((t) => (
+                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3.5 px-4 text-[11px] leading-tight text-slate-600">
+                        {formatDateTime(t.date).split(',').map((part, i) => (
+                           <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
+                        ))}
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold">{t.from}</td>
+                      <td className="py-3.5 px-4 font-semibold">{t.to}</td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-600">
+                        {t.category === 'debit' ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-rose-600">
+                        {t.category === 'credit' ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
+                      </td>
+                      {isBranchView && branches.length === 1 && (
+                        <td className="py-3.5 px-4 text-right">
+                          {(t.type === 'customer_account' || t.type === 'temporary_credit') ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                title="Edit transaction"
+                                onClick={() => {
+                                  onClose();
+                                  setEditingTxn({ ...t });
+                                }}
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1 text-slate-500 shadow-sm transition-all hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                title="Delete transaction"
+                                onClick={() => {
+                                  onClose();
+                                  setDeletingTxn(t);
+                                }}
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1 text-slate-500 shadow-sm transition-all hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                  <path d="M10 11v6M14 11v6" />
+                                  <path d="M9 6V4h6v2" />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile view */}
+          <div className="flex md:hidden flex-col gap-3">
+            {entityTxns.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400">No transactions found.</div>
+            ) : (
+              entityTxns.map((t) => {
+                const isEditable = isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit');
+                return (
+                  <div key={t.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)]">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-slate-800">
+                          {formatDateTime(t.date).split(',')[0]}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {formatDateTime(t.date).split(',')[1]?.trim()}
+                        </span>
+                      </div>
+                      <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 border-y border-slate-50 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Route</span>
+                        <span className="text-xs font-semibold text-slate-800 truncate">
+                          {t.from} &rarr; {t.to}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          {t.category === 'debit' ? 'Debit' : t.category === 'credit' ? 'Credit' : 'Amount'}
+                        </span>
+                        <span className={`font-mono text-xs font-bold ${t.category === 'debit' ? 'text-emerald-600' : t.category === 'credit' ? 'text-rose-600' : 'text-slate-900'}`}>
+                          {formatAED(t.amount)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-[11px] text-slate-400 truncate flex-1">
+                        {t.notes || <span className="italic">No notes</span>}
+                      </span>
+                      {isEditable && (
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              setEditingTxn({ ...t });
+                            }}
+                            className="p-1 border border-slate-200 rounded text-slate-500 hover:text-accent hover:border-accent"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              setDeletingTxn(t);
+                            }}
+                            className="p-1 border border-slate-200 rounded text-slate-500 hover:text-red-600 hover:border-red-400"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+        </div>
+        <div className="sticky bottom-0 z-10 flex justify-end border-t border-slate-100 bg-slate-50/90 p-4">
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

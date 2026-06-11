@@ -133,37 +133,43 @@ export async function authenticateWithCognito(email: string, securityKey: string
 /**
  * Creates a session cookie with the authenticated user data.
  */
-export async function createSession(user: User) {
+export async function createSession(user: User, branchSlug?: string) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
   const session = await encrypt({
     ...user,
     expiresAt: expiresAt.toISOString(),
   });
 
+  const cookieName = branchSlug ? `session_${branchSlug}` : 'session_superadmin';
+  const cookiePath = branchSlug ? `/${branchSlug}` : '/';
+
   const cookieStore = await cookies();
-  cookieStore.set('session', session, {
+  cookieStore.set(cookieName, session, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     expires: expiresAt,
     sameSite: 'lax',
-    path: '/',
+    path: cookiePath,
   });
 }
 
 /**
  * Deletes the session cookie.
  */
-export async function deleteSession() {
+export async function deleteSession(branchSlug?: string) {
+  const cookieName = branchSlug ? `session_${branchSlug}` : 'session_superadmin';
   const cookieStore = await cookies();
-  cookieStore.delete('session');
+  cookieStore.delete(cookieName);
 }
 
 /**
  * Retrieves the current session user details, if authenticated.
+ * Enforces that the session role matches the expected context.
  */
-export async function getSessionUser(): Promise<User | null> {
+export async function getSessionUser(branchSlug?: string): Promise<User | null> {
+  const cookieName = branchSlug ? `session_${branchSlug}` : 'session_superadmin';
   const cookieStore = await cookies();
-  const session = cookieStore.get('session')?.value;
+  const session = cookieStore.get(cookieName)?.value;
   if (!session) return null;
 
   const payload = await decrypt(session);
@@ -172,6 +178,10 @@ export async function getSessionUser(): Promise<User | null> {
   if (new Date(payload.expiresAt) < new Date()) {
     return null;
   }
+
+  // Defence-in-depth: verify the session role matches the expected context
+  if (branchSlug && payload.role !== 'branch_manager') return null;
+  if (!branchSlug && payload.role !== 'admin') return null;
 
   return {
     email: payload.email,

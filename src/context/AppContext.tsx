@@ -37,6 +37,7 @@ import {
   dbUpdateDealTransactionAction,
   dbDeleteDealTransactionAction,
   dbAddEntityAction,
+  dbUpdateEntityAction,
   dbProcessLedgerTransactionAction,
   dbUpdateLedgerTransactionAction,
   dbDeleteLedgerTransactionAction,
@@ -118,6 +119,7 @@ interface AppContextType extends AppState {
   refetchData: () => Promise<void>;
   isBranchView: boolean;
   addEntity: (entity: import('@/types').Entity) => Promise<boolean>;
+  updateEntity: (entity: import('@/types').Entity) => Promise<boolean>;
   processLedgerTransaction: (txn: import('@/types').Transaction, deltaCash: number, branchId: string) => Promise<boolean>;
   updateLedgerTransaction: (txn: import('@/types').Transaction, oldAmount: number, oldCategory: string | undefined, branchId: string) => Promise<boolean>;
   deleteLedgerTransaction: (id: string, txnAmount: number, txnCategory: string | undefined, branchId: string) => Promise<boolean>;
@@ -125,7 +127,20 @@ interface AppContextType extends AppState {
 
 const AppContext = createContext<AppContextType | null>(null);
 
+const getSlugFromPath = (path: string): string => {
+  const parts = path.split('/').filter(Boolean);
+  const first = parts[0];
+  const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 'investors', 'invoices', 'physical', 'reports', 'settings', 'usdt', 'api']);
+  if (first && !SYSTEM_PATHS.has(first)) {
+    return first;
+  }
+  return 'superadmin';
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const currentSlug = useMemo(() => getSlugFromPath(pathname), [pathname]);
+
   const [state, setState] = useState<AppState>({
     user: null,
     isAuthenticated: false,
@@ -151,7 +166,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refetchData = useCallback(async () => {
     try {
-      const dbRes = await fetchInitialDataAction();
+      const slug = currentSlug === 'superadmin' ? undefined : currentSlug;
+      const dbRes = await fetchInitialDataAction(slug);
       if (dbRes.success && dbRes.data) {
         const data = dbRes.data;
         
@@ -174,28 +190,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('Failed to refetch data:', e);
     }
-  }, []);
+  }, [currentSlug]);
 
-  // Load session and database data on mount
+  // Load session and database data on mount or when switching branch prefix
   React.useEffect(() => {
+    // Immediately reset auth state when slug changes to prevent
+    // flashing the previous context's dashboard content
+    setState(s => ({
+      ...s,
+      user: null,
+      isAuthenticated: false,
+      isInitialLoading: true,
+    }));
+
     async function initApp() {
       let currentUser: User | null = null;
       let isAuthenticated = false;
 
+      const slug = currentSlug === 'superadmin' ? undefined : currentSlug;
+
       try {
-        const authRes = await getCurrentUserAction();
+        const authRes = await getCurrentUserAction(slug);
         if (authRes.success && authRes.data) {
           currentUser = authRes.data;
           isAuthenticated = true;
         } else {
-          localStorage.removeItem('hedge_session');
+          localStorage.removeItem('hedge_session_' + currentSlug);
         }
       } catch (e) {
         console.error('Failed to load session from server', e);
       }
 
       try {
-        const dbRes = await fetchInitialDataAction();
+        const dbRes = await fetchInitialDataAction(slug);
         if (dbRes.success && dbRes.data) {
           const data = dbRes.data;
           setState(s => ({
@@ -230,7 +257,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
     }
     initApp();
-  }, []);
+  }, [currentSlug]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     const id = Date.now().toString();
@@ -240,18 +267,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback((user: User) => {
     setState(s => ({ ...s, user, isAuthenticated: true }));
-    localStorage.setItem('hedge_session', JSON.stringify({ user, isAuthenticated: true }));
-  }, []);
+    localStorage.setItem('hedge_session_' + currentSlug, JSON.stringify({ user, isAuthenticated: true }));
+  }, [currentSlug]);
 
   const logout = useCallback(async () => {
+    const slug = currentSlug === 'superadmin' ? undefined : currentSlug;
     try {
-      await logoutAction();
+      await logoutAction(slug);
     } catch (e) {
       console.error('Failed to execute logout Server Action:', e);
     }
     setState(s => ({ ...s, user: null, isAuthenticated: false, currentPage: 'dashboard' }));
-    localStorage.removeItem('hedge_session');
-  }, []);
+    localStorage.removeItem('hedge_session_' + currentSlug);
+  }, [currentSlug]);
 
   const setPage = useCallback((page: PageId) => {
     setState(s => ({ ...s, currentPage: page, selectedBranchId: null, selectedInvestorId: null }));
@@ -699,6 +727,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
+  const updateEntity = useCallback(async (entity: import('@/types').Entity) => {
+    try {
+      const dbRes = await dbUpdateEntityAction(entity);
+      if (dbRes.success && dbRes.data) {
+        setState(s => ({
+          ...s,
+          entities: s.entities.map(e => e.id === entity.id ? dbRes.data! : e)
+        }));
+        showToast('Entity updated successfully');
+        return true;
+      } else {
+        showToast(dbRes.error || 'Failed to update entity', 'error');
+        return false;
+      }
+    } catch (e) {
+      console.error('DB updateEntity failed', e);
+      showToast('Failed to update entity', 'error');
+      return false;
+    }
+  }, [showToast]);
+
   const processLedgerTransaction = useCallback(async (txn: import('@/types').Transaction, deltaCash: number, branchId: string) => {
     try {
       const dbRes = await dbProcessLedgerTransactionAction(txn, deltaCash, branchId);
@@ -877,8 +926,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, activeCurrency: currency }));
   }, []);
 
-  const pathname = usePathname();
-
   const contextValue = useMemo(() => {
     let filteredState = state;
     const activeSlug = pathname === '/' ? undefined : pathname?.split('/')[1];
@@ -905,7 +952,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const inv = state.investors.find(i => i.id === di.investorId);
             return inv && inv.assignedBranchId === filterBranchId;
           });
-          console.log(`Deal ${d.id} ${d.name} | managingBranchId=${d.managingBranchId} | filterBranchId=${filterBranchId} | matchManaging=${matchManaging} | matchInvestor=${matchInvestor}`);
           return matchManaging || matchInvestor;
         });
         const dealIds = new Set(deals.map(d => d.id));
@@ -948,9 +994,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
-      addEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction,
+      addEntity, updateEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction,
     };
-  }, [state, pathname, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction]);
+  }, [state, pathname, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction]);
 
   return (
     <AppContext.Provider value={contextValue}>

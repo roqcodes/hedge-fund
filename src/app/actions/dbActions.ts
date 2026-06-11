@@ -72,7 +72,7 @@ export interface InitialDataPayload {
  *
  * Uses JOINs + json_agg for investors/deals to eliminate N+1 queries.
  */
-export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDataPayload>> {
+export async function fetchInitialDataAction(branchSlug?: string): Promise<DbActionResult<InitialDataPayload>> {
   try {
     // 1. Fetch HQ Balance
     const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
@@ -319,7 +319,7 @@ export async function fetchInitialDataAction(): Promise<DbActionResult<InitialDa
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
     }));
 
-    const userRes = await getCurrentUserAction();
+    const userRes = await getCurrentUserAction(branchSlug);
     const currentUser = userRes.success ? userRes.data : null;
 
     let finalBranches = branches;
@@ -1262,6 +1262,20 @@ export async function dbAddEntityAction(entity: Entity): Promise<DbActionResult<
     return { success: true, data: entity };
   } catch (error: unknown) {
     console.error('Error adding entity:', error);
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function dbUpdateEntityAction(entity: Entity): Promise<DbActionResult<Entity>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  try {
+    await query(
+      `UPDATE entities SET name = $1, phone = $2, branch_id = $3 WHERE id = $4`,
+      [entity.name, entity.phone || null, entity.branchId || null, entity.id]
+    );
+    return { success: true, data: entity };
+  } catch (error: unknown) {
+    console.error('Error updating entity:', error);
     return { success: false, error: formatPgError(error) };
   }
 }

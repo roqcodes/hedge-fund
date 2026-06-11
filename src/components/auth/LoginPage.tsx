@@ -2,11 +2,9 @@
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { loginAction } from '@/app/actions/auth';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage({ branchSlug }: { branchSlug?: string }) {
-  const { login, branches } = useApp();
-  const router = useRouter();
+  const { login, branches, refetchData } = useApp();
   
   const branch = branchSlug ? branches.find((b: any) => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === branchSlug) : null;
   
@@ -31,17 +29,11 @@ export default function LoginPage({ branchSlug }: { branchSlug?: string }) {
     setLoading(true);
 
     try {
-      const res = await loginAction(email, password);
+      const res = await loginAction(email, password, branchSlug);
       if (res.success && res.data) {
         login(res.data);
-        const user = res.data;
-        if (user.role === 'branch_manager' && user.branchId) {
-          const branch = branches.find((b: any) => b.id === user.branchId);
-          const slug = branch ? branch.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : user.branchId.toLowerCase();
-          router.push(`/${slug}`);
-        } else {
-          router.push('/');
-        }
+        // Re-fetch data with the now-active session so filtering is applied
+        await refetchData();
       } else {
         setError(res.error || 'Authentication failed. Please try again.');
       }
