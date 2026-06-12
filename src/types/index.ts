@@ -221,3 +221,48 @@ export interface DealTransactionPayout {
   payoutAmount: number;
   createdAt?: string;
 }
+
+export interface PhysicalBalance {
+  branchId: string;
+  initialCapital: number;
+  initialVolume: number;
+  availableFund: number;
+  availableVolume: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PhysicalBuy {
+  id: string;
+  branchId: string;
+  date: string;
+  particulars: string;
+  grossWeight: number;
+  pureConversion: number;
+  pureGram: number;
+  idrGram: number;
+  idrToUsdt: number;
+  idrRate: number;
+  total: number;
+  buyValue: number;
+  remainingWeight: number;
+  status: 'active' | 'closed';
+  createdAt?: string;
+}
+
+export interface PhysicalSell {
+  id: string;
+  buyId: string;
+  date: string;
+  particulars?: string;
+  grossWeight: number;
+  pureConversion: number;
+  pureGram: number;
+  idrGram: number;
+  idrToUsdt: number;
+  idrRate: number;
+  total: number;
+  sellValue: number;
+  profit: number;
+  createdAt?: string;
+}

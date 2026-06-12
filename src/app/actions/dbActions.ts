@@ -13,6 +13,9 @@ import {
   DealTransaction,
   DealTransactionExpense,
   Entity,
+  PhysicalBalance,
+  PhysicalBuy,
+  PhysicalSell,
 } from '@/types';
 import {
   addBranchSchema,
@@ -65,6 +68,9 @@ export interface InitialDataPayload {
   hqBalance: number;
   dealTransactions: DealTransaction[];
   entities: Entity[];
+  physicalBalances: PhysicalBalance[];
+  physicalBuys: PhysicalBuy[];
+  physicalSells: PhysicalSell[];
 }
 
 /**
@@ -362,6 +368,55 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const userRes = await getCurrentUserAction(branchSlug);
     const currentUser = userRes.success ? userRes.data : null;
 
+    // Fetch Physical Data
+    const physicalBalancesRes = await query('SELECT * FROM physical_balances');
+    const physicalBalances = physicalBalancesRes.rows.map(r => ({
+      branchId: r.branch_id,
+      initialCapital: parseFloat(r.initial_capital),
+      initialVolume: parseFloat(r.initial_volume),
+      availableFund: parseFloat(r.available_fund),
+      availableVolume: parseFloat(r.available_volume),
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : undefined,
+    }));
+
+    const physicalBuysRes = await query('SELECT * FROM physical_buys ORDER BY date DESC');
+    const physicalBuys = physicalBuysRes.rows.map(r => ({
+      id: r.id,
+      branchId: r.branch_id,
+      date: new Date(r.date).toISOString(),
+      particulars: r.particulars,
+      grossWeight: parseFloat(r.gross_weight),
+      pureConversion: parseFloat(r.pure_conversion),
+      pureGram: parseFloat(r.pure_gram),
+      idrGram: parseFloat(r.idr_gram),
+      idrToUsdt: parseFloat(r.idr_to_usdt),
+      idrRate: parseFloat(r.idr_rate),
+      total: parseFloat(r.total),
+      buyValue: parseFloat(r.buy_value),
+      remainingWeight: parseFloat(r.remaining_weight),
+      status: r.status,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
+    const physicalSellsRes = await query('SELECT * FROM physical_sells ORDER BY date DESC');
+    const physicalSells = physicalSellsRes.rows.map(r => ({
+      id: r.id,
+      buyId: r.buy_id,
+      date: new Date(r.date).toISOString(),
+      particulars: r.particulars,
+      grossWeight: parseFloat(r.gross_weight),
+      pureConversion: parseFloat(r.pure_conversion),
+      pureGram: parseFloat(r.pure_gram),
+      idrGram: parseFloat(r.idr_gram),
+      idrToUsdt: parseFloat(r.idr_to_usdt),
+      idrRate: parseFloat(r.idr_rate),
+      total: parseFloat(r.total),
+      sellValue: parseFloat(r.sell_value),
+      profit: parseFloat(r.profit),
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
     let finalBranches = branches;
     let finalTransactions = transactions;
     let finalExpenses = expenses;
@@ -370,6 +425,9 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     let finalDeals = deals;
     let finalDealTransactions = dealTransactions;
     let finalEntities = entities;
+    let finalPhysicalBalances = physicalBalances;
+    let finalPhysicalBuys = physicalBuys;
+    let finalPhysicalSells = physicalSells;
 
     if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
       const bId = currentUser.branchId;
@@ -385,6 +443,10 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       const dealIds = new Set(finalDeals.map(d => d.id));
       finalDealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
       finalEntities = entities.filter(e => !e.branchId || e.branchId === bId);
+      finalPhysicalBalances = physicalBalances.filter(b => b.branchId === bId);
+      finalPhysicalBuys = physicalBuys.filter(b => b.branchId === bId);
+      const buyIds = new Set(finalPhysicalBuys.map(b => b.id));
+      finalPhysicalSells = physicalSells.filter(s => buyIds.has(s.buyId));
     }
 
     return {
@@ -400,6 +462,9 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         hqBalance,
         dealTransactions: finalDealTransactions,
         entities: finalEntities,
+        physicalBalances: finalPhysicalBalances,
+        physicalBuys: finalPhysicalBuys,
+        physicalSells: finalPhysicalSells,
       },
     };
   } catch (error: unknown) {

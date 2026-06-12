@@ -15,6 +15,9 @@ import {
   Deal,
   InvestorRiskProfile,
   DealTransaction,
+  PhysicalBalance,
+  PhysicalBuy,
+  PhysicalSell,
 } from '@/types';
 import * as mock from '@/data/mockData';
 import { getCurrentUserAction, logoutAction } from '@/app/actions/auth';
@@ -68,6 +71,9 @@ interface AppState {
   activeCurrency: 'AED' | 'USD' | 'INR';
   dealTransactions: DealTransaction[];
   entities: import('@/types').Entity[];
+  physicalBalances: PhysicalBalance[];
+  physicalBuys: PhysicalBuy[];
+  physicalSells: PhysicalSell[];
 }
 
 export type AddInvestorInput = {
@@ -167,6 +173,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     activeCurrency: 'AED',
     dealTransactions: [],
     entities: [],
+    physicalBalances: [],
+    physicalBuys: [],
+    physicalSells: [],
   });
 
   const refetchData = useCallback(async () => {
@@ -189,6 +198,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             hqBalance: data.hqBalance,
             dealTransactions: data.dealTransactions || [],
             entities: data.entities || [],
+            physicalBalances: data.physicalBalances || [],
+            physicalBuys: data.physicalBuys || [],
+            physicalSells: data.physicalSells || [],
           };
         });
       }
@@ -244,6 +256,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             hqBalance: data.hqBalance,
             dealTransactions: data.dealTransactions || [],
             entities: data.entities || [],
+            physicalBalances: data.physicalBalances || [],
+            physicalBuys: data.physicalBuys || [],
+            physicalSells: data.physicalSells || [],
             isInitialLoading: false,
           }));
           return;
