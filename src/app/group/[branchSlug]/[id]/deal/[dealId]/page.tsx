@@ -1,9 +1,10 @@
 import React from 'react';
 import TransactionDetails from '@/components/deals/TransactionDetails';
-export default async function DealTransactionPage({
+
+export default async function SuperadminBranchDealTransactionPage({
   params,
 }: {
-  params: Promise<{ id: string; dealId: string }>;
+  params: Promise<{ branchSlug: string; id: string; dealId: string }>;
 }) {
   const resolvedParams = await params;
   return (

@@ -49,3 +49,7 @@ const nextConfig: NextConfig = {
 };
 
 export default withSerwist(nextConfig);
+
+// Trigger server restart
+
+// Trigger server restart after successful deletion of [id]

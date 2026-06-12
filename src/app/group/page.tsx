@@ -1,5 +1,5 @@
-import DealsManagement from '@/components/deals/DealsManagement';
+import SuperadminGroups from '@/components/deals/SuperadminGroups';
 
-export default function DealsPage() {
-  return <DealsManagement />;
+export default function GroupsPage() {
+  return <SuperadminGroups />;
 }

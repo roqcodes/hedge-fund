@@ -1,5 +1,5 @@
-import PhysicalPage from '@/components/physical/PhysicalPage';
+import SuperadminPhysical from '@/components/physical/SuperadminPhysical';
 
 export default function Physical() {
-  return <PhysicalPage />;
+  return <SuperadminPhysical />;
 }

@@ -25,8 +25,9 @@ export default function DealTransactionsTable({
   const router = useRouter();
   const params = useParams();
   const dealId = params?.id as string || '1';
+  const branchSlug = params?.branchSlug as string;
   const { currentSlug } = useApp();
-  const basePath = currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '';
+  const basePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('deal');

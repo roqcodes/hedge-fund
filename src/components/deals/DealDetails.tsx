@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatAEDStr, formatDateTime } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
@@ -26,7 +26,9 @@ import {
 
 export default function DealDetails({ dealId }: { dealId: string }) {
   const { deals, investors, selectInvestor, dealTransactions, deleteDealTransaction, currentSlug } = useApp();
-  const basePath = currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '';
+  const params = useParams();
+  const branchSlug = params?.branchSlug as string;
+  const basePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '');
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [showAddTxn, setShowAddTxn] = useState(false);

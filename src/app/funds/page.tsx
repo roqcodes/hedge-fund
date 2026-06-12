@@ -1,5 +1,5 @@
-import FundManagement from '@/components/funds/FundManagement';
+import SuperadminFunds from '@/components/funds/SuperadminFunds';
 
 export default function FundsPage() {
-  return <FundManagement />;
+  return <SuperadminFunds />;
 }

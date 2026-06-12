@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import SellDealModal from './SellDealModal';
 import ExpensesModal from './ExpensesModal';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAED } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
@@ -27,8 +27,10 @@ function KPICard({ label, value, colorClass, icon, cardClassName }: { label: str
 
 export default function TransactionDetails({ dealId, txnId }: { dealId: string; txnId: string }) {
   const router = useRouter();
+  const params = useParams();
+  const branchSlug = params?.branchSlug as string;
   const { deals, investors, isInitialLoading, dealTransactions, currentSlug } = useApp();
-  const basePath = currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '';
+  const basePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '');
   const [showSellModal, setShowSellModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
 
