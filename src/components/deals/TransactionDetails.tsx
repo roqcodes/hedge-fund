@@ -30,7 +30,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
   const params = useParams();
   const branchSlug = params?.branchSlug as string;
   const { deals, investors, isInitialLoading, dealTransactions, currentSlug } = useApp();
-  const basePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '');
+  const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
   const [showSellModal, setShowSellModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
 
@@ -101,7 +101,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         <div className="w-full sm:w-auto">
           <div className="mb-2 flex items-center gap-3">
             <button
-              onClick={() => router.push(`${basePath}/group/${deal.id}`)}
+              onClick={() => router.push(`${groupBasePath}/${deal.id}`)}
               className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
               aria-label="Back to Group"
             >

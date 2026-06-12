@@ -401,7 +401,13 @@ export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: str
                             className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
                             onClick={(e) => {
                               e.stopPropagation();
-                              router.push(`${basePath}/group/${deal.id}`);
+                              router.push(`${basePath}/${deal.id}`);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                router.push(`${basePath}/${deal.id}`);
+                              }
                             }}
                           >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

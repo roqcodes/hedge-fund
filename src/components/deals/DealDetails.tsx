@@ -28,7 +28,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const { deals, investors, selectInvestor, dealTransactions, deleteDealTransaction, currentSlug } = useApp();
   const params = useParams();
   const branchSlug = params?.branchSlug as string;
-  const basePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '');
+  const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [showAddTxn, setShowAddTxn] = useState(false);
@@ -39,15 +39,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
   useEffect(() => {
     if (!deal) {
-      router.push(`${basePath}/group`);
+      router.push(groupBasePath);
     }
-  }, [deal, router, basePath]);
-
-  useEffect(() => {
-    if (!deal) {
-      router.push(`${basePath}/group`);
-    }
-  }, [deal, router, basePath]);
+  }, [deal, router, groupBasePath]);
 
   const fundingPercentage = Math.min(((deal?.totalInvestment || 0) / (deal?.amount || 1)) * 100, 100);
 
@@ -163,7 +157,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           <div>
             <div className="mb-2 flex items-center gap-3">
               <button
-                onClick={() => router.push(`${basePath}/group`)}
+                onClick={() => router.push(groupBasePath)}
                 className="group flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
                 aria-label="Back to Deals"
               >

@@ -27,7 +27,7 @@ export default function DealTransactionsTable({
   const dealId = params?.id as string || '1';
   const branchSlug = params?.branchSlug as string;
   const { currentSlug } = useApp();
-  const basePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '');
+  const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('deal');
@@ -249,7 +249,7 @@ export default function DealTransactionsTable({
                   <tr
                     key={row.id}
                     className="cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100"
-                    onClick={() => router.push(`${basePath}/group/${dealId}/deal/${row.id}`)}
+                    onClick={() => router.push(`${groupBasePath}/${dealId}/deal/${row.id}`)}
                   >
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{row.deal}</td>
                     <td className="whitespace-nowrap px-4 py-3">
@@ -313,7 +313,7 @@ export default function DealTransactionsTable({
               filteredAndSortedData.map((row) => (
                 <div
                   key={row.id}
-                  onClick={() => router.push(`${basePath}/group/${dealId}/deal/${row.id}`)}
+                  onClick={() => router.push(`${groupBasePath}/${dealId}/deal/${row.id}`)}
                   className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
                 >
                   <div className="flex items-center justify-between">
@@ -369,7 +369,7 @@ export default function DealTransactionsTable({
                         <span>Edit</span>
                       </button>
                     </div>
-                    <div className="text-accent font-bold" onClick={() => router.push(`${basePath}/group/${dealId}/deal/${row.id}`)}>
+                    <div className="text-accent font-bold" onClick={() => router.push(`${groupBasePath}/${dealId}/deal/${row.id}`)}>
                       View &rarr;
                     </div>
                   </div>

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatAEDStr } from '@/data/mockData';
@@ -26,8 +26,11 @@ export default function EditDealModal({
   onClose: () => void;
   deal: Deal;
 }) {
-  const { branches, investors, updateDeal, deleteDeal } = useApp();
+  const { branches, investors, updateDeal, deleteDeal, currentSlug } = useApp();
   const router = useRouter();
+  const params = useParams();
+  const branchSlug = params?.branchSlug as string;
+  const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
 
   const [groupName, setGroupName] = useState('');
 
@@ -258,7 +261,7 @@ export default function EditDealModal({
     const success = await deleteDeal(deal.id);
     if (success) {
       onClose();
-      router.push('/group');
+      router.push(groupBasePath);
     }
   };
 
