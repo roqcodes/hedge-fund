@@ -6,10 +6,9 @@ import { z } from 'zod';
  * Validates and exports a strongly-typed `env` object so the rest of the app
  * can rely on well-formed values instead of raw `process.env` lookups.
  *
- * Optional variables (COGNITO_*) gracefully degrade — the app runs in
- * developer-mock auth mode when they are absent.  Required variables
- * (DATABASE_URL, SESSION_SECRET) cause an immediate crash with a clear
- * error message if missing.
+ * Optional variables gracefully degrade when appropriate. Required variables
+ * (DATABASE_URL, SESSION_SECRET, COGNITO_*) cause an immediate crash with a clear
+ * error message if missing, ensuring production environments never boot in an insecure state.
  */
 
 const envSchema = z.object({
@@ -24,10 +23,10 @@ const envSchema = z.object({
     .min(32, 'SESSION_SECRET must be at least 32 characters')
     .default('secret-key-must-be-32-characters-long-default'),
 
-  // ── AWS Cognito (optional — falls back to dev mock auth) ───────────
-  COGNITO_REGION: z.string().optional(),
-  COGNITO_USER_POOL_ID: z.string().optional(),
-  COGNITO_CLIENT_ID: z.string().optional(),
+  // ── AWS Cognito (Required for secure authentication) ───────────
+  COGNITO_REGION: z.string().min(1),
+  COGNITO_USER_POOL_ID: z.string().min(1),
+  COGNITO_CLIENT_ID: z.string().min(1),
 
   // ── Node ───────────────────────────────────────────────────────────
   NODE_ENV: z

@@ -10,31 +10,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 The database is an **AWS RDS PostgreSQL** instance. The connection string lives in `.env` under `DATABASE_URL`.
 
 ## Running migrations / DDL
-
-1. **Attempt psql first**: Try using the `psql` CLI:
-   ```powershell
-   psql "postgresql://postgres:A9F1awg62x5os4t8lPBC@hedge-fund-db.cc5ayciaofbl.us-east-1.rds.amazonaws.com:5432/postgres?sslmode=require" -c "<SQL>"
-   ```
-
-2. **Fallback to Node `pg` script**: If `psql` is not recognized, write a temporary Node.js script. 
-   **CRITICAL**: You MUST remove `?sslmode=require` from the connection string in the script, and pass `ssl: { rejectUnauthorized: false }` to the `Client` constructor to avoid self-signed certificate errors.
-   
-   Example:
-   ```javascript
-   const { Client } = require('pg');
-
-   async function main() {
-       const client = new Client({
-           connectionString: 'postgresql://postgres:A9F1awg62x5os4t8lPBC@hedge-fund-db.cc5ayciaofbl.us-east-1.rds.amazonaws.com:5432/postgres',
-           ssl: { rejectUnauthorized: false }
-       });
-       await client.connect();
-       
-       await client.query("...");
-       await client.end();
-   }
-   main();
-   ```
+provide the sql command thats it. 
 
 **Rules for agents:**
 - Never hardcode a DATABASE_URL in source code — always read it from `process.env.DATABASE_URL` via `src/lib/env.ts`.

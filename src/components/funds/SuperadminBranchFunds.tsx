@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
@@ -31,6 +32,7 @@ import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 
 export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: string }) {
+  const router = useRouter();
   const { branches: allBranches, transactions, transferFunds, hqBalance, isBranchView: originalIsBranchView, updateBranchInitialFund, updateHqBalance, showToast, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction } = useApp();
   
   const branch = allBranches.find(b => b.slug === branchSlug);
@@ -67,14 +69,19 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
   const [isSavingEntity, setIsSavingEntity] = useState(false);
   const [isDeletingEntity, setIsDeletingEntity] = useState(false);
 
+  const branchName = branches.length === 1 ? branches[0].name : '';
+
+  const branchTransactions = React.useMemo(() => {
+    if (!branchName) return transactions;
+    return transactions.filter((t: Transaction) => t.from === branchName || t.to === branchName);
+  }, [transactions, branchName]);
+
   const {
     dateFilter, setDateFilter,
     customStartDate, setCustomStartDate,
     customEndDate, setCustomEndDate,
     filteredData: filteredTransactions
-  } = useDateFilter(transactions);
-
-  const branchName = branches.length === 1 ? branches[0].name : '';
+  } = useDateFilter(branchTransactions);
 
   const totalVolume = filteredTransactions.reduce((acc: number, t: Transaction) => acc + t.amount, 0);
   const transferCount = filteredTransactions.filter((t: Transaction) => t.type === 'transfer').length;
@@ -223,7 +230,18 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
         <div className={pageHeader}>
           <div>
-            <h2 className={pageTitle}>Fund Management</h2>
+            <div className="mb-2 flex items-center gap-3">
+              <button
+                onClick={() => router.push(`/funds`)}
+                className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
+                aria-label="Back to Funds"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h2 className={pageTitle}>Fund Management</h2>
+            </div>
             <p className={pageSubtitle}>Monitor capital flow and execute strategic transfers</p>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-3 mt-4 sm:mt-0">
