@@ -7,9 +7,10 @@ type ModalProps = {
   title: string;
   children: React.ReactNode;
   footer: React.ReactNode;
+  maxWidth?: string;
 };
 
-export default function Modal({ open, onClose, title, children, footer }: ModalProps) {
+export default function Modal({ open, onClose, title, children, footer, maxWidth = 'max-w-lg' }: ModalProps) {
   return (
     <div
       className={`fixed inset-0 z-[100] flex items-end justify-center bg-white/30 backdrop-blur-sm transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 ${
@@ -22,7 +23,7 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`flex max-h-[min(90dvh,100%)] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-slate-200/90 bg-white shadow-modal transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:max-h-[90vh] sm:rounded-[1.75rem] ${
+        className={`flex max-h-[min(90dvh,100%)] w-full ${maxWidth} flex-col overflow-hidden rounded-t-3xl border border-slate-200/90 bg-white shadow-modal transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:max-h-[90vh] sm:rounded-[1.75rem] ${
           open ? 'translate-y-0 scale-100 sm:translate-y-0' : 'translate-y-full scale-100 sm:translate-y-5 sm:scale-[0.98]'
         }`}
         onClick={e => e.stopPropagation()}

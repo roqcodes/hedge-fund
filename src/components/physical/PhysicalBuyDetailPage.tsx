@@ -294,26 +294,54 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
 
         {/* Buy Info Summary */}
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-surface-xs">
-          <h3 className="mb-3 text-sm font-bold text-slate-800">Inventory Purchase Details</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4 lg:grid-cols-6">
+          <h3 className="mb-4 text-sm font-bold text-slate-800">Inventory Purchase Details</h3>
+          <div className="grid grid-cols-2 gap-y-4 gap-x-4 text-sm sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             <div>
-              <p className="text-slate-500 text-xs font-medium">Buy ID</p>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy ID</p>
               <p className="font-semibold text-slate-800">{buy.id.split('-')[1].toUpperCase()}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-xs font-medium">Date</p>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Date</p>
               <p className="font-semibold text-slate-800">{new Date(buy.date).toLocaleDateString()}</p>
             </div>
-            <div>
-              <p className="text-slate-500 text-xs font-medium">Particulars</p>
+            <div className="col-span-2 sm:col-span-1 lg:col-span-2">
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Particulars</p>
               <p className="font-semibold text-slate-800">{buy.particulars || '-'}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-xs font-medium">Buy Value</p>
-              <p className="font-semibold text-slate-800">{buy.buyValue.toLocaleString()} AED</p>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Gross Wt</p>
+              <p className="font-semibold text-slate-800">{buy.grossWeight.toFixed(2)} g</p>
             </div>
             <div>
-              <p className="text-slate-500 text-xs font-medium">Cost / Gram</p>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Pure Conv</p>
+              <p className="font-semibold text-slate-800">{buy.pureConversion}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Pure Gram</p>
+              <p className="font-bold text-slate-900">{buy.pureGram.toFixed(2)} g</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">IDR Gram</p>
+              <p className="font-semibold text-slate-800">{buy.idrGram.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">IDR / USDT</p>
+              <p className="font-semibold text-slate-800">{buy.idrToUsdt.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">IDR Rate</p>
+              <p className="font-semibold text-slate-800">{buy.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Total</p>
+              <p className="font-semibold text-slate-800">{buy.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy Value</p>
+              <p className="font-bold text-slate-900">{buy.buyValue.toLocaleString()} AED</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Cost / Gram</p>
               <p className="font-semibold text-slate-800">{(buy.buyValue / buy.pureGram).toFixed(2)} AED</p>
             </div>
           </div>

@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
+import PhysicalExportModal from './PhysicalExportModal';
 import {
   btnPrimary, btnSecondary,
   kpiGrid,
@@ -37,6 +38,7 @@ export default function PhysicalPage() {
 
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const [buyForm, setBuyForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -217,6 +219,14 @@ export default function PhysicalPage() {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="sm:hidden">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
+            </button>
+            <button onClick={() => setIsExportModalOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg gap-2 font-semibold text-sm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span className="hidden sm:inline">Export</span>
             </button>
             <button onClick={() => setIsBuyModalOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-accent sm:text-white sm:hover:bg-accent-hover gap-2 font-semibold text-sm">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
@@ -416,7 +426,7 @@ export default function PhysicalPage() {
                   <div 
                     key={buy.id}
                     onClick={() => router.push(`/${branchSlug}/physical/${buy.id}`)}
-                    className="group flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98]"
+                    className={`group flex flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98] ${buy.remainingWeight > 0 ? 'bg-gradient-to-br from-amber-50 to-white' : 'bg-white'}`}
                   >
                     <div className="flex items-center justify-between border-b border-slate-50 pb-3">
                       <div className="flex flex-col">
@@ -439,8 +449,10 @@ export default function PhysicalPage() {
                         <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(2)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">IDR/USDT</span>
-                        <span className="text-sm font-bold text-slate-700">{buy.idrToUsdt}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Remaining Vol</span>
+                        <span className={`text-sm font-bold ${buy.remainingWeight > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
+                          {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
+                        </span>
                       </div>
                     </div>
                     
@@ -622,6 +634,17 @@ export default function PhysicalPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {isExportModalOpen && (
+        <PhysicalExportModal
+          open={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          buys={filteredBuys}
+          sells={physicalSells}
+          initialCapital={balance?.initialCapital || 0}
+          initialVolume={balance?.initialVolume || 0}
+        />
       )}
     </>
   );
