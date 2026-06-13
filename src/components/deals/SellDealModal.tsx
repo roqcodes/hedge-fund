@@ -74,13 +74,19 @@ export default function SellDealModal({
   const weight = transaction.weight;
   const pureCostAed = transaction.pureCostAed;
   const managerShare = deal.managerShare ?? 20;
+  const currencyAmount = transaction.currencyAmount || 0;
 
   const calculations = useMemo(() => {
-    // Determine the conversion multiplier (handles both 3851 and 0.03851 forms)
-    const conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1;
+    let salesAed = 0;
+    let conversionMultiplier = 1;
 
-    // 1. Sales AED (Total Sales before expenses)
-    const salesAed = liveSellRateInr * conversionMultiplier;
+    if (deal.groupType === 'currency') {
+      salesAed = currencyAmount * conversionRateInput;
+    } else {
+      // Determine the conversion multiplier (handles both 3851 and 0.03851 forms)
+      conversionMultiplier = conversionRateInput > 100 ? conversionRateInput / 100000 : conversionRateInput || 1;
+      salesAed = liveSellRateInr * conversionMultiplier;
+    }
 
     // 2. Gross Profit = Sales AED - Purchase AED
     const grossProfit = salesAed - pureCostAed;
@@ -159,11 +165,16 @@ export default function SellDealModal({
   const handleSubmit = async () => {
     setError('');
 
-    if (liveSellRateInr <= 0) return setError('Selling rate INR is required.');
+    if (deal.groupType === 'currency') {
+      if (conversionRateInput <= 0) return setError('Conversion rate is required.');
+    } else {
+      if (liveSellRateInr <= 0) return setError('Selling rate INR is required.');
+    }
 
     const updatedTxn: DealTransaction = {
       ...transaction,
-      liveSellRate: Number(calculations.salesAed.toFixed(7)),
+      conversionRate: deal.groupType === 'currency' ? conversionRateInput : undefined,
+      liveSellRate: deal.groupType === 'currency' ? 0 : Number(calculations.salesAed.toFixed(7)),
       sellPremiumDiscount: 0,
       salesAed: Number(calculations.salesAed.toFixed(7)),
       expenses: Number(expenses.toFixed(7)),
@@ -210,10 +221,17 @@ export default function SellDealModal({
       {error && <div className={`${formError} mb-4`}>{error}</div>}
 
       <div className="mb-4 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-100 rounded-xl p-3 grid grid-cols-2 gap-3">
-        <div>
-          <span className="text-slate-400">Deal Weight:</span>{' '}
-          <span className="text-slate-900">{weight.toLocaleString()} g</span>
-        </div>
+        {deal.groupType === 'currency' ? (
+          <div>
+            <span className="text-slate-400">Deal Amount:</span>{' '}
+            <span className="text-slate-900">{currencyAmount.toLocaleString()} Currency</span>
+          </div>
+        ) : (
+          <div>
+            <span className="text-slate-400">Deal Weight:</span>{' '}
+            <span className="text-slate-900">{weight.toLocaleString()} g</span>
+          </div>
+        )}
         <div>
           <span className="text-slate-400">Purchase Cost:</span>{' '}
           <span className="text-slate-900">{formatCost(pureCostAed)} AED</span>
@@ -221,26 +239,52 @@ export default function SellDealModal({
       </div>
 
       <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Selling Rate INR</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={liveSellRateStr}
-            onChange={e => setLiveSellRateStr(e.target.value)}
-          />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>INR to AED Rate</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="3851"
-            value={conversionRateStr}
-            onChange={e => setConversionRateStr(e.target.value)}
-          />
-        </div>
+        {deal.groupType === 'currency' ? (
+          <>
+            <div className={formGroup}>
+              <label className={formLabel}>Currency Amount (Buy Value)</label>
+              <input
+                className={formInput}
+                type="number"
+                value={transaction.currencyAmount?.toString() || '0'}
+                disabled
+              />
+            </div>
+            <div className={formGroup}>
+              <label className={formLabel}>Conversion Rate</label>
+              <input
+                className={formInput}
+                type="number"
+                placeholder="0.00"
+                value={conversionRateStr}
+                onChange={e => setConversionRateStr(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={formGroup}>
+              <label className={formLabel}>Selling Rate INR</label>
+              <input
+                className={formInput}
+                type="number"
+                placeholder="0.00"
+                value={liveSellRateStr}
+                onChange={e => setLiveSellRateStr(e.target.value)}
+              />
+            </div>
+            <div className={formGroup}>
+              <label className={formLabel}>INR to AED Rate</label>
+              <input
+                className={formInput}
+                type="number"
+                placeholder="3851"
+                value={conversionRateStr}
+                onChange={e => setConversionRateStr(e.target.value)}
+              />
+            </div>
+          </>
+        )}
       </div>
 
 
@@ -343,10 +387,12 @@ export default function SellDealModal({
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Volume (g)</p>
-                    <p className="font-mono text-xs font-semibold text-slate-700">{partner.volumeShare.toFixed(3)}</p>
-                  </div>
+                  {deal.groupType !== 'currency' && (
+                    <div>
+                      <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Volume (g)</p>
+                      <p className="font-mono text-xs font-semibold text-slate-700">{partner.volumeShare.toFixed(3)}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-[9px] text-slate-400 font-medium uppercase tracking-wider">Purchase</p>
                     <p className="font-mono text-xs font-semibold text-slate-700">{formatCost(partner.purchaseShare)}</p>

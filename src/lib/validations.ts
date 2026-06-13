@@ -107,7 +107,7 @@ const dealInvestorSchema = z.object({
 export const addDealSchema = z.object({
   name: nonEmptyString,
   amount: positiveAmount,
-  investors: z.array(dealInvestorSchema).min(1, 'At least one investor is required'),
+  investors: z.array(dealInvestorSchema),
   totalInvestment: z.number().min(0),
   balance: z.number(),
   toBranchId: z.string().optional(),

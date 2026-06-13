@@ -70,6 +70,8 @@ export default function CreateDealTransactionModal({
   const [dealNum, setDealNum] = useState('');
   const [weightStr, setWeightStr] = useState('');
   const [purchaseCostStr, setPurchaseCostStr] = useState('');
+  const [currencyAmountStr, setCurrencyAmountStr] = useState('');
+  const [purchaseRateStr, setPurchaseRateStr] = useState('');
   const [fixOrUnfix, setFixOrUnfix] = useState<'fixed' | 'unfixed'>('unfixed');
 
   const [error, setError] = useState('');
@@ -83,6 +85,8 @@ export default function CreateDealTransactionModal({
         setDealNum(editTransaction.deal);
         setWeightStr(editTransaction.weight.toString());
         setPurchaseCostStr(editTransaction.pureCostAed.toString());
+        setCurrencyAmountStr(editTransaction.currencyAmount?.toString() || '');
+        setPurchaseRateStr(editTransaction.purchaseRate?.toString() || '');
         setFixOrUnfix(editTransaction.fixOrUnfix === 'unfixed' ? 'unfixed' : 'fixed');
       } else {
         setDate(getLocalDateString());
@@ -102,6 +106,8 @@ export default function CreateDealTransactionModal({
 
         setWeightStr('');
         setPurchaseCostStr('');
+        setCurrencyAmountStr('');
+        setPurchaseRateStr('');
         setFixOrUnfix('unfixed');
       }
       setError('');
@@ -129,12 +135,20 @@ export default function CreateDealTransactionModal({
 
   // Real-time calculations
   const calculations = useMemo(() => {
-    const pureCostAed = parseSafeNumber(purchaseCostStr);
+    let pureCostAed = parseSafeNumber(purchaseCostStr);
+
+    if (deal?.groupType === 'currency') {
+      const ca = parseSafeNumber(currencyAmountStr);
+      const pr = parseSafeNumber(purchaseRateStr);
+      if (ca > 0 && pr > 0) {
+        pureCostAed = ca / pr;
+      }
+    }
 
     return {
       pureCostAed,
     };
-  }, [purchaseCostStr]);
+  }, [purchaseCostStr, currencyAmountStr, purchaseRateStr, deal?.groupType]);
 
   const partnerBreakdown = useMemo(() => {
     if (!deal || !deal.investors) return [];
@@ -157,15 +171,19 @@ export default function CreateDealTransactionModal({
       if (dealNum !== editTransaction.deal) return true;
       if (weightStr !== editTransaction.weight.toString()) return true;
       if (purchaseCostStr !== editTransaction.pureCostAed.toString()) return true;
+      if (currencyAmountStr !== (editTransaction.currencyAmount?.toString() || '')) return true;
+      if (purchaseRateStr !== (editTransaction.purchaseRate?.toString() || '')) return true;
       if (fixOrUnfix !== (editTransaction.fixOrUnfix === 'unfixed' ? 'unfixed' : 'fixed')) return true;
       return false;
     } else {
       if (weightStr !== '') return true;
       if (purchaseCostStr !== '') return true;
+      if (currencyAmountStr !== '') return true;
+      if (purchaseRateStr !== '') return true;
       if (fixOrUnfix !== 'unfixed') return true;
       return false;
     }
-  }, [date, dealNum, weightStr, purchaseCostStr, fixOrUnfix, editTransaction]);
+  }, [date, dealNum, weightStr, purchaseCostStr, currencyAmountStr, purchaseRateStr, fixOrUnfix, editTransaction]);
 
   const handleClose = () => {
     if (isDirty) {
@@ -182,7 +200,13 @@ export default function CreateDealTransactionModal({
 
     if (!date) return setError('Date is required.');
     if (!dealNum.trim()) return setError('Deal number is required.');
-    if (weight <= 0) return setError('Weight must be greater than zero.');
+    
+    if (deal?.groupType === 'currency') {
+      if (parseSafeNumber(currencyAmountStr) <= 0) return setError('Currency Amount must be greater than zero.');
+      if (parseSafeNumber(purchaseRateStr) <= 0) return setError('Purchase rate must be greater than zero.');
+    } else {
+      if (weight <= 0) return setError('Weight must be greater than zero.');
+    }
     if (calculations.pureCostAed <= 0) return setError('Purchase cost must be greater than zero.');
 
 
@@ -191,7 +215,9 @@ export default function CreateDealTransactionModal({
       date,
       time: time || undefined,
       deal: dealNum.trim(),
-      weight,
+      weight: deal?.groupType === 'currency' ? 0 : weight,
+      currencyAmount: deal?.groupType === 'currency' ? parseSafeNumber(currencyAmountStr) : undefined,
+      purchaseRate: deal?.groupType === 'currency' ? parseSafeNumber(purchaseRateStr) : undefined,
       rate: 0,
       pureCostAed: Number(calculations.pureCostAed.toFixed(2)),
       liveSellRate: editTransaction?.liveSellRate || 0,
@@ -307,26 +333,53 @@ export default function CreateDealTransactionModal({
 
 
       <div className={formRow}>
-        <div className={formGroup}>
-          <label className={formLabel}>Weight (grams)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={weightStr}
-            onChange={e => handleFieldChange('weight', e.target.value)}
-          />
-        </div>
-        <div className={formGroup}>
-          <label className={formLabel}>Purchase Cost (AED)</label>
-          <input
-            className={formInput}
-            type="number"
-            placeholder="0.00"
-            value={purchaseCostStr}
-            onChange={e => handleFieldChange('purchaseCost', e.target.value)}
-          />
-        </div>
+        {deal?.groupType === 'currency' ? (
+          <>
+            <div className={formGroup}>
+              <label className={formLabel}>Currency Amount</label>
+              <input
+                className={formInput}
+                type="number"
+                placeholder="0.00"
+                value={currencyAmountStr}
+                onChange={e => setCurrencyAmountStr(e.target.value)}
+              />
+            </div>
+            <div className={formGroup}>
+              <label className={formLabel}>Purchase Rate (Local/AED)</label>
+              <input
+                className={formInput}
+                type="number"
+                placeholder="1.02"
+                value={purchaseRateStr}
+                onChange={e => setPurchaseRateStr(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={formGroup}>
+              <label className={formLabel}>Weight (grams)</label>
+              <input
+                className={formInput}
+                type="number"
+                placeholder="0.00"
+                value={weightStr}
+                onChange={e => handleFieldChange('weight', e.target.value)}
+              />
+            </div>
+            <div className={formGroup}>
+              <label className={formLabel}>Purchase Cost (AED)</label>
+              <input
+                className={formInput}
+                type="number"
+                placeholder="0.00"
+                value={purchaseCostStr}
+                onChange={e => handleFieldChange('purchaseCost', e.target.value)}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <div className={formRow}>

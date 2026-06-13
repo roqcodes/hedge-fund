@@ -30,14 +30,13 @@ export default function CreateDealModal({
   const { investors, addDeal, user } = useApp();
 
   const [groupName, setGroupName] = useState('');
+  const [groupType, setGroupType] = useState<'gold' | 'currency'>('gold');
   const [amountStr, setAmountStr] = useState('');
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [leadAddress, setLeadAddress] = useState('');
-  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; inputMode: 'percentage' | 'amount' }[]>([
-    { investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' },
-  ]);
+  const [dealInvestors, setDealInvestors] = useState<{ investorId: string; percentageStr: string; amountStr: string; inputMode: 'percentage' | 'amount' }[]>([]);
   const [error, setError] = useState('');
   const [date, setDate] = useState(() => {
     const d = new Date();
@@ -119,10 +118,7 @@ export default function CreateDealModal({
       leadPhone.trim() !== '' ||
       leadEmail.trim() !== '' ||
       leadAddress.trim() !== '' ||
-      dealInvestors.length > 1 ||
-      dealInvestors[0].investorId !== '' ||
-      dealInvestors[0].amountStr !== '' ||
-      dealInvestors[0].percentageStr !== ''
+      dealInvestors.length > 0
     );
   }, [groupName, amountStr, leadName, leadPhone, leadEmail, leadAddress, dealInvestors]);
 
@@ -174,20 +170,21 @@ export default function CreateDealModal({
       });
     }
 
-    if (validInvestors.length === 0) return setError('At least one investor must be added.');
+    if (validInvestors.length > 0) {
+      // Ensure sum matches 100% exactly (with a small floating point tolerance)
+      if (Math.abs(sumPercentage - 100) > 0.01) {
+        return setError(`Total investor share must equal exactly 100% or equal the Group Capital exactly. Currently it is ${sumPercentage.toFixed(2)}%.`);
+      }
 
-    // Ensure sum matches 100% exactly (with a small floating point tolerance)
-    if (Math.abs(sumPercentage - 100) > 0.01) {
-      return setError(`Total investor share must equal exactly 100% or equal the Group Capital exactly. Currently it is ${sumPercentage.toFixed(2)}%.`);
+      // Ensure no duplicates
+      const uniqueIds = new Set(validInvestors.map(v => v.investorId));
+      if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
     }
-
-    // Ensure no duplicates
-    const uniqueIds = new Set(validInvestors.map(v => v.investorId));
-    if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
 
     addDeal({
       name: groupName.trim(), // Use groupName as the deal name
       groupName: groupName.trim(),
+      groupType,
       amount: dealAmount,
       investors: validInvestors,
       totalInvestment: dealAmount, // Explicitly force totalInvestment to match dealAmount due to 100% validation
@@ -207,6 +204,7 @@ export default function CreateDealModal({
 
     // Reset and close
     setGroupName('');
+    setGroupType('gold');
     setAmountStr('');
     setLeadName('');
     setLeadPhone('');
@@ -236,6 +234,28 @@ export default function CreateDealModal({
         </>
       }
     >
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Group Type</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setGroupType('gold')}
+              className={`flex-1 rounded-lg border py-2 text-sm font-bold transition-colors ${groupType === 'gold' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+              Gold
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupType('currency')}
+              className={`flex-1 rounded-lg border py-2 text-sm font-bold transition-colors ${groupType === 'currency' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+              Currency
+            </button>
+          </div>
+        </div>
+        <div className={formGroup}></div>
+      </div>
       <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Creation Date</label>
@@ -321,7 +341,7 @@ export default function CreateDealModal({
                     ))}
                   </select>
                 </div>
-                {dealInvestors.length > 1 && (
+                {dealInvestors.length > 0 && (
                   <button
                     type="button"
                     onClick={() => handleRemoveInvestorRow(index)}
@@ -396,18 +416,20 @@ export default function CreateDealModal({
           ))}
         </div>
 
-        <div className="mt-4 flex flex-col gap-1 border-t border-slate-200 pt-3">
-          <div className="flex justify-between text-sm">
-            <span className="font-medium text-slate-600">Total Investment:</span>
-            <span className="font-bold text-slate-900">{formatAED(totalInvestment)}</span>
+        {dealInvestors.length > 0 && (
+          <div className="mt-4 flex flex-col gap-1 border-t border-slate-200 pt-3">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium text-slate-600">Total Investment:</span>
+              <span className="font-bold text-slate-900">{formatAED(totalInvestment)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="font-medium text-slate-600">Balance (Investment - Deal Amount):</span>
+              <span className={`font-bold ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                {formatAED(balance)}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="font-medium text-slate-600">Balance (Investment - Deal Amount):</span>
-            <span className={`font-bold ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-              {formatAED(balance)}
-            </span>
-          </div>
-        </div>
+        )}
       </div>
 
 

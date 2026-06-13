@@ -21,7 +21,7 @@ import {
   formInput,
 } from '@/lib/ui';
 
-type SortField = 'groupName' | 'amount' | 'totalDeals' | 'completedDeals' | 'onTransitDeals' | 'grossProfit' | 'status';
+type SortField = 'groupName' | 'amount' | 'totalDeals' | 'completedDeals' | 'onTransitDeals' | 'grossProfit' | 'groupType';
 type SortDirection = 'asc' | 'desc';
 
 export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: string }) {
@@ -109,7 +109,7 @@ export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: str
       result = result.filter(deal => 
         deal.groupNameCalculated.toLowerCase().includes(lowerQuery) ||
         deal.name.toLowerCase().includes(lowerQuery) ||
-        deal.status.toLowerCase().includes(lowerQuery)
+        deal.groupType?.toLowerCase().includes(lowerQuery)
       );
     }
 
@@ -311,7 +311,7 @@ export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: str
                   <option value="completedDeals">Sort by: Settled Deals</option>
                   <option value="onTransitDeals">Sort by: Unsettled Deals</option>
                   <option value="grossProfit">Sort by: Gross P&L</option>
-                  <option value="status">Sort by: Status</option>
+                  <option value="groupType">Sort by: Type</option>
                 </select>
                 <button
                   type="button"
@@ -349,8 +349,8 @@ export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: str
                     <th className={getThClass('center')} onClick={() => handleSort('grossProfit')}>
                       <div className="flex items-center justify-center gap-2">Gross P&L <SortIcon field="grossProfit" /></div>
                     </th>
-                    <th className={getThClass('center')} onClick={() => handleSort('status')}>
-                      <div className="flex items-center justify-center gap-2">Status <SortIcon field="status" /></div>
+                    <th className={getThClass('center')} onClick={() => handleSort('groupType')}>
+                      <div className="flex items-center justify-center gap-2">Type <SortIcon field="groupType" /></div>
                     </th>
                     <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
@@ -391,8 +391,8 @@ export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: str
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center sm:px-5 sm:py-4">
                           <div className="flex items-center justify-center gap-2">
-                            <span className={`h-2.5 w-2.5 rounded-full ${deal.status === 'active' ? 'bg-green-500' : deal.status === 'pending' ? 'bg-amber-500' : deal.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'}`}></span>
-                            <span className="text-xs font-medium text-slate-600 capitalize">{deal.status}</span>
+                            <span className={`h-2.5 w-2.5 rounded-full ${deal.groupType === 'currency' ? 'bg-indigo-500' : 'bg-amber-400'}`}></span>
+                            <span className="text-xs font-medium text-slate-600 capitalize">{deal.groupType === 'currency' ? 'Currency' : 'Gold'}</span>
                           </div>
                         </td>
                         <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
@@ -447,8 +447,8 @@ export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: str
                           <span className="text-sm font-bold text-slate-900">{deal.groupNameCalculated}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`h-2.5 w-2.5 rounded-full ${deal.status === 'active' ? 'bg-green-500' : deal.status === 'pending' ? 'bg-amber-500' : deal.status === 'completed' ? 'bg-blue-500' : 'bg-red-500'}`}></span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{deal.status}</span>
+                          <span className={`h-2.5 w-2.5 rounded-full ${deal.groupType === 'currency' ? 'bg-indigo-500' : 'bg-amber-400'}`}></span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{deal.groupType === 'currency' ? 'Currency' : 'Gold'}</span>
                         </div>
                       </div>
                       

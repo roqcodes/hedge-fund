@@ -154,15 +154,21 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
       {/* Top Row of KPI Cards */}
       <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <KPICard
-          label="Purchase Volume"
-          value={`${txn.weight.toLocaleString()} g`}
-          colorClass="bg-indigo-100 text-indigo-600"
-          icon={
+          label={deal.groupType === 'currency' ? "Currency Amount" : "Purchase Volume"}
+          value={deal.groupType === 'currency' ? `${txn.currencyAmount?.toLocaleString()}` : `${txn.weight.toLocaleString()} g`}
+          colorClass={deal.groupType === 'currency' ? "bg-indigo-100 text-indigo-600" : "bg-amber-100 text-amber-600"}
+          icon={deal.groupType === 'currency' ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="6" width="20" height="12" rx="2" />
+              <circle cx="12" cy="12" r="2" />
+              <path d="M6 12h.01M18 12h.01" />
+            </svg>
+          ) : (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
               <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
             </svg>
-          }
+          )}
         />
         <KPICard
           label="Purchase Cost Total"
@@ -227,8 +233,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-3 border-b border-slate-100 pb-2">Purchase Details</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-[10px] text-slate-400 font-medium">Weight</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{txn.weight.toLocaleString()} g</p>
+                  <p className="text-[10px] text-slate-400 font-medium">{deal.groupType === 'currency' ? 'Currency Amount' : 'Weight'}</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{deal.groupType === 'currency' ? txn.currencyAmount?.toLocaleString() : `${txn.weight.toLocaleString()} g`}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-medium">Purchase Cost (AED)</p>
@@ -265,7 +271,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                   <p className={`font-mono text-sm font-bold ${txn.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatAED(txn.grossProfit)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 font-medium">Net Profit / Gram</p>
+                  <p className="text-[10px] text-slate-400 font-medium">{deal.groupType === 'currency' ? 'Net Profit / Unit' : 'Net Profit / Gram'}</p>
                   <p className={`font-mono text-sm font-bold ${txn.netProfitPerGram >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{txn.netProfitPerGram.toFixed(4)}</p>
                 </div>
                 <div>

@@ -13,11 +13,13 @@ type SortDirection = 'asc' | 'desc';
 
 export default function DealTransactionsTable({
   dealName = '',
+  groupType = 'gold',
   transactions,
   onEdit,
   onDelete,
 }: {
   dealName?: string;
+  groupType?: 'gold' | 'currency';
   transactions?: DealTransaction[];
   onEdit?: (txn: DealTransaction) => void;
   onDelete?: (txn: DealTransaction) => void;
@@ -190,7 +192,7 @@ export default function DealTransactionsTable({
             >
               <option value="deal">Sort by: Deal Number</option>
               <option value="date">Sort by: Date & Time</option>
-              <option value="weight">Sort by: Volume</option>
+              <option value={groupType === 'currency' ? 'currencyAmount' : 'weight'}>Sort by: {groupType === 'currency' ? 'Currency Amount' : 'Volume'}</option>
               <option value="pureCostAed">Sort by: Purchase Cost</option>
               <option value="expenses">Sort by: Expense</option>
               <option value="salesAed">Sort by: Sales</option>
@@ -223,8 +225,8 @@ export default function DealTransactionsTable({
                 <th className={thClass}>
                   Status
                 </th>
-                <th className={thClass} onClick={() => handleSort('weight')}>
-                  <div className="flex items-center gap-2">Volume {renderSortIcon('weight')}</div>
+                <th className={thClass} onClick={() => handleSort(groupType === 'currency' ? 'currencyAmount' : 'weight')}>
+                  <div className="flex items-center gap-2">{groupType === 'currency' ? 'Currency Amount' : 'Volume'} {renderSortIcon(groupType === 'currency' ? 'currencyAmount' : 'weight' as any)}</div>
                 </th>
                 <th className={thClass} onClick={() => handleSort('pureCostAed')}>
                   <div className="flex items-center gap-2">Purchase Cost {renderSortIcon('pureCostAed')}</div>
@@ -266,7 +268,9 @@ export default function DealTransactionsTable({
                         {row.fixOrUnfix === 'unfixed' ? 'Unsettled' : 'Settled'}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">{row.weight.toLocaleString()}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">
+                      {groupType === 'currency' ? row.currencyAmount?.toLocaleString() : row.weight.toLocaleString()}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.pureCostAed)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.expenses)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.salesAed)}</td>
@@ -331,7 +335,9 @@ export default function DealTransactionsTable({
                         {row.date}{row.time ? ` • ${formatTime12h(row.time)}` : ''}
                       </div>
                     </div>
-                    <span className="text-xs font-medium text-slate-500">Vol: {row.weight.toLocaleString()}</span>
+                    <span className="text-xs font-medium text-slate-500">
+                      {groupType === 'currency' ? `Amt: ${row.currencyAmount?.toLocaleString()}` : `Vol: ${row.weight.toLocaleString()}`}
+                    </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-y-3 gap-x-4 border-y border-slate-50 py-3">

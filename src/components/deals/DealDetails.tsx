@@ -58,7 +58,8 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const completedDeals = filteredTransactions.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
   const onTransitDeals = numberOfDeals - completedDeals;
   const unsettledTransactions = filteredTransactions.filter(t => t.fixOrUnfix === 'unfixed');
-  const dealGoldVolume = Number(unsettledTransactions.reduce((sum, t) => sum + t.weight, 0).toFixed(2)).toString();
+  const dealGoldVolume = Number(unsettledTransactions.reduce((sum, t) => sum + (t.weight || 0), 0).toFixed(2)).toString();
+  const dealCurrencyVolume = Number(unsettledTransactions.reduce((sum, t) => sum + (t.currencyAmount || 0), 0).toFixed(2)).toString();
 
   const filteredTotalPL = filteredTransactions.length > 0
     ? filteredTransactions.reduce((sum, txn) => sum + (txn.grossProfit || 0), 0)
@@ -260,16 +261,22 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             bgColor="var(--accent-light)"
           />
           <KPICard
-            label="Gold Volume"
-            value={`${dealGoldVolume} g`}
-            subValue="Group Gold Volume"
-            icon={
+            label={deal.groupType === 'currency' ? "Currency Volume" : "Gold Volume"}
+            value={deal.groupType === 'currency' ? `${dealCurrencyVolume}` : `${dealGoldVolume} g`}
+            subValue={deal.groupType === 'currency' ? "Unsettled Currency" : "Group Gold Volume"}
+            icon={deal.groupType === 'currency' ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <rect x="2" y="6" width="20" height="12" rx="2" />
+                <circle cx="12" cy="12" r="2" />
+                <path d="M6 12h.01M18 12h.01" />
+              </svg>
+            ) : (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6z" />
               </svg>
-            }
-            color="var(--warning)"
-            bgColor="var(--warning-light)"
+            )}
+            color={deal.groupType === 'currency' ? "#4f46e5" : "var(--warning)"}
+            bgColor={deal.groupType === 'currency' ? "#e0e7ff" : "var(--warning-light)"}
           />
           <KPICard
             label="Total Expenses"
@@ -436,6 +443,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
         <DealTransactionsTable
           dealName={deal.name}
+          groupType={deal.groupType}
           transactions={filteredTransactions}
           onEdit={(txn) => setSelectedTxn(txn)}
           onDelete={(txn) => setSelectedTxn(txn)}

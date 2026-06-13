@@ -162,6 +162,7 @@ export interface Deal {
   id: string;
   name: string;
   groupName: string;
+  groupType?: 'gold' | 'currency';
   amount: number;
   investors: DealInvestor[];
   totalInvestment: number;
@@ -198,6 +199,9 @@ export interface DealTransaction {
   weight: number;
   rate: number;
   pureCostAed: number;
+  currencyAmount?: number;
+  purchaseRate?: number;
+  conversionRate?: number;
   liveSellRate: number;        // Renamed from salesValueInr
   sellPremiumDiscount: number; // Renamed from rvRate
   salesAed: number;
