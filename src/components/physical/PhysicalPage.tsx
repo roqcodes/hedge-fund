@@ -27,7 +27,7 @@ type SortField = 'date' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pu
 type SortDirection = 'asc' | 'desc';
 
 export default function PhysicalPage() {
-  const { currentSlug, branches, physicalBalances, physicalBuys, refetchData } = useApp();
+  const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, refetchData } = useApp();
   const router = useRouter();
   const branchSlug = currentSlug;
   const branchId = branches.find(b => b.slug === currentSlug)?.id;
@@ -198,7 +198,10 @@ export default function PhysicalPage() {
 
   const totalInventory = filteredBuys.reduce((sum, b) => sum + b.pureGram, 0);
   const totalRemaining = filteredBuys.reduce((sum, b) => sum + b.remainingWeight, 0);
-  const totalValue = filteredBuys.reduce((sum, b) => sum + b.buyValue, 0);
+  
+  const filteredBuyIds = new Set(filteredBuys.map(b => b.id));
+  const filteredSells = physicalSells.filter(s => filteredBuyIds.has(s.buyId));
+  const totalPL = filteredSells.reduce((sum, s) => sum + s.profit, 0);
 
   return (
     <>
@@ -270,16 +273,16 @@ export default function PhysicalPage() {
             bgColor="var(--warning-light)"
           />
           <KPICard
-            label="Total Value"
-            value={totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' AED'}
-            subValue="Total amount spent"
+            label="P&L"
+            value={totalPL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' AED'}
+            subValue="Total Profit/Loss"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
-            color="var(--action)"
-            bgColor="var(--action-light)"
+            color={totalPL >= 0 ? "var(--success)" : "var(--danger)"}
+            bgColor={totalPL >= 0 ? "var(--success-light)" : "var(--danger-light)"}
           />
         </div>
 
@@ -344,14 +347,11 @@ export default function PhysicalPage() {
                     <th className={getThClass('center')} onClick={() => handleSort('pureGram')}>
                       <div className="flex items-center justify-center gap-2">Pure Gram <SortIcon field="pureGram" /></div>
                     </th>
-                    <th className={getThClass('center')} onClick={() => handleSort('idrGram')}>
-                      <div className="flex items-center justify-center gap-2">IDR Gram <SortIcon field="idrGram" /></div>
-                    </th>
-                    <th className={getThClass('center')} onClick={() => handleSort('idrToUsdt')}>
-                      <div className="flex items-center justify-center gap-2">IDR/USDT <SortIcon field="idrToUsdt" /></div>
-                    </th>
                     <th className={getThClass('center')} onClick={() => handleSort('buyValue')}>
                       <div className="flex items-center justify-center gap-2">Buy Value <SortIcon field="buyValue" /></div>
+                    </th>
+                    <th className={getThClass('center')}>
+                      <div className="flex items-center justify-center gap-2">Remaining Vol</div>
                     </th>
                     <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
@@ -362,33 +362,30 @@ export default function PhysicalPage() {
                       key={buy.id}
                       data-interactive-row
                       onClick={() => router.push(`/${branchSlug}/physical/${buy.id}`)}
-                      className="cursor-pointer group hover:bg-slate-50/80 transition-colors"
+                      className={`cursor-pointer group hover:bg-slate-50/80 transition-colors ${buy.remainingWeight > 0 ? 'bg-gradient-to-l from-amber-50/60 to-transparent' : ''}`}
                     >
-                      <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
+                      <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {new Date(buy.date).toLocaleDateString()}
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.particulars || '-'}
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.grossWeight.toFixed(2)}
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.pureConversion}
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4">
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.pureGram.toFixed(2)}
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
-                        {buy.idrGram.toLocaleString()}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
-                        {buy.idrToUsdt}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4">
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.buyValue.toLocaleString()}
                       </td>
-                      <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold text-amber-600 sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
+                        {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
+                      </td>
+                      <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         <button
                           type="button"
                           className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
@@ -406,7 +403,7 @@ export default function PhysicalPage() {
                   ))}
                   {filteredAndSortedBuys.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={8} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
                         {searchTerm || dateFilter !== 'all' ? 'No buys found matching your filters.' : 'No physical buys found. Create one to get started.'}
                       </td>
                     </tr>
