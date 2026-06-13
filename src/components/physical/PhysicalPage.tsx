@@ -362,7 +362,7 @@ export default function PhysicalPage() {
                       key={buy.id}
                       data-interactive-row
                       onClick={() => router.push(`/${branchSlug}/physical/${buy.id}`)}
-                      className={`cursor-pointer group hover:bg-slate-50/80 transition-colors ${buy.remainingWeight > 0 ? 'bg-gradient-to-l from-amber-50/60 to-transparent' : ''}`}
+                      className={`cursor-pointer group hover:bg-slate-50/80 transition-colors ${buy.remainingWeight > 0 ? 'bg-gradient-to-l from-amber-100/80 to-transparent' : ''}`}
                     >
                       <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {new Date(buy.date).toLocaleDateString()}
@@ -382,7 +382,7 @@ export default function PhysicalPage() {
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.buyValue.toLocaleString()}
                       </td>
-                      <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold text-amber-600 sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent text-amber-600' : 'bg-white text-slate-900'}`}>
                         {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
                       </td>
                       <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
