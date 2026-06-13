@@ -33,6 +33,7 @@ export default function EditDealModal({
   const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
 
   const [groupName, setGroupName] = useState('');
+  const [groupType, setGroupType] = useState<'gold' | 'currency'>('gold');
 
   const [amountStr, setAmountStr] = useState('');
   const [managerShareStr, setManagerShareStr] = useState('20');
@@ -50,7 +51,7 @@ export default function EditDealModal({
   useEffect(() => {
     if (deal && open) {
       setGroupName(deal.groupName || '');
-      
+      setGroupType(deal.groupType || 'gold');
 
       setAmountStr(deal.amount.toString());
       setAmountStr(deal.amount.toString());
@@ -69,7 +70,7 @@ export default function EditDealModal({
           inputMode: 'amount' as const,
         })));
       } else {
-        setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' }]);
+        setDealInvestors([]);
       }
       
       if (deal.date) {
@@ -140,6 +141,7 @@ export default function EditDealModal({
     if (!deal) return false;
     
     if (groupName !== (deal.groupName || '')) return true;
+    if (groupType !== (deal.groupType || 'gold')) return true;
     if (amountStr !== deal.amount.toString()) return true;
     if (status !== deal.status) return true;
     if (managerShareStr !== (deal.managerShare?.toString() ?? '20')) return true;
@@ -159,7 +161,7 @@ export default function EditDealModal({
     }
 
     return false;
-  }, [deal, groupName, amountStr, status, managerShareStr, leadName, leadPhone, leadEmail, leadAddress, dealInvestors]);
+  }, [deal, groupName, groupType, amountStr, status, managerShareStr, leadName, leadPhone, leadEmail, leadAddress, dealInvestors]);
 
   const handleClose = () => {
     if (isDirty) {
@@ -215,16 +217,16 @@ export default function EditDealModal({
       });
     }
 
-    if (validInvestors.length === 0) return setError('At least one investor must be added.');
+    if (validInvestors.length > 0) {
+      // Ensure sum matches 100% exactly (with a small floating point tolerance)
+      if (Math.abs(sumPercentage - 100) > 0.01) {
+        return setError(`Total investor share must equal exactly 100%. Currently it is ${sumPercentage.toFixed(2)}%.`);
+      }
 
-    // Ensure sum matches 100% exactly (with a small floating point tolerance)
-    if (Math.abs(sumPercentage - 100) > 0.01) {
-      return setError(`Total investor share must equal exactly 100%. Currently it is ${sumPercentage.toFixed(2)}%.`);
+      // Ensure no duplicates
+      const uniqueIds = new Set(validInvestors.map(v => v.investorId));
+      if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
     }
-
-    // Ensure no duplicates
-    const uniqueIds = new Set(validInvestors.map(v => v.investorId));
-    if (uniqueIds.size !== validInvestors.length) return setError('Duplicate investors are not allowed.');
 
     if (!date) return setError('Creation date is required.');
 
@@ -232,6 +234,7 @@ export default function EditDealModal({
       ...deal,
       name: groupName.trim() || 'General',
       groupName: groupName.trim() || 'General',
+      groupType,
       amount: dealAmount,
       goldVolume: 0,
       investors: validInvestors,
@@ -317,6 +320,28 @@ export default function EditDealModal({
         </>
       }
     >
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel}>Group Type</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled
+              className={`flex-1 rounded-lg border py-2 text-sm font-bold transition-colors opacity-75 cursor-not-allowed ${groupType === 'gold' ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-400'}`}
+            >
+              Gold
+            </button>
+            <button
+              type="button"
+              disabled
+              className={`flex-1 rounded-lg border py-2 text-sm font-bold transition-colors opacity-75 cursor-not-allowed ${groupType === 'currency' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 bg-slate-50 text-slate-400'}`}
+            >
+              Currency
+            </button>
+          </div>
+        </div>
+        <div className={formGroup}></div>
+      </div>
       <div className={formRow}>
         <div className={formGroup}>
           <label className={formLabel}>Creation Date</label>
@@ -502,18 +527,20 @@ export default function EditDealModal({
           ))}
         </div>
 
-        <div className="mt-4 flex flex-col gap-1 border-t border-slate-200 pt-3">
-          <div className="flex justify-between text-sm">
-            <span className="font-medium text-slate-600">Total Investment:</span>
-            <span className="font-bold text-slate-900">{formatAED(totalInvestment)}</span>
+        {dealInvestors.length > 0 && (
+          <div className="mt-4 flex flex-col gap-1 border-t border-slate-200 pt-3">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium text-slate-600">Total Investment:</span>
+              <span className="font-bold text-slate-900">{formatAED(totalInvestment)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="font-medium text-slate-600">Balance (Investment - Deal Amount):</span>
+              <span className={`font-bold ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                {formatAED(balance)}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="font-medium text-slate-600">Balance (Investment - Deal Amount):</span>
-            <span className={`font-bold ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-              {formatAED(balance)}
-            </span>
-          </div>
-        </div>
+        )}
       </div>
 
       {error ? <p className={`${formError} mb-4`}>{error}</p> : null}

@@ -106,6 +106,8 @@ const dealInvestorSchema = z.object({
 
 export const addDealSchema = z.object({
   name: nonEmptyString,
+  groupName: z.string().optional(),
+  groupType: z.enum(['gold', 'currency']).optional(),
   amount: positiveAmount,
   investors: z.array(dealInvestorSchema),
   totalInvestment: z.number().min(0),
@@ -121,6 +123,7 @@ export type AddDealInput = z.infer<typeof addDealSchema>;
 
 export const updateDealSchema = addDealSchema.extend({
   id: nonEmptyString,
+  groupType: z.enum(['gold', 'currency']).optional(),
   date: nonEmptyString,
 });
 

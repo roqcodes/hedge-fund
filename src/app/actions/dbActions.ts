@@ -278,6 +278,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       toBranchId: r.to_branch_id,
       toBranchName: r.to_branch_name,
       groupName: r.group_name,
+      groupType: r.group_type,
       totalPL: parseFloat(r.total_pl),
       expense: parseFloat(r.expense),
       managerShare: parseFloat(r.manager_share || '20.00'),
@@ -941,6 +942,8 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
   // Validate
   const validation = addDealSchema.safeParse({
     name: deal.name,
+    groupName: deal.groupName,
+    groupType: deal.groupType,
     amount: deal.amount,
     investors: deal.investors,
     totalInvestment: deal.totalInvestment,
@@ -960,8 +963,8 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
 
     // 1. Insert deal
     await client.query(
-      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, group_name, total_pl, expense, manager_share, gold_volume, managing_branch_id, date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      `INSERT INTO deals (id, name, amount, total_investment, balance, to_branch_id, to_branch_name, status, group_name, group_type, total_pl, expense, manager_share, gold_volume, managing_branch_id, date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         deal.id,
         deal.name,
@@ -972,6 +975,7 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
         deal.toBranchName || 'Group Entity',
         deal.status,
         deal.groupName || 'General',
+        deal.groupType || 'gold',
         deal.totalPL || 0,
         deal.expense || 0,
         deal.managerShare ?? 20,
@@ -1029,12 +1033,13 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         to_branch_name = $6, 
         status = $7,
         group_name = $8,
-        total_pl = $9,
-        expense = $10,
-        manager_share = $11,
-        gold_volume = $12,
-        date = $13
-       WHERE id = $14`,
+        group_type = $9,
+        total_pl = $10,
+        expense = $11,
+        manager_share = $12,
+        gold_volume = $13,
+        date = $14
+       WHERE id = $15`,
       [
         deal.name,
         deal.amount,
@@ -1044,6 +1049,7 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
         deal.toBranchName || 'Group Entity',
         deal.status,
         deal.groupName || 'General',
+        deal.groupType || 'gold',
         deal.totalPL || 0,
         deal.expense || 0,
         deal.managerShare ?? 20,

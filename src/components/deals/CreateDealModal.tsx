@@ -210,7 +210,7 @@ export default function CreateDealModal({
     setLeadPhone('');
     setLeadEmail('');
     setLeadAddress('');
-    setDealInvestors([{ investorId: '', percentageStr: '', amountStr: '', inputMode: 'amount' }]);
+    setDealInvestors([]);
     const d = new Date();
     const tzoffset = d.getTimezoneOffset() * 60000;
     setDate(new Date(d.getTime() - tzoffset).toISOString().slice(0, 16));
@@ -431,8 +431,6 @@ export default function CreateDealModal({
           </div>
         )}
       </div>
-
-
 
       {error ? <p className={`${formError} mb-4`}>{error}</p> : null}
     </Modal>

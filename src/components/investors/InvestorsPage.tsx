@@ -856,9 +856,10 @@ function EditInvestorModal({
   };
 
   const hasDeals = deals.some(d => d.investors.some(inv => inv.investorId === investor.id));
+  const hasFinancialHistory = hasDeals || investor.depositHistory.length > 0;
 
   const handleDelete = async () => {
-    if (hasDeals) return;
+    if (hasFinancialHistory) return;
     if (confirm(`Are you sure you want to delete ${investor.name}? This action cannot be undone.`)) {
       setIsDeleting(true);
       const success = await deleteInvestor(investor.id);
@@ -876,10 +877,10 @@ function EditInvestorModal({
         <div className="flex w-full items-center justify-between gap-4">
           <button 
             type="button" 
-            className={`px-4 py-2 text-sm font-bold rounded-xl border transition-colors ${hasDeals ? 'border-slate-200 text-slate-400 cursor-not-allowed bg-slate-50' : 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300'}`}
-            onClick={hasDeals ? undefined : handleDelete}
-            disabled={hasDeals || isDeleting}
-            title={hasDeals ? "Cannot delete investor because they are involved in active deals or groups." : "Delete this investor"}
+            className={`px-4 py-2 text-sm font-bold rounded-xl border transition-colors ${hasFinancialHistory ? 'border-slate-200 text-slate-400 cursor-not-allowed bg-slate-50' : 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300'}`}
+            onClick={hasFinancialHistory ? undefined : handleDelete}
+            disabled={hasFinancialHistory || isDeleting}
+            title={hasFinancialHistory ? "Cannot delete investor because they have recorded deposits or active deals." : "Delete this investor"}
           >
             {isDeleting ? 'Deleting...' : 'Delete Investor'}
           </button>

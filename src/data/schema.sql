@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS investors (
 -- 8. Investor Deposits (History)
 CREATE TABLE IF NOT EXISTS investor_deposits (
     id VARCHAR(50) PRIMARY KEY,
-    investor_id VARCHAR(50) NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
+    investor_id VARCHAR(50) NOT NULL REFERENCES investors(id) ON DELETE RESTRICT,
     date DATE NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('cash', 'gold')),
     amount DECIMAL(15, 2) NOT NULL,
@@ -140,14 +140,14 @@ CREATE TABLE IF NOT EXISTS deals (
     expense DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     manager_share DECIMAL(5, 2) NOT NULL DEFAULT 20.00,
     gold_volume DECIMAL(15, 2) DEFAULT 0.00,
-    managing_branch_id VARCHAR(50),
+    managing_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE RESTRICT,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 10. Deal Investors (Many-to-Many junction table)
 CREATE TABLE IF NOT EXISTS deal_investors (
     deal_id VARCHAR(50) REFERENCES deals(id) ON DELETE CASCADE,
-    investor_id VARCHAR(50) REFERENCES investors(id) ON DELETE CASCADE,
+    investor_id VARCHAR(50) REFERENCES investors(id) ON DELETE RESTRICT,
     investor_name VARCHAR(255) NOT NULL,
     amount DECIMAL(15, 2) NOT NULL,
     is_gold BOOLEAN NOT NULL DEFAULT FALSE,
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS deal_transactions (
     sales_aed DECIMAL(15, 2) NOT NULL,
     expenses DECIMAL(15, 2) NOT NULL,
     gross_profit DECIMAL(15, 2) NOT NULL,
-    net_profit_per_gram DECIMAL(15, 2) NOT NULL,
+    net_profit_per_gram DECIMAL(15, 6) NOT NULL,
     management_profit DECIMAL(15, 2) NOT NULL,
     fix_or_unfix VARCHAR(20) NOT NULL,
     margin_deposit DECIMAL(15, 2) NOT NULL,
@@ -196,7 +196,7 @@ CREATE INDEX IF NOT EXISTS idx_dte_deal_transaction_id ON deal_transaction_expen
 CREATE TABLE IF NOT EXISTS deal_transaction_payouts (
     id VARCHAR(50) PRIMARY KEY,
     deal_transaction_id VARCHAR(50) NOT NULL REFERENCES deal_transactions(id) ON DELETE CASCADE,
-    investor_id VARCHAR(50) NOT NULL REFERENCES investors(id) ON DELETE CASCADE,
+    investor_id VARCHAR(50) NOT NULL REFERENCES investors(id) ON DELETE RESTRICT,
     investor_name VARCHAR(255) NOT NULL,
     payout_amount DECIMAL(15, 2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
