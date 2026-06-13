@@ -313,8 +313,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                     {txn.fixOrUnfix === 'fixed' && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Snapshot</span>}
                   </p>
                   <p className="text-[11px] sm:text-xs font-medium text-slate-400">
-                    {txn.fixOrUnfix === 'fixed' 
-                      ? `Historical Payout • ${(txn.grossProfit > 0 ? ((txn.managementProfit / txn.grossProfit) * 100) : 0).toFixed(1)}%` 
+                    {txn.fixOrUnfix === 'fixed'
+                      ? `Historical Payout • ${(txn.grossProfit > 0 ? ((txn.managementProfit / txn.grossProfit) * 100) : 0).toFixed(1)}%`
                       : `Profit Share • ${deal.managerShare ?? 20}%`}
                   </p>
                 </div>
@@ -331,36 +331,36 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             {breakdown.map((inv, idx) => {
               const resolvedName = investors.find(i => i.id === inv.investorId)?.name || inv.investorName;
               return (
-              <div
-                key={idx}
-                className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.04)]"
-              >
-                <div className="flex items-center gap-3 sm:gap-4">
-                  <div className="flex size-10 sm:size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-base sm:text-lg font-black text-slate-700">
-                    {resolvedName.charAt(0)}
+                <div
+                  key={idx}
+                  className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.04)]"
+                >
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="flex size-10 sm:size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-base sm:text-lg font-black text-slate-700">
+                      {resolvedName.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-sm sm:text-base font-bold text-slate-900 uppercase">
+                        {resolvedName}
+                        {inv.isHistorical && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Snapshot</span>}
+                      </p>
+                      <p className="text-[11px] sm:text-xs font-medium text-slate-400">
+                        {inv.isHistorical ? (
+                          `Historical Payout • ${(inv.shareRatio * 100).toFixed(1)}%`
+                        ) : (
+                          <>Capital: {formatAED(inv.amount)} • {(inv.shareRatio * 100).toFixed(1)}%</>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm sm:text-base font-bold text-slate-900 uppercase">
-                      {resolvedName}
-                      {inv.isHistorical && <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case bg-slate-100 px-1.5 py-0.5 rounded">Snapshot</span>}
-                    </p>
-                    <p className="text-[11px] sm:text-xs font-medium text-slate-400">
-                      {inv.isHistorical ? (
-                        `Historical Payout • ${(inv.shareRatio * 100).toFixed(1)}%`
-                      ) : (
-                        <>Capital: {formatAED(inv.amount)} • {(inv.shareRatio * 100).toFixed(1)}%</>
-                      )}
+                  <div className="text-right">
+                    <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Payout</p>
+                    <p className={`mt-0.5 font-mono text-base sm:text-lg font-black ${inv.payout >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {formatAED(inv.payout, true)}
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">Payout</p>
-                  <p className={`mt-0.5 font-mono text-base sm:text-lg font-black ${inv.payout >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {formatAED(inv.payout, true)}
-                  </p>
-                </div>
-              </div>
-            );
+              );
             })}
           </div>
 
