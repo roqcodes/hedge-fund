@@ -24,7 +24,7 @@ import {
   formInput,
 } from '@/lib/ui';
 
-type SortField = 'date' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'buyValue';
+type SortField = 'date' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'buyValue' | 'remainingWeight';
 type SortDirection = 'asc' | 'desc';
 
 export default function PhysicalPage() {
@@ -324,6 +324,7 @@ export default function PhysicalPage() {
                   <option value="grossWeight">Sort by: Gross Wt</option>
                   <option value="pureGram">Sort by: Pure Gram</option>
                   <option value="buyValue">Sort by: Buy Value</option>
+                  <option value="remainingWeight">Sort by: Remaining Vol</option>
                 </select>
                 <button
                   type="button"
@@ -360,8 +361,8 @@ export default function PhysicalPage() {
                     <th className={getThClass('center')} onClick={() => handleSort('buyValue')}>
                       <div className="flex items-center justify-center gap-2">Buy Value <SortIcon field="buyValue" /></div>
                     </th>
-                    <th className={getThClass('center')}>
-                      <div className="flex items-center justify-center gap-2">Remaining Vol</div>
+                    <th className={getThClass('center')} onClick={() => handleSort('remainingWeight')}>
+                      <div className="flex items-center justify-center gap-2">Remaining Vol <SortIcon field="remainingWeight" /></div>
                     </th>
                     <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
