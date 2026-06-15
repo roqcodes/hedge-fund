@@ -19,6 +19,9 @@ export default function MarketplacePage() {
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
   const [isTaxInvoiceOpen, setIsTaxInvoiceOpen] = useState(false);
   
+  const [stocks, setStocks] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+
   // Date filter mock data
   const {
     dateFilter, setDateFilter,
@@ -27,8 +30,21 @@ export default function MarketplacePage() {
   } = useDateFilter([]); // Empty array for now since no db connected
 
   const handleSaveStock = (data: any) => {
-    console.log("Stock saved from Manage Stock modal:", data);
-    // Usually we would update state/db here.
+    setStocks([...stocks, { ...data, id: Date.now() }]);
+    setIsStockModalOpen(false);
+  };
+
+  const handleSaveInvoice = (invoice: any) => {
+    setInvoices([...invoices, { ...invoice, id: Date.now() }]);
+    setIsTaxInvoiceOpen(false);
+  };
+
+  const handleDeleteStock = (id: number) => {
+    setStocks(stocks.filter(s => s.id !== id));
+  };
+
+  const handleDeleteInvoice = (id: number) => {
+    setInvoices(invoices.filter(i => i.id !== id));
   };
 
   return (
@@ -78,7 +94,7 @@ export default function MarketplacePage() {
         <div className={`${kpiGrid} grid-cols-2 md:grid-cols-4 mb-6`}>
           <KPICard
             label="Total Stock"
-            value="0"
+            value={stocks.length.toString()}
             subValue="Items in marketplace"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -89,9 +105,9 @@ export default function MarketplacePage() {
             bgColor="var(--purple-light)"
           />
           <KPICard
-            label="Active Listings"
-            value="0"
-            subValue="Currently visible"
+            label="Invoices"
+            value={invoices.length.toString()}
+            subValue="Created invoices"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -102,7 +118,7 @@ export default function MarketplacePage() {
           />
           <KPICard
             label="Total Volume"
-            value="0.00 g"
+            value={`${stocks.reduce((acc, s) => acc + (parseFloat(s.grossQtyStr) || 0), 0).toFixed(2)} g`}
             subValue="Gross weight"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -114,7 +130,7 @@ export default function MarketplacePage() {
           />
           <KPICard
             label="Est. Value"
-            value="$0.00"
+            value={`$${stocks.reduce((acc, s) => acc + (s.amount || 0), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}`}
             subValue="Marketplace value"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -126,14 +142,78 @@ export default function MarketplacePage() {
           />
         </div>
 
-        <div className="rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-surface">
-          <div className="flex flex-col items-center justify-center gap-4 text-slate-500">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-300">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            <p className="text-sm">No marketplace items yet. Click Manage Stock or New Tax Invoice to begin.</p>
+        {stocks.length === 0 && invoices.length === 0 ? (
+          <div className="rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-surface">
+            <div className="flex flex-col items-center justify-center gap-4 text-slate-500">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-300">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              <p className="text-sm">No marketplace items yet. Click Manage Stock or New Tax Invoice to begin.</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-6">
+            {/* Stocks List */}
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-surface p-6">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center justify-between">
+                Marketplace Stocks
+                <span className="bg-slate-100 text-slate-500 text-xs px-2 py-1 rounded-md">{stocks.length} Items</span>
+              </h3>
+              <div className="space-y-3">
+                {stocks.map(stock => (
+                  <div key={stock.id} className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100 group">
+                    <div className="flex-1">
+                      <p className="font-bold text-sm text-slate-700">{stock.productCode}</p>
+                      <p className="text-xs text-slate-500">{stock.grossQtyStr}g • {stock.purityStr} purity</p>
+                    </div>
+                    <div className="text-right mr-4">
+                      <p className="font-bold text-sm text-slate-900">${stock.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                      <p className="text-[10px] uppercase text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded inline-block mt-0.5">Active</p>
+                    </div>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="p-1.5 text-slate-400 hover:text-accent hover:bg-slate-100 rounded-lg transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                      <button onClick={() => handleDeleteStock(stock.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded-lg transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Invoices List */}
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-surface p-6">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center justify-between">
+                Recent Tax Invoices
+                <span className="bg-slate-100 text-slate-500 text-xs px-2 py-1 rounded-md">{invoices.length} Invoices</span>
+              </h3>
+              <div className="space-y-3">
+                {invoices.map(inv => (
+                  <div key={inv.id} className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100 group">
+                    <div className="flex-1">
+                      <p className="font-bold text-sm text-slate-700">{inv.docNo}</p>
+                      <p className="text-xs text-slate-500">{inv.docDate} • {inv.items.length} items</p>
+                    </div>
+                    <div className="text-right mr-4">
+                      <p className="font-bold text-sm text-slate-900">${inv.netAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                      <p className="text-[10px] uppercase text-accent font-bold bg-accent/10 px-1.5 py-0.5 rounded inline-block mt-0.5">{inv.orderType}</p>
+                    </div>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="p-1.5 text-slate-400 hover:text-accent hover:bg-slate-100 rounded-lg transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                      <button onClick={() => handleDeleteInvoice(inv.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded-lg transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {isStockModalOpen && (
@@ -147,7 +227,9 @@ export default function MarketplacePage() {
       {isTaxInvoiceOpen && (
         <TaxInvoiceModal
           open={isTaxInvoiceOpen}
+          availableStocks={stocks}
           onClose={() => setIsTaxInvoiceOpen(false)}
+          onSave={handleSaveInvoice}
         />
       )}
     </>

@@ -8,6 +8,8 @@ import AddStockModal from './AddStockModal';
 interface TaxInvoiceModalProps {
   open: boolean;
   onClose: () => void;
+  onSave?: (invoice: any) => void;
+  availableStocks?: any[];
 }
 
 const InputField = ({ label, children }: { label: string, children: React.ReactNode }) => (
@@ -17,9 +19,9 @@ const InputField = ({ label, children }: { label: string, children: React.ReactN
   </div>
 );
 
-export default function TaxInvoiceModal({ open, onClose }: TaxInvoiceModalProps) {
+export default function TaxInvoiceModal({ open, onClose, onSave, availableStocks = [] }: TaxInvoiceModalProps) {
   const [activeTab, setActiveTab] = useState<'stock' | 'other' | 'doc'>('stock');
-  const [isAddStockOpen, setIsAddStockOpen] = useState(false);
+  const [isSelectStockOpen, setIsSelectStockOpen] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
 
   // Form State
@@ -71,6 +73,21 @@ export default function TaxInvoiceModal({ open, onClose }: TaxInvoiceModalProps)
     setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
   };
 
+  const handleSaveInvoice = () => {
+    if (onSave) {
+      onSave({
+        docNo, docDate, currency, salesMan, department, vatType, orderType, refNo,
+        customerSearch, customerDetails,
+        terms, dueDate, declNo, remarks,
+        postFixingHedge, hedgeRate, hedgePremium, fheDocNo,
+        items: invoiceItems,
+        totalGrossAmount, netAmount, 
+        vatUsd: displayVatUsd, 
+        vatAed: displayVatAed
+      });
+    }
+    onClose();
+  };
 
   return (
     <>
@@ -82,7 +99,7 @@ export default function TaxInvoiceModal({ open, onClose }: TaxInvoiceModalProps)
         footer={
           <>
             <button type="button" onClick={onClose} className={btnSecondary}>Cancel</button>
-            <button type="button" onClick={onClose} className={btnPrimary}>Save Invoice</button>
+            <button type="button" onClick={handleSaveInvoice} className={btnPrimary}>Save Invoice</button>
           </>
         }
       >
@@ -236,7 +253,7 @@ export default function TaxInvoiceModal({ open, onClose }: TaxInvoiceModalProps)
 
                 {/* Action Buttons */}
                 <div className="flex gap-3">
-                  <button onClick={() => setIsAddStockOpen(true)} className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-accent bg-accent/10 rounded-lg hover:bg-accent hover:text-white transition-colors">
+                  <button onClick={() => setIsSelectStockOpen(true)} className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-accent bg-accent/10 rounded-lg hover:bg-accent hover:text-white transition-colors">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
                     Add Item
                   </button>
@@ -345,13 +362,40 @@ export default function TaxInvoiceModal({ open, onClose }: TaxInvoiceModalProps)
         </div>
       </Modal>
 
-      {/* Internal "Add Stock" modal for inserting rows */}
-      {isAddStockOpen && (
-        <AddStockModal
-          open={isAddStockOpen}
-          onClose={() => setIsAddStockOpen(false)}
-          onSave={handleAddStock}
-        />
+      {/* Modal to Select Stock from Marketplace */}
+      {isSelectStockOpen && (
+        <Modal
+          open={isSelectStockOpen}
+          onClose={() => setIsSelectStockOpen(false)}
+          title="Select Marketplace Stock"
+          maxWidth="max-w-md"
+          footer={<></>}
+        >
+          <div className="flex flex-col gap-3">
+            {availableStocks.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-6">
+                No available stocks in marketplace. Please create a stock first.
+              </p>
+            ) : (
+              availableStocks.map((stock) => (
+                <button
+                  key={stock.id}
+                  onClick={() => {
+                    handleAddStock(stock);
+                    setIsSelectStockOpen(false);
+                  }}
+                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-accent hover:bg-slate-50 transition-colors text-left"
+                >
+                  <div>
+                    <div className="font-bold text-slate-800 text-sm">{stock.productCode}</div>
+                    <div className="text-xs text-slate-500">{stock.grossQtyStr}g • {stock.purityStr} Purity</div>
+                  </div>
+                  <div className="font-bold text-slate-900">${(stock.amount || 0).toFixed(2)}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </Modal>
       )}
     </>
   );

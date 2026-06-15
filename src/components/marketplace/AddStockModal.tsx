@@ -122,14 +122,16 @@ export default function AddStockModal({ open, onClose, onSave }: AddStockModalPr
             </div>
             <div className="flex items-center gap-3">
               <label className="w-24 text-sm font-semibold text-slate-600 shrink-0">Mtl Type :</label>
-              <select 
-                value={mtlType} 
-                onChange={(e) => setMtlType(e.target.value)}
-                className={`${formInput} flex-1`}
-              >
-                <option value="XAU">XAU</option>
-                <option value="XAG">XAG</option>
-              </select>
+              <div className="flex-1 min-w-0">
+                <select 
+                  value={mtlType} 
+                  onChange={(e) => setMtlType(e.target.value)}
+                  className={`${formInput}`}
+                >
+                  <option value="XAU">XAU</option>
+                  <option value="XAG">XAG</option>
+                </select>
+              </div>
             </div>
           </div>
           
@@ -139,29 +141,33 @@ export default function AddStockModal({ open, onClose, onSave }: AddStockModalPr
               <select 
                 value={rateType} 
                 onChange={(e) => setRateType(e.target.value)}
-                className={`${formInput} w-20 shrink-0`}
+                className={`${formInput} !w-24 shrink-0`}
               >
                 <option value="GOZ">GOZ</option>
                 <option value="GM">GM</option>
               </select>
-              <input 
-                type="number" 
-                step="0.01"
-                placeholder="Spot Price"
-                value={spotPriceStr}
-                onChange={(e) => setSpotPriceStr(e.target.value)}
-                className={`${formInput} flex-1`}
-              />
+              <div className="flex-1 min-w-0">
+                <input 
+                  type="number" 
+                  step="0.01"
+                  placeholder="Spot Price"
+                  value={spotPriceStr}
+                  onChange={(e) => setSpotPriceStr(e.target.value)}
+                  className={`${formInput}`}
+                />
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <label className="w-16 text-sm font-semibold text-slate-600 shrink-0">Premium:</label>
-              <input 
-                type="number" 
-                step="0.01"
-                value={premiumStr}
-                onChange={(e) => setPremiumStr(e.target.value)}
-                className={`${formInput} flex-1`}
-              />
+              <div className="flex-1 min-w-0">
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={premiumStr}
+                  onChange={(e) => setPremiumStr(e.target.value)}
+                  className={`${formInput}`}
+                />
+              </div>
             </div>
           </div>
         </div>
