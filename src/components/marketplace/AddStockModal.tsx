@@ -39,7 +39,7 @@ export default function AddStockModal({ open, onClose, onSave }: AddStockModalPr
     }
   }, [productCode]);
 
-  // Calculations powered by MetaFix pricing engine
+  // Calculations powered by pricing engine
   const calculations = useMemo(() => {
     const spotPriceOz = parseFloat(spotPriceStr) || 0;
     const premiumOz = parseFloat(premiumStr) || 0;
@@ -48,7 +48,7 @@ export default function AddStockModal({ open, onClose, onSave }: AddStockModalPr
     const purity = parseFloat(purityStr) || 0;
     const mkgRate = parseFloat(mkgRateStr) || 0;
     
-    // MetaFix Logic 
+    // Pricing Logic
     const result = calculateProductPrice(spotPriceOz, premiumOz, purity, grossQty, 0, 0); // Exclude making charge from here to show separately
     
     // Pure Qty = Gross Qty * Purity (assuming purity is like 999.9 -> 0.9999)
