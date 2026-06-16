@@ -183,7 +183,10 @@ export default function FundManagement() {
         const isMatch = t.type === activeTab || t.from === activeTab || t.to === activeTab;
         if (!isMatch) return false;
       }
-      if (activeTab === 'all' && filter !== 'all' && t.type !== filter) return false;
+      if (activeTab === 'all' && filter !== 'all') {
+        const isMatch = t.type === filter || t.from === filter || t.to === filter;
+        if (!isMatch) return false;
+      }
       if (branchFilter !== 'all' && t.from !== branchFilter && t.to !== branchFilter) return false;
       if (entityFilter !== 'all' && t.from !== entityFilter && t.to !== entityFilter) return false;
       if (searchTerm.trim()) {
@@ -244,14 +247,19 @@ export default function FundManagement() {
     );
   };
 
-  const typeFilters: { value: string; label: string }[] = [
-    { value: 'all', label: 'All Types' },
-    { value: 'transfer', label: 'Transfer' },
-    { value: 'expense', label: 'Expense' },
-    { value: 'allocation', label: 'Allocation' },
-    { value: 'customer_account', label: 'Customer Account' },
-    { value: 'temporary_credit', label: 'Temporary Credit' },
-  ];
+  const typeFilters = React.useMemo(() => {
+    const baseFilters = [
+      { value: 'all', label: 'All Types' },
+      { value: 'transfer', label: 'Transfer' },
+      { value: 'expense', label: 'Expense' },
+      { value: 'allocation', label: 'Allocation' },
+    ];
+    const ledgerFilters = branchLedgers.map(l => ({
+      value: l.name,
+      label: l.name
+    }));
+    return [...baseFilters, ...ledgerFilters];
+  }, [branchLedgers]);
 
   const branchOptions = [
     { value: 'all', label: 'All Branches' },
