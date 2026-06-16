@@ -715,6 +715,7 @@ function CreateBranchModal({
       location,
       managerName: manager,
       openingBalance: Number(capital),
+      openingGoldBalance: 0,
     }, slug);
     setName('');
     setSlug('');
