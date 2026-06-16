@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { query } from '@/lib/db';
 import UsersManagement from '@/components/users/UsersManagement';
 import { fetchCognitoUsersAction } from '@/app/actions/cognitoActions';
+import BranchDetailsSettings from '@/components/settings/BranchDetailsSettings';
 import { pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
 
 export default async function BranchSettingsPage({ params }: { params: any }) {
@@ -17,7 +18,7 @@ export default async function BranchSettingsPage({ params }: { params: any }) {
   }
 
   // Find the matching branch
-  const branchesRes = await query('SELECT id, name, slug FROM branches');
+  const branchesRes = await query('SELECT * FROM branches');
   const branches = branchesRes.rows;
   const branch = branches.find((b: any) => (b.slug || b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')) === slug);
   const branchId = branch?.id;
@@ -39,6 +40,8 @@ export default async function BranchSettingsPage({ params }: { params: any }) {
       </div>
 
       <div className="w-full mt-4">
+        {branch && <BranchDetailsSettings branch={branch} />}
+        
         <UsersManagement 
           initialUsers={branchUsers} 
           error={error} 

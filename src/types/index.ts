@@ -15,6 +15,14 @@ export interface Branch {
   id: string;
   slug: string;
   name: string;
+  logo_url?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  trn?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
   location: string;
   managerName: string;
   cashBalance: number;

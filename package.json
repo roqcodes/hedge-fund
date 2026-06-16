@@ -13,6 +13,7 @@
     "@serwist/next": "^9.5.11",
     "@tanstack/react-query": "^5.100.11",
     "@tanstack/react-query-devtools": "^5.100.11",
+    "cloudinary": "^2.10.0",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "jose": "^6.2.3",
