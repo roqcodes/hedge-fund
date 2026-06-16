@@ -1,29 +1,103 @@
 'use client';
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { generateId } from '@/data/mockData';
 import { Transaction, Entity } from '@/types';
+import { formInput, formSelect, formLabel, btnPrimary, btnSecondary } from '@/lib/ui';
 
 export function BranchTransferModal({
   open,
   onClose,
+  targetBranchId,
 }: {
   open: boolean;
   onClose: () => void;
+  targetBranchId?: string;
 }) {
-  const { branches, entities, addEntity, processLedgerTransaction, showToast } = useApp();
+  const { branches, entities, ledgers, transactions, addEntity, processLedgerTransaction, showToast } = useApp();
 
-  const [tab, setTab] = useState<'customer_account' | 'temporary_credit'>('customer_account');
-  const [type, setType] = useState<'debit' | 'credit'>('debit');
+  // If targetBranchId is provided, use that branch. Otherwise fallback to assuming the user is a branch manager with only 1 branch.
+  const branch = targetBranchId 
+    ? branches.find(b => b.id === targetBranchId) || null
+    : (branches.length === 1 ? branches[0] : null);
+    
+  const branchId = branch?.id || '';
+  const branchName = branch?.name || '';
 
-  // Entity combobox state
-  const [entitySearch, setEntitySearch] = useState('');
-  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const comboRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [assetType, setAssetType] = useState<'currency' | 'gold'>('currency');
 
+  // Calculate balances for all options
+  const optionBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+    const branchLedgers = ledgers.filter(l => !l.branchId || l.branchId === branchId);
+    
+    // Ledger balances
+    branchLedgers.forEach(l => {
+      const toSum = transactions.filter(t => t.to === l.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
+      const fromSum = transactions.filter(t => t.from === l.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
+      const tagSum = transactions.filter(t => t.type === l.name && t.from !== l.name && t.to !== l.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
+      balances[l.name] = toSum - fromSum + tagSum;
+    });
+
+    // Branch balance
+    if (assetType === 'currency') {
+      if (branchName) {
+        let base = branch?.openingBalance || 0;
+        const ledgersSet = new Set(branchLedgers.map(l => l.name));
+        transactions.forEach((t: Transaction) => {
+          if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') return;
+          const isLedgerTxn = ledgersSet.has(t.from) || ledgersSet.has(t.to) || ledgersSet.has(t.type);
+          if (isLedgerTxn) return;
+          if (t.to === branchName) base += t.amount;
+          if (t.from === branchName) base -= t.amount;
+        });
+        balances[branchName] = base;
+      }
+    } else {
+      if (branchName) balances[branchName] = branch?.goldBalance || 0;
+    }
+
+    // Entity balances
+    entities.forEach(e => {
+      if (!e.branchId || e.branchId === branchId) {
+        const toSum = transactions.filter(t => t.to === e.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
+        const fromSum = transactions.filter(t => t.from === e.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
+        balances[e.name] = toSum - fromSum;
+      }
+    });
+
+    return balances;
+  }, [transactions, ledgers, branchId, branch, branchName, entities, assetType]);
+
+  // Options group: Branch, Ledgers, Entities
+  const branchFundLabel = assetType === 'currency' ? `${branchName} (Branch Fund)` : `${branchName} (Branch Gold Volume)`;
+
+  const allOptions = useMemo(() => {
+    const opts: { id: string; name: string; type: 'branch' | 'ledger' | 'entity'; balance: number }[] = [];
+    if (branchName) {
+      opts.push({ id: branchId, name: branchFundLabel, type: 'branch', balance: optionBalances[branchName] || 0 });
+    }
+    ledgers.forEach(l => {
+      if (!l.branchId || l.branchId === branchId) {
+        opts.push({ id: l.id, name: l.name, type: 'ledger', balance: optionBalances[l.name] || 0 });
+      }
+    });
+    entities.forEach(e => {
+      if (!e.branchId || e.branchId === branchId) {
+        opts.push({ id: e.id, name: e.name, type: 'entity', balance: optionBalances[e.name] || 0 });
+      }
+    });
+    return opts;
+  }, [branchName, branchId, ledgers, entities, optionBalances]);
+
+  const [fromSearch, setFromSearch] = useState('');
+  const [toSearch, setToSearch] = useState('');
+  
+  const [fromOpen, setFromOpen] = useState(false);
+  const [toOpen, setToOpen] = useState(false);
+
+  const [ledgerTag, setLedgerTag] = useState(''); // Stores the Ledger ID or Name for categorization
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(() => {
@@ -32,72 +106,27 @@ export function BranchTransferModal({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const branch = branches.length === 1 ? branches[0] : null;
-  const branchId = branch?.id || '';
-  const branchName = branch?.name || '';
-
-  // Entities visible to this branch
-  const branchEntities = useMemo(
-    () => entities.filter(e => !e.branchId || e.branchId === branchId),
-    [entities, branchId]
-  );
-
-  // Filtered by search term
-  const filteredEntities = useMemo(() => {
-    const q = entitySearch.trim().toLowerCase();
-    if (!q) return branchEntities;
-    return branchEntities.filter(
-      e =>
-        e.name.toLowerCase().includes(q) ||
-        (e.phone && e.phone.toLowerCase().includes(q))
-    );
-  }, [branchEntities, entitySearch]);
-
-  // Whether the current search text is a brand-new name
-  const isNewEntity = useMemo(() => {
-    const q = entitySearch.trim().toLowerCase();
-    return q.length > 0 && !branchEntities.some(e => e.name.toLowerCase() === q);
-  }, [branchEntities, entitySearch]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleOut(e: MouseEvent) {
-      if (comboRef.current && !comboRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleOut);
-    return () => document.removeEventListener('mousedown', handleOut);
-  }, []);
-
   // Reset when modal closes
   useEffect(() => {
     if (!open) {
-      setEntitySearch('');
-      setSelectedEntity(null);
+      setFromSearch('');
+      setToSearch('');
+      setLedgerTag('');
       setAmount('');
       setNotes('');
-      setDropdownOpen(false);
+      setFromOpen(false);
+      setToOpen(false);
+      setAssetType('currency');
     }
   }, [open]);
-
-  const selectEntity = useCallback((e: Entity) => {
-    setSelectedEntity(e);
-    setEntitySearch(e.name);
-    setDropdownOpen(false);
-  }, []);
-
-  const clearEntity = useCallback(() => {
-    setSelectedEntity(null);
-    setEntitySearch('');
-    inputRef.current?.focus();
-  }, []);
 
   if (!branch) return null;
 
   const handleSubmit = async () => {
-    const nameToUse = entitySearch.trim();
-    if (!nameToUse || !amount) {
+    const fromName = fromSearch.trim();
+    const toName = toSearch.trim();
+    
+    if (!fromName || !toName || !amount) {
       showToast('Please fill all required fields', 'error');
       return;
     }
@@ -107,295 +136,271 @@ export function BranchTransferModal({
       return;
     }
 
-    setIsSubmitting(true);
+    const fromExists = allOptions.find(o => o.name.trim().toLowerCase() === fromName.toLowerCase());
+    const toExists = allOptions.find(o => o.name.trim().toLowerCase() === toName.toLowerCase());
 
-    // If new name typed, auto-create the entity first
-    let resolvedEntity = selectedEntity;
-    if (!resolvedEntity || resolvedEntity.name.toLowerCase() !== nameToUse.toLowerCase()) {
-      const existing = branchEntities.find(e => e.name.toLowerCase() === nameToUse.toLowerCase());
-      if (existing) {
-        resolvedEntity = existing;
-      } else {
-        const newEntity: Entity = {
-          id: generateId('ENT'),
-          name: nameToUse,
-          branchId,
-          createdAt: new Date().toISOString(),
-        };
-        const ok = await addEntity(newEntity);
-        if (!ok) {
-          showToast('Failed to create entity', 'error');
-          setIsSubmitting(false);
-          return;
-        }
-        resolvedEntity = newEntity;
+    if (!fromExists) {
+      showToast(`Account "${fromName}" does not exist. Please create it first.`, 'error');
+      return;
+    }
+    if (!toExists) {
+      showToast(`Account "${toName}" does not exist. Please create it first.`, 'error');
+      return;
+    }
+
+    if (fromExists.type === 'entity' || fromExists.type === 'branch') {
+      if (amt > fromExists.balance) {
+        showToast(`Insufficient balance in ${fromExists.name}. Available: ${assetType === 'gold' ? fromExists.balance.toFixed(2) + 'g' : fromExists.balance.toFixed(2)}`, 'error');
+        return;
       }
     }
 
-    const deltaCash = type === 'debit' ? amt : -amt;
+    setIsSubmitting(true);
+
+    const exactFromName = fromExists.name;
+    const exactToName = toExists.name;
+
+    // If 'from' is the branch fund, cash/gold decreases (-). If 'to' is the branch fund, cash/gold increases (+).
+    let deltaCash = 0;
+    let deltaGold = 0;
+    
+    if (exactFromName.toLowerCase() === branchFundLabel.trim().toLowerCase()) {
+      if (assetType === 'gold') deltaGold = -amt;
+      else deltaCash = -amt;
+    } else if (exactToName.toLowerCase() === branchFundLabel.trim().toLowerCase()) {
+      if (assetType === 'gold') deltaGold = amt;
+      else deltaCash = amt;
+    }
 
     const newTxn: Transaction = {
       id: generateId('TXN'),
-      date: date,
-      from: type === 'debit' ? resolvedEntity.name : branchName,
-      to: type === 'debit' ? branchName : resolvedEntity.name,
+      date: new Date(date).toISOString(),
+      from: exactFromName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactFromName,
+      to: exactToName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactToName,
       amount: amt,
-      type: tab,
+      type: ledgerTag || 'transfer', // Fallback to 'transfer' if no ledger tag selected
+      assetType,
       status: 'completed',
-      category: type,
+      category: (() => {
+        if (deltaCash > 0 || deltaGold > 0) return 'debit';
+        if (deltaCash < 0 || deltaGold < 0) return 'credit';
+        const fromLedger = branchLedgers.find(l => l.name === exactFromName);
+        const toLedger = branchLedgers.find(l => l.name === exactToName);
+        if (fromLedger) {
+          return fromLedger.impact === 'positive' ? 'credit' : fromLedger.impact === 'negative' ? 'debit' : 'neutral';
+        }
+        if (toLedger) {
+          return toLedger.impact === 'positive' ? 'debit' : toLedger.impact === 'negative' ? 'credit' : 'neutral';
+        }
+        return 'neutral';
+      })(),
       notes: notes || '',
     };
 
-    const success = await processLedgerTransaction(newTxn, deltaCash, branchId);
+    const success = await processLedgerTransaction(newTxn, deltaCash, deltaGold, branchId);
     setIsSubmitting(false);
 
     if (success) {
-      setAmount('');
-      setNotes('');
-      setEntitySearch('');
-      setSelectedEntity(null);
+      onClose();
     }
   };
 
-  const showDropdown = dropdownOpen && (filteredEntities.length > 0 || isNewEntity);
+  const branchLedgers = ledgers.filter(l => !l.branchId || l.branchId === branchId);
+
+  const getFilteredOptions = (query: string) => {
+    const q = query.toLowerCase();
+    return allOptions.filter(o => o.name.toLowerCase().includes(q)).slice(0, 50); // limit to 50
+  };
+
+  const formatBalance = (bal: number) => {
+    if (assetType === 'gold') return `${bal.toFixed(2)}g`;
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'AED' }).format(bal);
+  };
+
+  const renderDropdown = (
+    searchValue: string, 
+    setSearchValue: (val: string) => void, 
+    isOpen: boolean, 
+    setIsOpen: (val: boolean) => void
+  ) => {
+    const filtered = getFilteredOptions(searchValue);
+    const hasExactMatch = filtered.some(o => o.name.toLowerCase() === searchValue.toLowerCase().trim());
+    
+    return (
+      <div className="relative">
+        <input
+          type="text"
+          className={formInput}
+          placeholder="Search or type new..."
+          value={searchValue}
+          onChange={e => {
+            setSearchValue(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        />
+        {isOpen && (searchValue || filtered.length > 0) && (
+          <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto bg-white border border-slate-200 rounded-lg shadow-xl outline-none ring-1 ring-black/5">
+            {filtered.map(o => (
+              <div
+                key={o.id}
+                className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between border-b border-slate-100 last:border-0"
+                onClick={() => {
+                  setSearchValue(o.name);
+                  setIsOpen(false);
+                }}
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-slate-900">{o.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">{o.type}</span>
+                </div>
+                <div className="text-right flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700">{formatBalance(o.balance)}</span>
+                  <span className="text-[10px] text-slate-400">BALANCE</span>
+                </div>
+              </div>
+            ))}
+            {searchValue.trim() && !hasExactMatch && (
+              <div 
+                className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-accent"
+                onClick={async () => {
+                  const newName = searchValue.trim();
+                  if (!newName) return;
+                  const newEntity: Entity = {
+                    id: generateId('ENT'),
+                    name: newName,
+                    branchId,
+                    createdAt: new Date().toISOString(),
+                  };
+                  await addEntity(newEntity);
+                  setSearchValue(newName);
+                  setIsOpen(false);
+                  showToast(`Entity "${newName}" created successfully!`, 'success');
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+                <span className="text-sm font-medium">Create "{searchValue.trim()}" as new entity</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="Execute Transfer"
+      title="Universal Journal Entry"
       footer={
         <>
           <button
             type="button"
-            className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors w-full sm:w-auto"
+            className={`${btnSecondary} w-full sm:w-auto`}
             onClick={onClose}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="px-4 py-2 bg-accent text-white rounded-xl hover:bg-accent-dark transition-colors font-medium disabled:opacity-50 w-full sm:w-auto"
+            className={`${btnPrimary} w-full sm:w-auto`}
             onClick={handleSubmit}
-            disabled={isSubmitting || !amount || !entitySearch.trim()}
+            disabled={isSubmitting || !amount || !fromSearch.trim() || !toSearch.trim()}
           >
-            {isSubmitting ? 'Processing...' : 'Run Transfer'}
+            {isSubmitting ? 'Processing...' : 'Execute Transaction'}
           </button>
         </>
       }
     >
-      <div className="space-y-5">
-        {/* Tabs */}
-        <div className="flex p-1 bg-slate-100 rounded-xl">
+      <div className="space-y-6 pb-24"> {/* Extra padding for absolute dropdowns */}
+        {/* Asset Type Toggle */}
+        <div className="flex gap-4 p-1 bg-slate-100 rounded-lg w-full max-w-sm">
           <button
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'customer_account' ? 'bg-white text-accent shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            onClick={() => setTab('customer_account')}
+            type="button"
+            className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${assetType === 'currency' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            onClick={() => setAssetType('currency')}
           >
-            Customer Accounts
+            AED Currency
           </button>
           <button
-            className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'temporary_credit' ? 'bg-white text-accent shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            onClick={() => setTab('temporary_credit')}
+            type="button"
+            className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${assetType === 'gold' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            onClick={() => setAssetType('gold')}
           >
-            Temporary Credits
+            Physical Gold
           </button>
         </div>
 
-        <div className="space-y-4">
-          {/* Date & Branch */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1">Date &amp; Time</label>
-              <input
-                type="datetime-local"
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-accent outline-none bg-slate-50"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1">Branch Fund</label>
-              <input
-                type="text"
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none bg-slate-100 text-slate-500 cursor-not-allowed"
-                value={branchName}
-                disabled
-              />
-            </div>
+        {/* Date */}
+        <div>
+          <label className={formLabel}>Date &amp; Time</label>
+          <input
+            type="datetime-local"
+            className={formInput}
+            value={date}
+            onChange={e => setDate(e.target.value)}
+          />
+        </div>
+
+        {/* From / To row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="relative">
+            <label className={formLabel}>From Account</label>
+            {renderDropdown(fromSearch, setFromSearch, fromOpen, setFromOpen)}
           </div>
 
-          {/* Entity Combobox */}
-          <div ref={comboRef}>
-            <label className="block text-sm font-medium text-slate-600 mb-1">
-              {tab === 'customer_account' ? 'Customer / Entity' : 'Creditor / Entity'}
-            </label>
+          <div className="relative">
+            <label className={formLabel}>To Account</label>
+            {renderDropdown(toSearch, setToSearch, toOpen, setToOpen)}
+          </div>
+        </div>
+
+        {/* Details row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={formLabel}>Ledger Tag (Optional)</label>
+            <select
+              className={formSelect}
+              value={ledgerTag}
+              onChange={e => setLedgerTag(e.target.value)}
+            >
+              <option value="">No tag (Transfer)</option>
+              {branchLedgers.map(l => (
+                <option key={`tag-${l.id}`} value={l.name}>{l.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">Tags help categorize this transaction under a specific KPI ledger.</p>
+          </div>
+
+          <div>
+            <label className={formLabel}>Amount ({assetType === 'gold' ? 'Grams' : 'AED'})</label>
             <div className="relative">
-              {/* Input */}
-              <div className={`flex items-center gap-2 w-full px-3 py-2 border rounded-xl bg-white transition-all duration-150 ${dropdownOpen ? 'border-accent ring-2 ring-accent/20' : 'border-slate-200'}`}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  className="flex-1 text-sm bg-transparent outline-none placeholder-slate-400 text-slate-800"
-                  placeholder="Type to search or create entity..."
-                  value={entitySearch}
-                  onChange={e => {
-                    setEntitySearch(e.target.value);
-                    setSelectedEntity(null);
-                    setDropdownOpen(true);
-                  }}
-                  onFocus={() => setDropdownOpen(true)}
-                  autoComplete="off"
-                />
-                {entitySearch && (
-                  <button
-                    type="button"
-                    onClick={clearEntity}
-                    className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors"
-                    tabIndex={-1}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-
-              {/* Dropdown */}
-              {showDropdown && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto animate-[fade-in-up_0.12s_ease-out_both]">
-                  {filteredEntities.map(e => (
-                    <button
-                      key={e.id}
-                      type="button"
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors hover:bg-slate-50 ${selectedEntity?.id === e.id ? 'bg-accent/5 text-accent font-medium' : 'text-slate-700'}`}
-                      onClick={() => selectEntity(e)}
-                    >
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-slate-500 shrink-0 text-xs font-bold">
-                        {e.name.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="flex-1 truncate">{e.name}</span>
-                      {e.phone && <span className="text-slate-400 text-xs shrink-0">{e.phone}</span>}
-                    </button>
-                  ))}
-
-                  {/* Create new option */}
-                  {isNewEntity && (
-                    <button
-                      type="button"
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left border-t border-slate-100 text-accent font-medium hover:bg-accent/5 transition-colors"
-                      onClick={() => {
-                        // Set as a pseudo-entity — actual creation happens on submit
-                        setSelectedEntity({
-                          id: '__new__',
-                          name: entitySearch.trim(),
-                          branchId,
-                        });
-                        setDropdownOpen(false);
-                      }}
-                    >
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/10 text-accent shrink-0">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                      </span>
-                      <span>Create &amp; use &ldquo;{entitySearch.trim()}&rdquo;</span>
-                    </button>
-                  )}
-                </div>
-              )}
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-medium">{assetType === 'gold' ? 'g' : 'AED'}</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                className={`${formInput} pl-12 font-medium`}
+                placeholder="0.00"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+              />
             </div>
-
-            {/* Badge showing new vs existing */}
-            {entitySearch.trim() && (
-              <p className="mt-1.5 text-xs text-slate-500 flex items-center gap-1.5">
-                {selectedEntity?.id === '__new__' || (isNewEntity && !dropdownOpen) ? (
-                  <>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    New entity — will be saved automatically on submit
-                  </>
-                ) : selectedEntity ? (
-                  <>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    Existing entity selected
-                  </>
-                ) : (
-                  <>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
-                    Type to filter or create
-                  </>
-                )}
-              </p>
-            )}
           </div>
+        </div>
 
-          {/* Direction */}
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-2">Transaction Type</label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="txnType"
-                  className="text-accent focus:ring-accent"
-                  checked={type === 'debit'}
-                  onChange={() => setType('debit')}
-                />
-                <span className="text-sm font-medium text-slate-700">Debit (Receive Cash)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="txnType"
-                  className="text-accent focus:ring-accent"
-                  checked={type === 'credit'}
-                  onChange={() => setType('credit')}
-                />
-                <span className="text-sm font-medium text-slate-700">Credit (Pay Cash)</span>
-              </label>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {type === 'debit'
-                ? 'Debit: Cash will be added to the Branch Locker.'
-                : 'Credit: Cash will be deducted from the Branch Locker.'}
-            </p>
-          </div>
-
-          {/* Amount */}
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Amount (AED)</label>
-            <input
-              type="number"
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-accent outline-none text-lg"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              placeholder="0.00"
-              min="0"
-              step="0.01"
-              onKeyDown={(e) => {
-                if (e.key === '-' || e.key === 'e') {
-                  e.preventDefault();
-                }
-              }}
-            />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Notes (Optional)</label>
-            <textarea
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-accent outline-none resize-none"
-              rows={2}
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Add any additional details here..."
-            />
-          </div>
+        {/* Notes */}
+        <div>
+          <label className={formLabel}>Notes &amp; Particulars</label>
+          <textarea
+            rows={2}
+            className={formInput}
+            placeholder="Add context for this journal entry..."
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+          />
         </div>
       </div>
     </Modal>

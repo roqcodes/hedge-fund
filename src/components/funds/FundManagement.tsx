@@ -31,13 +31,16 @@ import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 
 export default function FundManagement() {
-  const { branches, transactions, transferFunds, hqBalance, isBranchView, updateBranchInitialFund, updateHqBalance, showToast, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction } = useApp();
+  const { branches, transactions, transferFunds, hqBalance, isBranchView, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, showToast, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction, ledgers, addLedger, updateLedger, deleteLedger } = useApp();
   const [showTransfer, setShowTransfer] = useState(false);
   const [showEditInitialFund, setShowEditInitialFund] = useState(false);
   const [showEditHqBalance, setShowEditHqBalance] = useState(false);
   const [editHqBalanceAmount, setEditHqBalanceAmount] = useState('');
   const [isUpdatingHqBalance, setIsUpdatingHqBalance] = useState(false);
   const [editFundAmount, setEditFundAmount] = useState('');
+  const [editCurrentBalanceAmount, setEditCurrentBalanceAmount] = useState('');
+  const [editGoldFundAmount, setEditGoldFundAmount] = useState('');
+  const [editCurrentGoldBalanceAmount, setEditCurrentGoldBalanceAmount] = useState('');
   const [isUpdatingFund, setIsUpdatingFund] = useState(false);
   const [filter, setFilter] = useState<string>('all');
   const [branchFilter, setBranchFilter] = useState<string>('all');
@@ -48,8 +51,15 @@ export default function FundManagement() {
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
   const [deletingTxn, setDeletingTxn] = useState<Transaction | null>(null);
   const [isSavingTxn, setIsSavingTxn] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'customer_account' | 'temporary_credit' | 'entities'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'entities' | string>('all');
 
+  // Ledger state
+  const [showManageLedgers, setShowManageLedgers] = useState(false);
+  const [editingLedger, setEditingLedger] = useState<import('@/types').Ledger | null>(null);
+  const [newLedgerName, setNewLedgerName] = useState('');
+  const [newLedgerImpact, setNewLedgerImpact] = useState<'positive' | 'negative' | 'neutral'>('neutral');
+  const [newLedgerIsKpi, setNewLedgerIsKpi] = useState(true);
+  const [isSavingLedger, setIsSavingLedger] = useState(false);
   // Add Entity state
   const [showAddEntity, setShowAddEntity] = useState(false);
   const [newEntityName, setNewEntityName] = useState('');
@@ -71,37 +81,70 @@ export default function FundManagement() {
   } = useDateFilter(transactions);
 
   const branchName = branches.length === 1 ? branches[0].name : '';
+  const branchId = branches.length === 1 ? branches[0].id : undefined;
 
   const totalVolume = filteredTransactions.reduce((acc: number, t: Transaction) => acc + t.amount, 0);
   const transferCount = filteredTransactions.filter((t: Transaction) => t.type === 'transfer').length;
   const pendingCount = filteredTransactions.filter((t: Transaction) => t.status === 'pending').length;
 
-  const customerAccountTxns = filteredTransactions.filter(t => t.type === 'customer_account' && (t.to === branchName || t.from === branchName));
-  const tempCreditTxns = filteredTransactions.filter(t => t.type === 'temporary_credit' && (t.to === branchName || t.from === branchName));
+  const branchLedgers = React.useMemo(() => {
+    return ledgers.filter(l => !l.branchId || l.branchId === branchId);
+  }, [ledgers, branchId]);
 
-  const customerAccountsBalance = customerAccountTxns.reduce((acc, t) => {
-    return acc + (t.to === branchName ? t.amount : -t.amount); // Net Cash Received from Customers
-  }, 0);
+  // Calculate Ledger Balances
+  const ledgerBalances = React.useMemo(() => {
+    const balances: Record<string, number> = {};
+    branchLedgers.forEach(l => {
+      const toSum = filteredTransactions.filter((t: Transaction) => t.to === l.name).reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+      const fromSum = filteredTransactions.filter((t: Transaction) => t.from === l.name).reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+      const tagSum = filteredTransactions.filter((t: Transaction) => t.type === l.name && t.from !== l.name && t.to !== l.name).reduce((sum: number, t: Transaction) => sum + t.amount, 0);
+      balances[l.id] = toSum - fromSum + tagSum;
+    });
+    return balances;
+  }, [filteredTransactions, branchLedgers]);
 
-  const temporaryCreditsBalance = tempCreditTxns.reduce((acc, t) => {
-    return acc + (t.from === branchName ? t.amount : -t.amount); // Net Cash Paid Out for Temporary Credits
-  }, 0);
+  const availableBranchFund = React.useMemo(() => {
+    let base = branches.length === 1 ? branches[0].openingBalance || 0 : 0;
+    const bName = branches.length === 1 ? branches[0].name : '';
+    const ledgersSet = new Set(branchLedgers.map(l => l.name));
+    
+    filteredTransactions.forEach((t: Transaction) => {
+      if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') return;
+      const isLedgerTxn = ledgersSet.has(t.from) || ledgersSet.has(t.to) || ledgersSet.has(t.type);
+      if (isLedgerTxn) return;
+      if (t.to === bName) base += t.amount;
+      if (t.from === bName) base -= t.amount;
+    });
+    return base;
+  }, [branches, filteredTransactions, branchLedgers]);
 
-  const branchCapital = branches.length === 1 ? branches[0].openingBalance : 0;
-  const totalCashInLocker = branchCapital + customerAccountsBalance - temporaryCreditsBalance;
+  const branchGoldVolume = branches.length === 1 ? branches[0].goldBalance : 0;
 
-  const branchId = branches.length === 1 ? branches[0].id : undefined;
+  const inverseImpactSum = React.useMemo(() => {
+    return branchLedgers.reduce((acc, l) => {
+      const bal = ledgerBalances[l.id] || 0;
+      if (l.impact === 'positive') return acc - bal;
+      if (l.impact === 'negative') return acc + bal;
+      return acc;
+    }, 0);
+  }, [branchLedgers, ledgerBalances]);
+
+  const totalCashInLocker = availableBranchFund - inverseImpactSum;
 
   const tabCounts = React.useMemo(() => {
     const src = filteredTransactions || [];
     const branchEntitiesCount = entities.filter(e => !branchId || e.branchId === branchId).length;
-    return {
+    
+    const counts: Record<string, number> = {
       all: src.length,
-      customer_account: src.filter(t => t.type === 'customer_account').length,
-      temporary_credit: src.filter(t => t.type === 'temporary_credit').length,
       entities: branchEntitiesCount,
     };
-  }, [filteredTransactions, entities, branchId]);
+    
+    branchLedgers.forEach(l => {
+      counts[l.name] = src.filter(t => t.type === l.name || t.from === l.name || t.to === l.name).length;
+    });
+    return counts;
+  }, [filteredTransactions, entities, branchId, branchLedgers]);
 
   const filteredEntities = React.useMemo(() => {
     let result = entities.filter(e => {
@@ -133,7 +176,13 @@ export default function FundManagement() {
 
   const filteredAndSortedTxns = React.useMemo(() => {
     let result = filteredTransactions.filter((t: Transaction) => {
-      if (activeTab !== 'all' && t.type !== activeTab) return false;
+      // Isolate to the specific branch
+      if (branchId && t.branchId !== branchId) return false;
+
+      if (activeTab !== 'all') {
+        const isMatch = t.type === activeTab || t.from === activeTab || t.to === activeTab;
+        if (!isMatch) return false;
+      }
       if (activeTab === 'all' && filter !== 'all' && t.type !== filter) return false;
       if (branchFilter !== 'all' && t.from !== branchFilter && t.to !== branchFilter) return false;
       if (entityFilter !== 'all' && t.from !== entityFilter && t.to !== entityFilter) return false;
@@ -228,7 +277,11 @@ export default function FundManagement() {
                 type="button" 
                 className={`${btnSecondary} w-full sm:w-auto`} 
                 onClick={() => {
-                  setEditFundAmount(branches[0].openingBalance.toString());
+                  const b = branches[0];
+                  setEditFundAmount(b.openingBalance?.toString() || '0');
+                  setEditCurrentBalanceAmount(b.currentBalance?.toString() || '0');
+                  setEditGoldFundAmount(b.openingGoldBalance?.toString() || '0');
+                  setEditCurrentGoldBalanceAmount(b.goldBalance?.toString() || '0');
                   setShowEditInitialFund(true);
                 }}
               >
@@ -255,6 +308,16 @@ export default function FundManagement() {
                 Edit Treasury
               </button>
             )}
+            <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={() => setShowManageLedgers(true)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+                <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" />
+              </svg>
+              Manage Ledgers
+            </button>
             <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowTransfer(true)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -278,8 +341,8 @@ export default function FundManagement() {
             <>
               <KPICard
                 label="Branch Fund"
-                value={formatAED(branchCapital)}
-                subValue="Initial capital"
+                value={formatAED(availableBranchFund)}
+                subValue={`Total: ${formatAEDStr(branches.length === 1 ? branches[0].openingBalance : 0)}`}
                 icon={
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                     <path d="M3 21h18M3 10h18M5 21V10m14 11V10M2 7l10-5 10 5M10 14h4v7h-4z" />
@@ -288,31 +351,38 @@ export default function FundManagement() {
                 color="var(--accent)"
                 bgColor="var(--accent-light)"
               />
+              
               <KPICard
-                label="Customer Accounts"
-                value={formatAED(customerAccountsBalance)}
-                subValue="Net customer deposits"
+                label="Branch Gold Volume"
+                value={`${branchGoldVolume.toFixed(2)}g`}
+                subValue={`Total: ${branches.length === 1 ? (branches[0].openingGoldBalance || 0).toFixed(2) : '0.00'}g`}
                 icon={
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                    <line x1="12" y1="22.08" x2="12" y2="12" />
                   </svg>
                 }
-                color="var(--success)"
-                bgColor="var(--success-light)"
+                color="#eab308"
+                bgColor="#fef08a"
               />
-              <KPICard
-                label="Temporary Credits"
-                value={formatAED(temporaryCreditsBalance)}
-                subValue="Net temporary credits"
-                icon={
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                  </svg>
-                }
-                color="var(--warning)"
-                bgColor="var(--warning-light)"
-              />
+              
+              {branchLedgers.filter(l => l.isKpi).map(ledger => (
+                <KPICard
+                  key={ledger.id}
+                  label={ledger.name}
+                  value={formatAED(ledgerBalances[ledger.id] || 0)}
+                  subValue={`Impact: ${ledger.impact}`}
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                  }
+                  color={ledger.impact === 'positive' ? "var(--success)" : ledger.impact === 'negative' ? "var(--warning)" : "var(--info)"}
+                  bgColor={ledger.impact === 'positive' ? "var(--success-light)" : ledger.impact === 'negative' ? "var(--warning-light)" : "var(--info-light)"}
+                />
+              ))}
+
               <KPICard
                 label="Total Cash In Locker"
                 value={formatAED(totalCashInLocker)}
@@ -386,10 +456,9 @@ export default function FundManagement() {
         <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 w-fit mb-4 flex-wrap sm:flex-nowrap">
           {([
             { key: 'all', label: 'All Transactions', count: tabCounts.all },
-            { key: 'customer_account', label: 'Customer Account', count: tabCounts.customer_account },
-            { key: 'temporary_credit', label: 'Temporary Credits', count: tabCounts.temporary_credit },
+            ...branchLedgers.map(l => ({ key: l.name, label: l.name, count: tabCounts[l.name] || 0 })),
             { key: 'entities', label: 'Entities', count: tabCounts.entities },
-          ] as const).map(tab => (
+          ]).map(tab => (
             <button
               key={tab.key}
               type="button"
@@ -662,43 +731,19 @@ export default function FundManagement() {
                           To <SortIcon field="to" />
                         </div>
                       </th>
-                      {activeTab === 'all' ? (
-                        <>
-                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
-                            <div className="flex items-center gap-1">
-                              Amount <SortIcon field="amount" />
-                            </div>
-                          </th>
-                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
-                            <div className="flex items-center gap-1">
-                              Type <SortIcon field="type" />
-                            </div>
-                          </th>
-                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('category')}>
-                            <div className="flex items-center gap-1">
-                              Debit / Credit <SortIcon field="category" />
-                            </div>
-                          </th>
-                        </>
-                      ) : (
-                        <>
-                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
-                            <div className="flex items-center gap-1">
-                              Debit <SortIcon field="amount" />
-                            </div>
-                          </th>
-                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
-                            <div className="flex items-center gap-1">
-                              Credit <SortIcon field="amount" />
-                            </div>
-                          </th>
-                          <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
-                            <div className="flex items-center gap-1">
-                              Type <SortIcon field="type" />
-                            </div>
-                          </th>
-                        </>
-                      )}
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('assetType')}>
+                        <div className="flex items-center gap-1">Asset <SortIcon field="assetType" /></div>
+                      </th>
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
+                        <div className="flex items-center gap-1">
+                          Amount <SortIcon field="amount" />
+                        </div>
+                      </th>
+                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
+                        <div className="flex items-center gap-1">
+                          Type <SortIcon field="type" />
+                        </div>
+                      </th>
                       {isBranchView && branches.length === 1 && (
                         <th className="px-3 pb-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
                           Actions
@@ -716,47 +761,23 @@ export default function FundManagement() {
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.from}</td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.to}</td>
-                        {activeTab === 'all' ? (
-                          <>
-                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                              {formatAED(t.amount)}
-                            </td>
-                            <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                              <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
-                            </td>
-                            <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit')) ? ' last:rounded-r-2xl border-r' : ''}`}>
-                              {t.to === branchName ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-200">
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-                                  Debit
-                                </span>
-                              ) : t.from === branchName ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-rose-700 ring-1 ring-rose-200">
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                                  Credit
-                                </span>
-                              ) : (
-                                <span className="text-slate-300 text-sm">—</span>
-                              )}
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-emerald-600">
-                              {t.to === branchName ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
-                            </td>
-                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-rose-600">
-                              {t.from === branchName ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
-                            </td>
-                            <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit')) ? ' last:rounded-r-2xl border-r' : ''}`}>
-                              <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
-                            </td>
-                          </>
-                        )}
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">
+                          {t.assetType === 'gold' ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">Gold</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-500/10">AED</span>
+                          )}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
+                          {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
+                        </td>
+                        <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit')) ? ' last:rounded-r-2xl border-r' : ''}`}>
+                          <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
+                        </td>
                         {isBranchView && branches.length === 1 && (
                           <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-4 sm:py-3">
-                            {(t.type === 'customer_account' || t.type === 'temporary_credit') ? (
-                              <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {(t.type === 'customer_account' || t.type === 'temporary_credit') && (
                                 <button
                                   type="button"
                                   title="Edit transaction"
@@ -768,23 +789,21 @@ export default function FundManagement() {
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                   </svg>
                                 </button>
-                                <button
-                                  type="button"
-                                  title="Delete transaction"
-                                  onClick={() => setDeletingTxn(t)}
-                                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                    <polyline points="3 6 5 6 21 6" />
-                                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                    <path d="M10 11v6M14 11v6" />
-                                    <path d="M9 6V4h6v2" />
-                                  </svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="block text-center text-slate-300">—</span>
-                            )}
+                              )}
+                              <button
+                                type="button"
+                                title="Delete transaction"
+                                onClick={() => setDeletingTxn(t)}
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                  <path d="M10 11v6M14 11v6" />
+                                  <path d="M9 6V4h6v2" />
+                                </svg>
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -852,6 +871,7 @@ export default function FundManagement() {
                   <div className="py-8 text-center text-sm text-slate-400">No transactions found.</div>
                 ) : filteredAndSortedTxns.map((t: Transaction) => {
                   const isEditable = isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit');
+                  const isDeletable = true;
                   const entityName = t.category === 'debit' ? t.from : t.category === 'credit' ? t.to : null;
                   return (
                     <div key={t.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] transition-all">
@@ -867,19 +887,6 @@ export default function FundManagement() {
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
                           <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
-                          {activeTab === 'all' && (
-                            t.category === 'debit' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-200">
-                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-                                Debit
-                              </span>
-                            ) : t.category === 'credit' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700 ring-1 ring-rose-200">
-                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                                Credit
-                              </span>
-                            ) : null
-                          )}
                         </div>
                       </div>
 
@@ -891,21 +898,12 @@ export default function FundManagement() {
                             {entityName ?? `${t.from} → ${t.to}`}
                           </span>
                         </div>
-                        {activeTab === 'all' ? (
                           <div className="flex flex-col gap-0.5 items-end">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount</span>
-                            <span className="font-mono text-sm font-bold text-slate-900">{formatAED(t.amount)}</span>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-0.5 items-end">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              {t.category === 'debit' ? 'Debit' : t.category === 'credit' ? 'Credit' : 'Amount'}
-                            </span>
-                            <span className={`font-mono text-sm font-bold ${t.category === 'debit' ? 'text-emerald-600' : t.category === 'credit' ? 'text-rose-600' : 'text-slate-900'}`}>
-                              {formatAED(t.amount)}
+                            <span className="font-mono text-sm font-bold text-slate-900">
+                              {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
                             </span>
                           </div>
-                        )}
                       </div>
 
                       {/* Bottom: notes + actions */}
@@ -926,6 +924,10 @@ export default function FundManagement() {
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                               </svg>
                             </button>
+                          </div>
+                        )}
+                        {isDeletable && (
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
                               title="Delete"
@@ -956,6 +958,7 @@ export default function FundManagement() {
         <BranchTransferModal
           open={showTransfer}
           onClose={() => setShowTransfer(false)}
+          targetBranchId={branchId}
         />
       ) : (
         <TransferFundsModal
@@ -1038,15 +1041,39 @@ export default function FundManagement() {
           txn={editingTxn}
           branchId={branches[0].id}
           entities={entities}
+          ledgers={ledgers}
           branchName={branches[0].name}
           isSaving={isSavingTxn}
           onClose={() => setEditingTxn(null)}
           onSave={async (updated) => {
             setIsSavingTxn(true);
+            let deltaCash = 0;
+            let deltaGold = 0;
+            
+            // Revert old impact
+            if (editingTxn.assetType === 'gold') {
+              if (editingTxn.category === 'debit') deltaGold += editingTxn.amount;
+              else if (editingTxn.category === 'credit') deltaGold -= editingTxn.amount;
+            } else {
+              if (editingTxn.category === 'debit') deltaCash += editingTxn.amount;
+              else if (editingTxn.category === 'credit') deltaCash -= editingTxn.amount;
+            }
+            
+            // Apply new impact
+            if (updated.assetType === 'gold') {
+              if (updated.category === 'debit') deltaGold -= updated.amount;
+              else if (updated.category === 'credit') deltaGold += updated.amount;
+            } else {
+              if (updated.category === 'debit') deltaCash -= updated.amount;
+              else if (updated.category === 'credit') deltaCash += updated.amount;
+            }
+
             const ok = await updateLedgerTransaction(
               updated,
               editingTxn.amount,
               editingTxn.category,
+              deltaCash,
+              deltaGold,
               branches[0].id
             );
             setIsSavingTxn(false);
@@ -1076,7 +1103,8 @@ export default function FundManagement() {
                     deletingTxn.id,
                     deletingTxn.amount,
                     deletingTxn.category,
-                    branches[0].id
+                    deletingTxn.assetType,
+                    deletingTxn.branchId || branches[0].id
                   );
                   setIsSavingTxn(false);
                   if (ok) setDeletingTxn(null);
@@ -1132,14 +1160,22 @@ export default function FundManagement() {
                 disabled={isUpdatingFund}
                 onClick={async () => {
                   const amt = parseFloat(editFundAmount);
+                  const currentBalAmt = parseFloat(editCurrentBalanceAmount);
+                  const goldAmt = parseFloat(editGoldFundAmount);
+                  const currentGoldAmt = parseFloat(editCurrentGoldBalanceAmount);
                   if (isNaN(amt) || amt < 0) {
-                    showToast('Please enter a valid amount', 'error');
+                    showToast('Please enter a valid initial capital amount', 'error');
+                    return;
+                  }
+                  if (isNaN(goldAmt) || goldAmt < 0) {
+                    showToast('Please enter a valid initial gold amount', 'error');
                     return;
                   }
                   setIsUpdatingFund(true);
-                  const success = await updateBranchInitialFund(branches[0].id, amt);
+                  const successCash = await updateBranchInitialFund(branches[0].id, amt, !isNaN(currentBalAmt) ? currentBalAmt : undefined);
+                  const successGold = await updateBranchInitialGold(branches[0].id, goldAmt, !isNaN(currentGoldAmt) ? currentGoldAmt : undefined);
                   setIsUpdatingFund(false);
-                  if (success) {
+                  if (successCash && successGold) {
                     setShowEditInitialFund(false);
                   }
                 }}
@@ -1149,25 +1185,74 @@ export default function FundManagement() {
             </>
           }
         >
-          <div className={formGroup}>
-            <label className={formLabel}>Initial Capital (AED)</label>
-            <input 
-              type="number" 
-              className={formInput} 
-              value={editFundAmount}
-              onChange={(e) => setEditFundAmount(e.target.value)}
-              placeholder="Enter initial capital"
-              min="0"
-              step="any"
-              onKeyDown={(e) => {
-                if (e.key === '-' || e.key === 'e') {
-                  e.preventDefault();
-                }
-              }}
-            />
-            <p className={formHint}>
-              Changing this value will retroactively adjust the branch's initial capital, cash balance, and current balance, as well as HQ Treasury.
-            </p>
+          <div className="flex flex-col gap-4">
+            <div className={formGroup}>
+              <label className={formLabel}>Initial Capital (AED)</label>
+              <input 
+                type="number" 
+                className={formInput} 
+                value={editFundAmount}
+                onChange={(e) => setEditFundAmount(e.target.value)}
+                placeholder="Enter initial capital"
+                min="0"
+                step="any"
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === 'e') {
+                    e.preventDefault();
+                  }
+                }}
+              />
+              <p className={formHint}>
+                Changing this value will retroactively adjust the branch's initial capital, cash balance, and current balance, as well as HQ Treasury.
+              </p>
+            </div>
+            
+            <div className={formGroup}>
+              <label className={formLabel}>Available Capital Override (AED)</label>
+              <input 
+                type="number" 
+                className={formInput} 
+                value={editCurrentBalanceAmount}
+                onChange={(e) => setEditCurrentBalanceAmount(e.target.value)}
+                placeholder="Leave blank to calculate automatically"
+                step="any"
+              />
+              <p className={formHint}>
+                Optional: Manually override the current available cash balance. Leave empty to let the system calculate it.
+              </p>
+            </div>
+            
+            <hr className="my-2 border-slate-200" />
+            
+            <div className={formGroup}>
+              <label className={formLabel}>Initial Gold Volume (g)</label>
+              <input 
+                type="number" 
+                className={formInput} 
+                value={editGoldFundAmount}
+                onChange={(e) => setEditGoldFundAmount(e.target.value)}
+                placeholder="Enter initial gold volume"
+                min="0"
+                step="any"
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === 'e') {
+                    e.preventDefault();
+                  }
+                }}
+              />
+            </div>
+            
+            <div className={formGroup}>
+              <label className={formLabel}>Available Gold Override (g)</label>
+              <input 
+                type="number" 
+                className={formInput} 
+                value={editCurrentGoldBalanceAmount}
+                onChange={(e) => setEditCurrentGoldBalanceAmount(e.target.value)}
+                placeholder="Leave blank to calculate automatically"
+                step="any"
+              />
+            </div>
           </div>
         </Modal>
       )}
@@ -1243,6 +1328,204 @@ export default function FundManagement() {
           }}
         />
       )}
+      {/* Manage Ledgers Modal */}
+      <Modal
+        open={showManageLedgers}
+        onClose={() => setShowManageLedgers(false)}
+        title="Manage Branch Ledgers"
+        footer={
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={() => setShowManageLedgers(false)}>
+            Done
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-6 py-2">
+          {/* Create new ledger form */}
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-800">Create New Ledger</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-600">Name</label>
+                <input
+                  type="text"
+                  className={formInput}
+                  value={newLedgerName}
+                  onChange={e => setNewLedgerName(e.target.value)}
+                  placeholder="e.g. Marketing Expense"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-600">Impact on Cash</label>
+                <select className={formSelect} value={newLedgerImpact} onChange={e => setNewLedgerImpact(e.target.value as any)}>
+                  <option value="positive">Positive (+)</option>
+                  <option value="negative">Negative (-)</option>
+                  <option value="neutral">Neutral</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-600">Show as KPI</label>
+                <select className={formSelect} value={newLedgerIsKpi ? 'yes' : 'no'} onChange={e => setNewLedgerIsKpi(e.target.value === 'yes')}>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 justify-end">
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  disabled={isSavingLedger || !newLedgerName.trim()}
+                  onClick={async () => {
+                    setIsSavingLedger(true);
+                    const ok = await addLedger({
+                      id: generateId('LDG'),
+                      branchId: branchId || '',
+                      name: newLedgerName.trim(),
+                      impact: newLedgerImpact,
+                      isKpi: newLedgerIsKpi
+                    });
+                    if (ok) {
+                      setNewLedgerName('');
+                      setNewLedgerImpact('neutral');
+                      setNewLedgerIsKpi(true);
+                    }
+                    setIsSavingLedger(false);
+                  }}
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* List of ledgers */}
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">Existing Ledgers</h3>
+            {branchLedgers.length === 0 ? (
+              <p className="text-sm text-slate-500 italic">No ledgers created yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {branchLedgers.map((l, index) => (
+                  <div key={l.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+                    {editingLedger?.id === l.id ? (
+                      <div className="flex items-center gap-2 w-full">
+                        <input
+                          type="text"
+                          className={`${formInput} flex-1 text-sm`}
+                          value={editingLedger.name}
+                          onChange={e => setEditingLedger({ ...editingLedger, name: e.target.value })}
+                        />
+                        <select
+                          className={`${formSelect} w-32 text-sm`}
+                          value={editingLedger.impact}
+                          onChange={e => setEditingLedger({ ...editingLedger, impact: e.target.value as any })}
+                        >
+                          <option value="positive">Positive</option>
+                          <option value="negative">Negative</option>
+                          <option value="neutral">Neutral</option>
+                        </select>
+                        <select
+                          className={`${formSelect} w-24 text-sm`}
+                          value={editingLedger.isKpi ? 'yes' : 'no'}
+                          onChange={e => setEditingLedger({ ...editingLedger, isKpi: e.target.value === 'yes' })}
+                        >
+                          <option value="yes">KPI</option>
+                          <option value="no">Hidden</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs font-semibold text-white bg-slate-900 rounded hover:bg-slate-800"
+                          onClick={async () => {
+                            await updateLedger(editingLedger);
+                            setEditingLedger(null);
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs font-semibold text-slate-600 bg-slate-100 rounded hover:bg-slate-200"
+                          onClick={() => setEditingLedger(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-800 text-sm">{l.name}</span>
+                          <span className="text-xs text-slate-500 capitalize">Impact: {l.impact} | {l.isKpi ? 'KPI visible' : 'Hidden'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex flex-col mr-2">
+                            <button
+                              type="button"
+                              title="Move Up"
+                              disabled={index === 0}
+                              className="text-slate-400 hover:text-slate-700 disabled:opacity-30 p-0.5"
+                              onClick={async () => {
+                                const newLedgers = [...branchLedgers];
+                                const temp = newLedgers[index];
+                                newLedgers[index] = newLedgers[index - 1];
+                                newLedgers[index - 1] = temp;
+                                
+                                for (let i = 0; i < newLedgers.length; i++) {
+                                  if (newLedgers[i].sortOrder !== i) {
+                                    await updateLedger({ ...newLedgers[i], sortOrder: i });
+                                  }
+                                }
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+                            </button>
+                            <button
+                              type="button"
+                              title="Move Down"
+                              disabled={index === branchLedgers.length - 1}
+                              className="text-slate-400 hover:text-slate-700 disabled:opacity-30 p-0.5"
+                              onClick={async () => {
+                                const newLedgers = [...branchLedgers];
+                                const temp = newLedgers[index];
+                                newLedgers[index] = newLedgers[index + 1];
+                                newLedgers[index + 1] = temp;
+                                
+                                for (let i = 0; i < newLedgers.length; i++) {
+                                  if (newLedgers[i].sortOrder !== i) {
+                                    await updateLedger({ ...newLedgers[i], sortOrder: i });
+                                  }
+                                }
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-accent hover:underline"
+                            onClick={() => setEditingLedger(l)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-red-600 hover:underline"
+                            onClick={async () => {
+                              if (confirm(`Are you sure you want to delete the ledger "${l.name}"?`)) {
+                                await deleteLedger(l.id, l.name);
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }
@@ -1464,6 +1747,7 @@ function EditLedgerTransactionModal({
   txn,
   branchId,
   entities,
+  ledgers,
   branchName,
   isSaving,
   onClose,
@@ -1472,6 +1756,7 @@ function EditLedgerTransactionModal({
   txn: Transaction;
   branchId: string;
   entities: import('@/types').Entity[];
+  ledgers: import('@/types').Ledger[];
   branchName: string;
   isSaving: boolean;
   onClose: () => void;
@@ -1488,6 +1773,7 @@ function EditLedgerTransactionModal({
   const [error, setError] = useState('');
 
   const branchEntities = entities.filter(e => !e.branchId || e.branchId === branchId);
+  const branchLedgers = ledgers.filter(l => !l.branchId || l.branchId === branchId);
 
   const handleSave = () => {
     setError('');
@@ -1500,7 +1786,14 @@ function EditLedgerTransactionModal({
       from: category === 'debit' ? entityName.trim() : branchName,
       to: category === 'debit' ? branchName : entityName.trim(),
       amount: amt,
-      category,
+      category: (() => {
+        const amtDiff = category === 'debit' ? amt : -amt;
+        const fromLedger = branchLedgers.find(l => l.name === (category === 'debit' ? entityName.trim() : branchName));
+        const toLedger = branchLedgers.find(l => l.name === (category === 'debit' ? branchName : entityName.trim()));
+        if (fromLedger) return fromLedger.impact === 'positive' ? 'credit' : fromLedger.impact === 'negative' ? 'debit' : 'neutral';
+        if (toLedger) return toLedger.impact === 'positive' ? 'debit' : toLedger.impact === 'negative' ? 'credit' : 'neutral';
+        return category; // fallback to selected
+      })(),
       notes: notes.trim(),
       status,
     };
@@ -1662,9 +1955,8 @@ function EntityTransactionsModal({
                   <th className="py-3 px-4">Date &amp; Time</th>
                   <th className="py-3 px-4">From</th>
                   <th className="py-3 px-4">To</th>
-                  <th className="py-3 px-4">Debit</th>
-                  <th className="py-3 px-4">Credit</th>
-                  <th className="py-3 px-4">Type</th>
+                  <th className="py-3 px-4">Asset</th>
+                  <th className="py-3 px-4">Amount</th>
                   {isBranchView && branches.length === 1 && (
                     <th className="py-3 px-4 text-right">Actions</th>
                   )}
@@ -1687,11 +1979,15 @@ function EntityTransactionsModal({
                       </td>
                       <td className="py-3.5 px-4 font-semibold">{t.from}</td>
                       <td className="py-3.5 px-4 font-semibold">{t.to}</td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-600">
-                        {t.category === 'debit' ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
+                      <td className="py-3.5 px-4 text-[11px] font-semibold">
+                        {t.assetType === 'gold' ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">Gold</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-500/10">AED</span>
+                        )}
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-rose-600">
-                        {t.category === 'credit' ? formatAED(t.amount) : <span className="text-slate-300 font-normal">—</span>}
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                        {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
@@ -1761,7 +2057,14 @@ function EntityTransactionsModal({
                           {formatDateTime(t.date).split(',')[1]?.trim()}
                         </span>
                       </div>
-                      <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
+                        {t.assetType === 'gold' ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">Gold</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-500/10">AED</span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 border-y border-slate-50 py-3">
@@ -1773,10 +2076,10 @@ function EntityTransactionsModal({
                       </div>
                       <div className="flex flex-col gap-0.5 items-end">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          {t.category === 'debit' ? 'Debit' : t.category === 'credit' ? 'Credit' : 'Amount'}
+                          Amount
                         </span>
-                        <span className={`font-mono text-xs font-bold ${t.category === 'debit' ? 'text-emerald-600' : t.category === 'credit' ? 'text-rose-600' : 'text-slate-900'}`}>
-                          {formatAED(t.amount)}
+                        <span className="font-mono text-xs font-bold text-slate-900">
+                          {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
                         </span>
                       </div>
                     </div>

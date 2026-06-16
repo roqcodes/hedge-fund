@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS branches (
     manager_name VARCHAR(255) NOT NULL,
     cash_balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     gold_balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    opening_gold_balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     current_balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     opening_balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     closing_balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
@@ -45,10 +46,12 @@ CREATE TABLE IF NOT EXISTS transactions (
     from_entity VARCHAR(255) NOT NULL,
     to_entity VARCHAR(255) NOT NULL,
     amount DECIMAL(15, 2) NOT NULL,
-    type VARCHAR(50) NOT NULL CHECK (type IN ('transfer', 'expense', 'profit', 'allocation', 'capex', 'opex', 'customer_account', 'temporary_credit')),
+    type VARCHAR(50) NOT NULL,
+    asset_type VARCHAR(20) NOT NULL DEFAULT 'currency' CHECK (asset_type IN ('currency', 'gold')),
     status VARCHAR(50) NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'pending', 'failed')),
     notes TEXT NOT NULL,
-    category VARCHAR(100)
+    category VARCHAR(100),
+    branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE
 );
 
 -- 3.5 Entities
@@ -58,6 +61,18 @@ CREATE TABLE IF NOT EXISTS entities (
     phone VARCHAR(50),
     branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3.6 Ledgers
+CREATE TABLE IF NOT EXISTS ledgers (
+    id VARCHAR(50) PRIMARY KEY,
+    branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    impact VARCHAR(20) NOT NULL DEFAULT 'neutral' CHECK (impact IN ('positive', 'negative', 'neutral')),
+    is_kpi BOOLEAN NOT NULL DEFAULT true,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(branch_id, name)
 );
 
 -- 4. Expenses

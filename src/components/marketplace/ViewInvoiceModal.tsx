@@ -103,7 +103,7 @@ export default function ViewInvoiceModal({ open, onClose, invoice }: ViewInvoice
             <div>Email: {branch?.email || `support@${branchName.toLowerCase().replace(/\s/g, '')}.com`}</div>
             {branch?.website && <div>Web: {branch.website}</div>}
           </div>
-        </div>
+        </div> 
 
         {/* Title */}
         <div className="text-center mb-8">

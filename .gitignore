@@ -14,7 +14,7 @@
 /coverage
 
 /BACKUP
-
+/scripts
 # next.js
 /.next/
 /out/

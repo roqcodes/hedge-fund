@@ -68,6 +68,7 @@ export interface InitialDataPayload {
   hqBalance: number;
   dealTransactions: DealTransaction[];
   entities: Entity[];
+  ledgers: import('@/types').Ledger[];
   physicalBalances: PhysicalBalance[];
   physicalBuys: PhysicalBuy[];
   physicalSells: PhysicalSell[];
@@ -121,9 +122,10 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       location: r.location,
       managerName: r.manager_name,
       cashBalance: parseFloat(r.cash_balance),
-      goldBalance: parseFloat(r.gold_balance),
+      goldBalance: parseFloat(r.gold_balance || '0'),
       currentBalance: parseFloat(r.current_balance),
       openingBalance: parseFloat(r.opening_balance),
+      openingGoldBalance: parseFloat(r.opening_gold_balance || '0'),
       closingBalance: parseFloat(r.closing_balance),
       dailyPL: parseFloat(r.daily_pl),
       status: r.status,
@@ -140,9 +142,11 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       to: r.to_entity,
       amount: parseFloat(r.amount),
       type: r.type,
+      assetType: r.asset_type || 'currency',
       status: r.status,
       notes: r.notes,
       category: r.category || undefined,
+      branchId: r.branch_id || undefined,
     }));
 
     // 4. Fetch Expenses
@@ -374,6 +378,18 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
     }));
 
+    // Fetch Ledgers
+    const ledgersRes = await query('SELECT * FROM ledgers ORDER BY sort_order ASC, created_at ASC');
+    const ledgers: import('@/types').Ledger[] = ledgersRes.rows.map((r: any) => ({
+      id: r.id,
+      branchId: r.branch_id || undefined,
+      name: r.name,
+      impact: r.impact,
+      isKpi: r.is_kpi,
+      sortOrder: r.sort_order,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
     const userRes = await getCurrentUserAction(branchSlug);
     const currentUser = userRes.success ? userRes.data : null;
 
@@ -434,6 +450,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     let finalDeals = deals;
     let finalDealTransactions = dealTransactions;
     let finalEntities = entities;
+    let finalLedgers = ledgers;
     let finalPhysicalBalances = physicalBalances;
     let finalPhysicalBuys = physicalBuys;
     let finalPhysicalSells = physicalSells;
@@ -443,7 +460,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       const branchName = branches.find(b => b.id === bId)?.name || bId;
       
       finalBranches = branches.filter(b => b.id === bId);
-      finalTransactions = transactions.filter(t => t.to === branchName || t.from === branchName);
+      finalTransactions = transactions.filter(t => t.to === branchName || t.from === branchName || t.branchId === bId);
       finalExpenses = expenses.filter(e => e.branchId === bId);
       finalInvoices = invoices.filter(i => i.branchId === bId);
       finalInvestors = investors.filter(i => i.assignedBranchId === bId || i.isGlobal);
@@ -452,6 +469,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       const dealIds = new Set(finalDeals.map(d => d.id));
       finalDealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
       finalEntities = entities.filter(e => !e.branchId || e.branchId === bId);
+      finalLedgers = ledgers.filter(l => !l.branchId || l.branchId === bId);
       finalPhysicalBalances = physicalBalances.filter(b => b.branchId === bId);
       finalPhysicalBuys = physicalBuys.filter(b => b.branchId === bId);
       const buyIds = new Set(finalPhysicalBuys.map(b => b.id));
@@ -471,6 +489,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         hqBalance,
         dealTransactions: finalDealTransactions,
         entities: finalEntities,
+        ledgers: finalLedgers,
         physicalBalances: finalPhysicalBalances,
         physicalBuys: finalPhysicalBuys,
         physicalSells: finalPhysicalSells,
@@ -506,8 +525,8 @@ export async function dbAddBranchAction(
 
     // 1. Insert branch
     await client.query(
-      `INSERT INTO branches (id, slug, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, closing_balance, daily_pl, status, last_activity, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      `INSERT INTO branches (id, slug, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, opening_gold_balance, closing_balance, daily_pl, status, last_activity, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         branch.id,
         branch.slug,
@@ -518,6 +537,7 @@ export async function dbAddBranchAction(
         branch.goldBalance,
         branch.currentBalance,
         branch.openingBalance,
+        branch.openingGoldBalance || 0,
         branch.closingBalance,
         branch.dailyPL,
         branch.status,
@@ -606,6 +626,7 @@ export async function dbTransferFundsAction(
       to: toName,
       amount,
       type: txnType,
+      assetType: 'currency',
       status: 'completed',
       notes,
     };
@@ -1442,20 +1463,23 @@ export async function dbFetchEntitiesAction(): Promise<DbActionResult<Entity[]>>
   }
 }
 
-export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCash: number, branchId: string): Promise<DbActionResult<Transaction>> {
+export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCash: number, deltaGold: number, branchId: string): Promise<DbActionResult<Transaction>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, status, notes, category) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.status, txn.notes || '', txn.category]
+      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.assetType || 'currency', txn.status, txn.notes || '', txn.category, txn.branchId || branchId]
     );
     if (deltaCash !== 0 && txn.status === 'completed') {
       await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);
     }
+    if (deltaGold !== 0 && txn.status === 'completed') {
+      await client.query(`UPDATE branches SET gold_balance = gold_balance + $1 WHERE id = $2`, [deltaGold, branchId]);
+    }
     await client.query('COMMIT');
-    return { success: true, data: txn };
+    return { success: true, data: { ...txn, branchId: txn.branchId || branchId } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     return { success: false, error: formatPgError(error) };
@@ -1474,19 +1498,38 @@ export async function dbUpdateBranchAction(id: string, slug: string, name: strin
   }
 }
 
-export async function dbUpdateBranchInitialFundAction(id: string, name: string, newFund: number): Promise<DbActionResult<{ delta: number }>> {
+export async function dbUpdateBranchInitialFundAction(id: string, name: string, newFund: number, newCurrentBalance?: number): Promise<DbActionResult<{ delta: number }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const oldRes = await client.query('SELECT opening_balance FROM branches WHERE id = $1', [id]);
+    const oldRes = await client.query('SELECT opening_balance, current_balance FROM branches WHERE id = $1', [id]);
     const oldFund = parseFloat(oldRes.rows[0].opening_balance || 0);
+    const oldCurrent = parseFloat(oldRes.rows[0].current_balance || 0);
     const delta = newFund - oldFund;
-    await client.query('UPDATE branches SET opening_balance = $1, current_balance = current_balance + $2, cash_balance = cash_balance + $2 WHERE id = $3', [newFund, delta, id]);
+    
+    let targetCurrentBalance = oldCurrent + delta;
+    if (newCurrentBalance !== undefined && !isNaN(newCurrentBalance)) {
+      targetCurrentBalance = newCurrentBalance;
+    }
+
+    await client.query('UPDATE branches SET opening_balance = $1, current_balance = $2, cash_balance = $2 WHERE id = $3', [newFund, targetCurrentBalance, id]);
+    
+    // Create transaction log for the opening balance change (HQ allocation)
     await client.query(
       `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, status, category, notes) VALUES ($1, CURRENT_DATE, 'HQ Treasury', $2, $3, 'allocation', 'completed', 'capital_allocation', 'Capital adjustment')`,
       [`TXN-${Date.now()}`, name, Math.abs(delta)]
     );
+    
+    // Create transaction log if current balance was overridden manually
+    if (newCurrentBalance !== undefined && !isNaN(newCurrentBalance) && newCurrentBalance !== (oldCurrent + delta)) {
+      const overrideDelta = targetCurrentBalance - (oldCurrent + delta);
+      await client.query(
+        `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, status, category, notes) VALUES ($1, CURRENT_DATE, 'System', $2, $3, 'allocation', 'completed', 'manual_override', 'Manual balance override')`,
+        [`TXNOVR-${Date.now()}`, name, Math.abs(overrideDelta)]
+      );
+    }
+    
     await client.query('COMMIT');
     return { success: true, data: { delta } };
   } catch (error: unknown) {
@@ -1497,17 +1540,20 @@ export async function dbUpdateBranchInitialFundAction(id: string, name: string, 
   }
 }
 
-export async function dbUpdateLedgerTransactionAction(txn: Transaction, oldAmount: number, oldCategory: string | undefined, deltaCash: number, branchId: string): Promise<DbActionResult<Transaction>> {
+export async function dbUpdateLedgerTransactionAction(txn: Transaction, oldAmount: number, oldCategory: string | undefined, deltaCash: number, deltaGold: number, branchId: string): Promise<DbActionResult<Transaction>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(
-      `UPDATE transactions SET from_entity = $1, to_entity = $2, amount = $3, notes = $4, category = $5, status = $6 WHERE id = $7`,
-      [txn.from, txn.to, txn.amount, txn.notes || '', txn.category || null, txn.status, txn.id]
+      `UPDATE transactions SET from_entity = $1, to_entity = $2, amount = $3, notes = $4, category = $5, status = $6, asset_type = $7 WHERE id = $8`,
+      [txn.from, txn.to, txn.amount, txn.notes || '', txn.category || null, txn.status, txn.assetType || 'currency', txn.id]
     );
     if (deltaCash !== 0) {
       await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);
+    }
+    if (deltaGold !== 0) {
+      await client.query(`UPDATE branches SET gold_balance = gold_balance + $1 WHERE id = $2`, [deltaGold, branchId]);
     }
     await client.query('COMMIT');
     return { success: true, data: txn };
@@ -1519,7 +1565,7 @@ export async function dbUpdateLedgerTransactionAction(txn: Transaction, oldAmoun
   }
 }
 
-export async function dbDeleteLedgerTransactionAction(id: string, deltaCash: number, branchId: string): Promise<DbActionResult<{ id: string }>> {
+export async function dbDeleteLedgerTransactionAction(id: string, deltaCash: number, deltaGold: number, branchId: string): Promise<DbActionResult<{ id: string }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   const client = await pool.connect();
   try {
@@ -1528,8 +1574,53 @@ export async function dbDeleteLedgerTransactionAction(id: string, deltaCash: num
     if (deltaCash !== 0) {
       await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);
     }
+    if (deltaGold !== 0) {
+      await client.query(`UPDATE branches SET gold_balance = gold_balance + $1 WHERE id = $2`, [deltaGold, branchId]);
+    }
     await client.query('COMMIT');
     return { success: true, data: { id } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: formatPgError(error) };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbUpdateBranchInitialGoldAction(id: string, name: string, newFund: number, newCurrentBalance?: number): Promise<DbActionResult<{ delta: number }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const oldRes = await client.query('SELECT opening_gold_balance, gold_balance FROM branches WHERE id = $1', [id]);
+    const oldFund = parseFloat(oldRes.rows[0].opening_gold_balance || 0);
+    const oldCurrent = parseFloat(oldRes.rows[0].gold_balance || 0);
+    const delta = newFund - oldFund;
+    
+    let targetCurrentBalance = oldCurrent + delta;
+    if (newCurrentBalance !== undefined && !isNaN(newCurrentBalance)) {
+      targetCurrentBalance = newCurrentBalance;
+    }
+
+    await client.query('UPDATE branches SET opening_gold_balance = $1, gold_balance = $2 WHERE id = $3', [newFund, targetCurrentBalance, id]);
+    
+    // Create transaction log for the opening balance change (HQ allocation)
+    await client.query(
+      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, category, notes) VALUES ($1, CURRENT_DATE, 'HQ Treasury', $2, $3, 'allocation', 'gold', 'completed', 'capital_allocation', 'Gold Capital adjustment')`,
+      [`TXN-${Date.now()}`, name, Math.abs(delta)]
+    );
+    
+    // Create transaction log if current balance was overridden manually
+    if (newCurrentBalance !== undefined && !isNaN(newCurrentBalance) && newCurrentBalance !== (oldCurrent + delta)) {
+      const overrideDelta = targetCurrentBalance - (oldCurrent + delta);
+      await client.query(
+        `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, category, notes) VALUES ($1, CURRENT_DATE, 'System', $2, $3, 'allocation', 'gold', 'completed', 'manual_override', 'Manual gold balance override')`,
+        [`TXNOVR-${Date.now()}`, name, Math.abs(overrideDelta)]
+      );
+    }
+    
+    await client.query('COMMIT');
+    return { success: true, data: { delta } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     return { success: false, error: formatPgError(error) };
@@ -1559,10 +1650,45 @@ export async function dbDeleteEntityAction(entityName: string, entityId: string)
     const txRes = await query('SELECT 1 FROM transactions WHERE from_entity = $1 OR to_entity = $1 LIMIT 1', [entityName]);
     if (txRes.rowCount && txRes.rowCount > 0) return { success: false, error: 'Cannot delete entity because it is part of a ledger transaction.' };
     
-    const dTxRes = await query('SELECT 1 FROM deal_transactions WHERE entity = $1 LIMIT 1', [entityName]);
-    if (dTxRes.rowCount && dTxRes.rowCount > 0) return { success: false, error: 'Cannot delete entity because it is part of a deal transaction.' };
-    
     await query('DELETE FROM entities WHERE id = $1', [entityId]);
+    return { success: true, data: undefined };
+  } catch (error: unknown) {
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+// ── Ledger Actions ─────────────────────────────────────────────────────────
+
+export async function dbAddLedgerAction(ledger: import('@/types').Ledger): Promise<DbActionResult<import('@/types').Ledger>> {
+  try {
+    await query(
+      'INSERT INTO ledgers (id, branch_id, name, impact, is_kpi, sort_order, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [ledger.id, ledger.branchId || null, ledger.name, ledger.impact, ledger.isKpi, ledger.sortOrder || 0, ledger.createdAt || new Date().toISOString()]
+    );
+    return { success: true, data: ledger };
+  } catch (error: unknown) {
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function dbUpdateLedgerAction(ledger: import('@/types').Ledger): Promise<DbActionResult<import('@/types').Ledger>> {
+  try {
+    await query(
+      'UPDATE ledgers SET name = $1, impact = $2, is_kpi = $3, sort_order = $4 WHERE id = $5',
+      [ledger.name, ledger.impact, ledger.isKpi, ledger.sortOrder || 0, ledger.id]
+    );
+    return { success: true, data: ledger };
+  } catch (error: unknown) {
+    return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function dbDeleteLedgerAction(id: string, name: string): Promise<DbActionResult<void>> {
+  try {
+    const txRes = await query('SELECT 1 FROM transactions WHERE from_entity = $1 OR to_entity = $1 OR type = $1 LIMIT 1', [name]);
+    if (txRes.rowCount && txRes.rowCount > 0) return { success: false, error: 'Cannot delete ledger because it is part of a transaction.' };
+    
+    await query('DELETE FROM ledgers WHERE id = $1', [id]);
     return { success: true, data: undefined };
   } catch (error: unknown) {
     return { success: false, error: formatPgError(error) };

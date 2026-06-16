@@ -27,6 +27,7 @@ export interface Branch {
   managerName: string;
   cashBalance: number;
   goldBalance: number;
+  openingGoldBalance: number;
   currentBalance: number;
   openingBalance: number;
   closingBalance: number;
@@ -36,7 +37,7 @@ export interface Branch {
   createdAt: string;
 }
 
-export type TransactionType = 'transfer' | 'expense' | 'profit' | 'allocation' | 'capex' | 'opex' | 'customer_account' | 'temporary_credit';
+export type TransactionType = string;
 export type TransactionStatus = 'completed' | 'pending' | 'failed';
 
 export interface Entity {
@@ -54,9 +55,11 @@ export interface Transaction {
   to: string;
   amount: number;
   type: TransactionType;
+  assetType: 'currency' | 'gold';
   status: TransactionStatus;
   notes: string;
   category?: string;
+  branchId?: string;
 }
 
 export type ExpenseType = 'capex' | 'opex';
@@ -276,5 +279,15 @@ export interface PhysicalSell {
   total: number;
   sellValue: number;
   profit: number;
+  createdAt?: string;
+}
+
+export interface Ledger {
+  id: string;
+  branchId?: string; // null means global
+  name: string;
+  impact: 'positive' | 'negative' | 'neutral';
+  isKpi: boolean;
+  sortOrder?: number;
   createdAt?: string;
 }
