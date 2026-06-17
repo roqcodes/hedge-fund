@@ -103,6 +103,11 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
     return ledgers.filter(l => !l.branchId || l.branchId === branchId);
   }, [ledgers, branchId]);
 
+  const isLedgerTab = activeTab !== 'all' && activeTab !== 'entities';
+  const formatTxnAmount = (t: Transaction) =>
+    t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount);
+  const txnTableColSpan = (isBranchView && branches.length === 1 ? 7 : 6) + (isLedgerTab ? 1 : 0);
+
   // Calculate Ledger Balances
   const ledgerBalances = React.useMemo(() => {
     const balances: Record<string, number> = {};
@@ -768,11 +773,18 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                       <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('assetType')}>
                         <div className="flex items-center gap-1">Asset <SortIcon field="assetType" /></div>
                       </th>
-                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
-                        <div className="flex items-center gap-1">
-                          Amount <SortIcon field="amount" />
-                        </div>
-                      </th>
+                      {isLedgerTab ? (
+                        <>
+                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Sent</th>
+                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Received</th>
+                        </>
+                      ) : (
+                        <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
+                          <div className="flex items-center gap-1">
+                            Amount <SortIcon field="amount" />
+                          </div>
+                        </th>
+                      )}
                       <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
                         <div className="flex items-center gap-1">
                           Type <SortIcon field="type" />
@@ -802,9 +814,20 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                             <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-500/10">AED</span>
                           )}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
-                          {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
-                        </td>
+                        {isLedgerTab ? (
+                          <>
+                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
+                              {t.from === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
+                              {t.to === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                            </td>
+                          </>
+                        ) : (
+                          <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
+                            {formatTxnAmount(t)}
+                          </td>
+                        )}
                         <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1 && (t.type === 'customer_account' || t.type === 'temporary_credit')) ? ' last:rounded-r-2xl border-r' : ''}`}>
                           <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
                         </td>
@@ -844,7 +867,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                     ))}
                     {filteredAndSortedTxns.length === 0 && (
                       <tr>
-                        <td colSpan={isBranchView && branches.length === 1 ? 7 : 6} className="py-10 text-center text-sm text-slate-400">
+                        <td colSpan={txnTableColSpan} className="py-10 text-center text-sm text-slate-400">
                           No transactions found.
                         </td>
                       </tr>
@@ -932,13 +955,32 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                             {entityName ?? `${t.from} → ${t.to}`}
                           </span>
                         </div>
+                        {!isLedgerTab && (
                           <div className="flex flex-col gap-0.5 items-end">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount</span>
                             <span className="font-mono text-sm font-bold text-slate-900">
-                              {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
+                              {formatTxnAmount(t)}
                             </span>
                           </div>
+                        )}
                       </div>
+
+                      {isLedgerTab && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sent</span>
+                            <span className="font-mono text-sm font-bold text-slate-900">
+                              {t.from === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-0.5 items-end">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Received</span>
+                            <span className="font-mono text-sm font-bold text-slate-900">
+                              {t.to === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                            </span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Bottom: notes + actions */}
                       <div className="flex items-center justify-between gap-2">
@@ -1954,6 +1996,9 @@ function EntityTransactionsModal({
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, entity.name]);
 
+  const formatTxnAmount = (t: import('@/types').Transaction) =>
+    t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount);
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-end justify-center bg-white/30 backdrop-blur-sm transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 visible opacity-100"
@@ -1991,7 +2036,9 @@ function EntityTransactionsModal({
                   <th className="py-3 px-4">From</th>
                   <th className="py-3 px-4">To</th>
                   <th className="py-3 px-4">Asset</th>
-                  <th className="py-3 px-4">Amount</th>
+                  <th className="py-3 px-4">Sent</th>
+                  <th className="py-3 px-4">Received</th>
+                  <th className="py-3 px-4">Type</th>
                   {isBranchView && branches.length === 1 && (
                     <th className="py-3 px-4 text-right">Actions</th>
                   )}
@@ -2000,7 +2047,7 @@ function EntityTransactionsModal({
               <tbody className="divide-y divide-slate-100 text-sm text-slate-800">
                 {entityTxns.length === 0 ? (
                   <tr>
-                    <td colSpan={isBranchView && branches.length === 1 ? 7 : 6} className="py-8 text-center text-slate-400">
+                    <td colSpan={isBranchView && branches.length === 1 ? 8 : 7} className="py-8 text-center text-slate-400">
                       No transactions found for this entity.
                     </td>
                   </tr>
@@ -2022,7 +2069,10 @@ function EntityTransactionsModal({
                         )}
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
+                        {t.to === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                        {t.from === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
@@ -2109,12 +2159,19 @@ function EntityTransactionsModal({
                           {t.from} &rarr; {t.to}
                         </span>
                       </div>
-                      <div className="flex flex-col gap-0.5 items-end">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          Amount
-                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sent</span>
                         <span className="font-mono text-xs font-bold text-slate-900">
-                          {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount)}
+                          {t.to === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Received</span>
+                        <span className="font-mono text-xs font-bold text-slate-900">
+                          {t.from === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                         </span>
                       </div>
                     </div>

@@ -1,5 +1,5 @@
-import AdminDashboard from '@/components/dashboard/AdminDashboard';
+import BranchDashboard from '@/components/dashboard/BranchDashboard';
 
 export default function Page() {
-  return <AdminDashboard />;
+  return <BranchDashboard />;
 }
