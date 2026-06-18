@@ -33,6 +33,17 @@ import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { getTransactionTagNames, transactionHasAnyTag } from '@/lib/transactionTags';
+import {
+  filterBranchLedgers,
+  calculateLedgerBalances,
+  calculateInverseImpactSum,
+  getLedgerKpiSubValue,
+  getLedgerTabColumns,
+  getEntityLedgerHint,
+  entityLedgerHintClass,
+  isGlobalLedger,
+  ledgerScopeLabel,
+} from '@/lib/ledgers';
 
 export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: string }) {
   const router = useRouter();
@@ -103,7 +114,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
   const pendingCount = filteredTransactions.filter((t: Transaction) => t.status === 'pending').length;
 
   const branchLedgers = React.useMemo(() => {
-    return ledgers.filter(l => !l.branchId || l.branchId === branchId);
+    return filterBranchLedgers(ledgers, branchId);
   }, [ledgers, branchId]);
 
   const branchTags = React.useMemo(
@@ -120,26 +131,16 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
   );
 
   const isLedgerTab = activeTab !== 'all' && activeTab !== 'entities';
+  const ledgerTabColumns = React.useMemo(
+    () => (isLedgerTab ? getLedgerTabColumns(activeTab) : null),
+    [isLedgerTab, activeTab],
+  );
   const formatTxnAmount = (t: Transaction) =>
     t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount);
   const txnTableColSpan = (isBranchView && branches.length === 1 ? 8 : 7) + (isLedgerTab ? 1 : 0);
 
-  // Calculate Ledger Balances
   const ledgerBalances = React.useMemo(() => {
-    const balances: Record<string, number> = {};
-    branchLedgers.forEach(l => {
-      // Calculate net balance for this ledger
-      // If ledger is a 'from' it decreases its balance, if 'to' it increases.
-      // Or if it's used as a tag (type), it increases? 
-      // The simplest way: a Ledger is an Account.
-      // Net = Sum(amount where to === ledger.name) - Sum(amount where from === ledger.name)
-      // + Sum(amount where type === ledger.name AND from !== ledger.name AND to !== ledger.name) (legacy compatibility)
-      const toSum = filteredTransactions.filter((t: Transaction) => t.to === l.name).reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      const fromSum = filteredTransactions.filter((t: Transaction) => t.from === l.name).reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      const tagSum = filteredTransactions.filter((t: Transaction) => t.type === l.name && t.from !== l.name && t.to !== l.name).reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      balances[l.id] = toSum - fromSum + tagSum;
-    });
-    return balances;
+    return calculateLedgerBalances(branchLedgers, filteredTransactions);
   }, [filteredTransactions, branchLedgers]);
 
   const availableBranchFund = React.useMemo(() => {
@@ -160,12 +161,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
   const branchGoldVolume = branches.length === 1 ? branches[0].goldBalance : 0;
 
   const inverseImpactSum = React.useMemo(() => {
-    return branchLedgers.reduce((acc, l) => {
-      const bal = ledgerBalances[l.id] || 0;
-      if (l.impact === 'positive') return acc - bal;
-      if (l.impact === 'negative') return acc + bal;
-      return acc;
-    }, 0);
+    return calculateInverseImpactSum(branchLedgers, ledgerBalances);
   }, [branchLedgers, ledgerBalances]);
 
   const totalCashInLocker = availableBranchFund - inverseImpactSum;
@@ -423,7 +419,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                   key={ledger.id}
                   label={ledger.name}
                   value={formatAED(ledgerBalances[ledger.id] || 0)}
-                  subValue={`Impact: ${ledger.impact}`}
+                  subValue={getLedgerKpiSubValue(ledger)}
                   icon={
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                       <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -437,7 +433,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
               <KPICard
                 label="Total Cash In Locker"
                 value={formatAED(totalCashInLocker)}
-                subValue="Actual physical cash"
+                subValue="Physical cash after receivables & customer deposits"
                 icon={
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                     <rect x="2" y="6" width="20" height="12" rx="2" />
@@ -506,23 +502,23 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
 
         <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 w-fit mb-4 flex-wrap sm:flex-nowrap">
           {([
-            { key: 'all', label: 'All Transactions', count: tabCounts.all },
-            ...branchLedgers.map(l => ({ key: l.name, label: l.name, count: tabCounts[l.name] || 0 })),
-            { key: 'entities', label: 'Entities', count: tabCounts.entities },
+            { key: 'all', value: 'all', label: 'All Transactions', count: tabCounts.all },
+            ...branchLedgers.map(l => ({ key: l.id, value: l.name, label: l.name, count: tabCounts[l.name] || 0 })),
+            { key: 'entities', value: 'entities', label: 'Entities', count: tabCounts.entities },
           ]).map(tab => (
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => setActiveTab(tab.value)}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                activeTab === tab.key
+                activeTab === tab.value
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {tab.label}
               <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black transition-colors ${
-                activeTab === tab.key
+                activeTab === tab.value
                   ? 'bg-slate-100 text-slate-600'
                   : 'bg-slate-200/60 text-slate-400'
               }`}>
@@ -531,6 +527,12 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
             </button>
           ))}
         </div>
+
+        {ledgerTabColumns?.hint ? (
+          <p className="mb-4 max-w-3xl text-xs leading-relaxed text-slate-500 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+            {ledgerTabColumns.hint}
+          </p>
+        ) : null}
 
         <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
           <div className="flex flex-col gap-3 pb-4 px-4 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
@@ -791,8 +793,8 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                       </th>
                       {isLedgerTab ? (
                         <>
-                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Sent</th>
-                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Received</th>
+                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">{ledgerTabColumns?.outLabel ?? 'Sent'}</th>
+                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">{ledgerTabColumns?.inLabel ?? 'Received'}</th>
                         </>
                       ) : (
                         <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
@@ -1001,13 +1003,13 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                       {isLedgerTab && (
                         <div className="grid grid-cols-2 gap-3">
                           <div className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sent</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{ledgerTabColumns?.outLabel ?? 'Sent'}</span>
                             <span className="font-mono text-sm font-bold text-slate-900">
                               {t.from === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </span>
                           </div>
                           <div className="flex flex-col gap-0.5 items-end">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Received</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{ledgerTabColumns?.inLabel ?? 'Received'}</span>
                             <span className="font-mono text-sm font-bold text-slate-900">
                               {t.to === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </span>
@@ -1457,7 +1459,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                     setIsSavingLedger(true);
                     const ok = await addLedger({
                       id: generateId('LDG'),
-                      branchId: branchId || '',
+                      branchId,
                       name: newLedgerName.trim(),
                       impact: newLedgerImpact,
                       isKpi: newLedgerIsKpi
@@ -1531,10 +1533,19 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                     ) : (
                       <>
                         <div className="flex flex-col">
-                          <span className="font-semibold text-slate-800 text-sm">{l.name}</span>
+                          <span className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                            {l.name}
+                            <span className={`text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${isGlobalLedger(l) ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
+                              {ledgerScopeLabel(l)}
+                            </span>
+                          </span>
                           <span className="text-xs text-slate-500 capitalize">Impact: {l.impact} | {l.isKpi ? 'KPI visible' : 'Hidden'}</span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
+                          {isGlobalLedger(l) ? (
+                            <span className="text-xs text-slate-400 italic">System ledger</span>
+                          ) : (
+                            <>
                           <div className="flex flex-col mr-2">
                             <button
                               type="button"
@@ -1595,6 +1606,8 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                           >
                             Delete
                           </button>
+                            </>
+                          )}
                         </div>
                       </>
                     )}
@@ -1918,10 +1931,38 @@ function EntityTransactionsModal({
                         )}
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        {t.to === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                        {t.to === entity.name ? (
+                          <div className="flex flex-col gap-1">
+                            <span>{formatTxnAmount(t)}</span>
+                            {(() => {
+                              const hint = getEntityLedgerHint(t, entity.name);
+                              return hint ? (
+                                <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
+                                  {hint.label}
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        {t.from === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                        {t.from === entity.name ? (
+                          <div className="flex flex-col gap-1">
+                            <span>{formatTxnAmount(t)}</span>
+                            {(() => {
+                              const hint = getEntityLedgerHint(t, entity.name);
+                              return hint ? (
+                                <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
+                                  {hint.label}
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
@@ -2012,12 +2053,28 @@ function EntityTransactionsModal({
                         <span className="font-mono text-xs font-bold text-slate-900">
                           {t.to === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                         </span>
+                        {t.to === entity.name && (() => {
+                          const hint = getEntityLedgerHint(t, entity.name);
+                          return hint ? (
+                            <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
+                              {hint.label}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       <div className="flex flex-col gap-0.5 items-end">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Received</span>
                         <span className="font-mono text-xs font-bold text-slate-900">
                           {t.from === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                         </span>
+                        {t.from === entity.name && (() => {
+                          const hint = getEntityLedgerHint(t, entity.name);
+                          return hint ? (
+                            <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
+                              {hint.label}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                     </div>
 

@@ -89,9 +89,11 @@ CREATE TABLE IF NOT EXISTS ledgers (
     impact VARCHAR(20) NOT NULL DEFAULT 'neutral' CHECK (impact IN ('positive', 'negative', 'neutral')),
     is_kpi BOOLEAN NOT NULL DEFAULT true,
     sort_order INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(branch_id, name)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ledgers_global_name_unique ON ledgers (name) WHERE branch_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ledgers_branch_name_unique ON ledgers (branch_id, name) WHERE branch_id IS NOT NULL;
 
 -- 4. Expenses
 CREATE TABLE IF NOT EXISTS expenses (

@@ -2,6 +2,8 @@
 
 import { getCurrentUserAction } from '@/app/actions/auth';
 import { query, pool } from '@/lib/db';
+import { filterBranchLedgers } from '@/lib/ledgers';
+import { validateJournalEntry } from '@/lib/journalEntry';
 import {
   Branch,
   Transaction,
@@ -494,7 +496,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       const dealIds = new Set(finalDeals.map(d => d.id));
       finalDealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
       finalEntities = entities.filter(e => !e.branchId || e.branchId === bId);
-      finalLedgers = ledgers.filter(l => !l.branchId || l.branchId === bId);
+      finalLedgers = filterBranchLedgers(ledgers, bId);
       finalTransactionTags = transactionTags.filter(t => !t.branchId || t.branchId === bId);
       finalPhysicalBalances = physicalBalances.filter(b => b.branchId === bId);
       finalPhysicalBuys = physicalBuys.filter(b => b.branchId === bId);
@@ -1492,9 +1494,50 @@ export async function dbFetchEntitiesAction(): Promise<DbActionResult<Entity[]>>
 
 export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCash: number, deltaGold: number, branchId: string, tagIds: string[] = []): Promise<DbActionResult<Transaction>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const coreValidation = validateJournalEntry(
+    {
+      from: txn.from,
+      to: txn.to,
+      amount: txn.amount,
+      assetType: (txn.assetType as 'currency' | 'gold') || 'currency',
+      date: txn.date,
+    },
+  );
+  if (!coreValidation.ok) {
+    return { success: false, error: coreValidation.error };
+  }
+  if (!branchId?.trim()) {
+    return { success: false, error: 'Branch is required for this transaction.' };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    const branchRes = await client.query('SELECT name FROM branches WHERE id = $1', [branchId]);
+    if (!branchRes.rows.length) {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Branch not found.' };
+    }
+    const branchName: string = branchRes.rows[0].name;
+    const branchFundLabel = `${branchName} (Branch Fund)`;
+
+    const branchValidation = validateJournalEntry(
+      {
+        from: txn.from,
+        to: txn.to,
+        amount: txn.amount,
+        assetType: (txn.assetType as 'currency' | 'gold') || 'currency',
+        date: txn.date,
+      },
+      { branchName, branchFundLabel },
+    );
+    if (!branchValidation.ok) {
+      await client.query('ROLLBACK');
+      return { success: false, error: branchValidation.error };
+    }
+
     await client.query(
       `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.assetType || 'currency', txn.status, txn.notes || '', txn.category, txn.branchId || branchId]
@@ -1779,6 +1822,9 @@ export async function dbDeleteEntityAction(entityName: string, entityId: string)
 // ── Ledger Actions ─────────────────────────────────────────────────────────
 
 export async function dbAddLedgerAction(ledger: import('@/types').Ledger): Promise<DbActionResult<import('@/types').Ledger>> {
+  if (!ledger.branchId) {
+    return { success: false, error: 'Global ledgers are system-managed and cannot be created from the app.' };
+  }
   try {
     await query(
       'INSERT INTO ledgers (id, branch_id, name, impact, is_kpi, sort_order, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
@@ -1792,6 +1838,11 @@ export async function dbAddLedgerAction(ledger: import('@/types').Ledger): Promi
 
 export async function dbUpdateLedgerAction(ledger: import('@/types').Ledger): Promise<DbActionResult<import('@/types').Ledger>> {
   try {
+    const existing = await query('SELECT branch_id FROM ledgers WHERE id = $1', [ledger.id]);
+    if (!existing.rows.length) return { success: false, error: 'Ledger not found.' };
+    if (!existing.rows[0].branch_id) {
+      return { success: false, error: 'Global ledgers are system-managed and cannot be modified from the app.' };
+    }
     await query(
       'UPDATE ledgers SET name = $1, impact = $2, is_kpi = $3, sort_order = $4 WHERE id = $5',
       [ledger.name, ledger.impact, ledger.isKpi, ledger.sortOrder || 0, ledger.id]
@@ -1804,6 +1855,12 @@ export async function dbUpdateLedgerAction(ledger: import('@/types').Ledger): Pr
 
 export async function dbDeleteLedgerAction(id: string, name: string): Promise<DbActionResult<void>> {
   try {
+    const existing = await query('SELECT branch_id FROM ledgers WHERE id = $1', [id]);
+    if (!existing.rows.length) return { success: false, error: 'Ledger not found.' };
+    if (!existing.rows[0].branch_id) {
+      return { success: false, error: 'Global ledgers are system-managed and cannot be deleted from the app.' };
+    }
+
     const txRes = await query('SELECT 1 FROM transactions WHERE from_entity = $1 OR to_entity = $1 OR type = $1 LIMIT 1', [name]);
     if (txRes.rowCount && txRes.rowCount > 0) return { success: false, error: 'Cannot delete ledger because it is part of a transaction.' };
     

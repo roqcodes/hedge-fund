@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { Branch, Transaction } from '@/types';
+import { filterBranchLedgers, calculateLedgerBalances, calculateInverseImpactSum } from '@/lib/ledgers';
 
 export function useBranchFundKpis(branch?: Branch) {
   const { transactions, ledgers } = useApp();
@@ -23,24 +24,11 @@ export function useBranchFundKpis(branch?: Branch) {
   } = useDateFilter(branchTransactions);
 
   const branchLedgers = useMemo(() => {
-    return ledgers.filter(l => !l.branchId || l.branchId === branchId);
+    return filterBranchLedgers(ledgers, branchId);
   }, [ledgers, branchId]);
 
   const ledgerBalances = useMemo(() => {
-    const balances: Record<string, number> = {};
-    branchLedgers.forEach(l => {
-      const toSum = filteredTransactions
-        .filter((t: Transaction) => t.to === l.name)
-        .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      const fromSum = filteredTransactions
-        .filter((t: Transaction) => t.from === l.name)
-        .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      const tagSum = filteredTransactions
-        .filter((t: Transaction) => t.type === l.name && t.from !== l.name && t.to !== l.name)
-        .reduce((sum: number, t: Transaction) => sum + t.amount, 0);
-      balances[l.id] = toSum - fromSum + tagSum;
-    });
-    return balances;
+    return calculateLedgerBalances(branchLedgers, filteredTransactions);
   }, [filteredTransactions, branchLedgers]);
 
   const availableBranchFund = useMemo(() => {
@@ -62,12 +50,7 @@ export function useBranchFundKpis(branch?: Branch) {
   const branchGoldVolume = branch?.goldBalance ?? 0;
 
   const inverseImpactSum = useMemo(() => {
-    return branchLedgers.reduce((acc, l) => {
-      const bal = ledgerBalances[l.id] || 0;
-      if (l.impact === 'positive') return acc - bal;
-      if (l.impact === 'negative') return acc + bal;
-      return acc;
-    }, 0);
+    return calculateInverseImpactSum(branchLedgers, ledgerBalances);
   }, [branchLedgers, ledgerBalances]);
 
   const totalCashInLocker = availableBranchFund - inverseImpactSum;

@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import { formatAED, formatAEDStr } from '@/data/mockData';
 import { Branch, Ledger } from '@/types';
+import { getLedgerKpiSubValue } from '@/lib/ledgers';
 import { btnSecondary, kpiGrid } from '@/lib/ui';
 
 const PRIMARY_ROW_SIZE = 4;
@@ -70,7 +71,7 @@ function ledgerCardProps(ledger: Ledger, balance: number): KpiCardConfig {
     key: ledger.id,
     label: ledger.name,
     value: formatAED(balance),
-    subValue: `Impact: ${ledger.impact}`,
+    subValue: getLedgerKpiSubValue(ledger),
     icon: ledgerIcon,
     color: ledger.impact === 'positive' ? 'var(--success)' : ledger.impact === 'negative' ? 'var(--warning)' : 'var(--info)',
     bgColor: ledger.impact === 'positive' ? 'var(--success-light)' : ledger.impact === 'negative' ? 'var(--warning-light)' : 'var(--info-light)',
@@ -132,7 +133,7 @@ export default function BranchFundKpiSection({
       key: 'cash-locker',
       label: 'Total Cash In Locker',
       value: formatAED(totalCashInLocker),
-      subValue: 'Actual physical cash',
+      subValue: 'Physical cash after receivables & customer deposits',
       icon: lockerIcon,
       color: 'var(--info)',
       bgColor: 'var(--info-light)',

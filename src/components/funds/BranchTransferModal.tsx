@@ -7,6 +7,8 @@ import { Transaction, Entity } from '@/types';
 import { formInput, formLabel, btnPrimary, btnSecondary } from '@/lib/ui';
 import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { TransactionTag } from '@/types';
+import { filterBranchLedgers, calculateLedgerBalance } from '@/lib/ledgers';
+import { journalAllowedAccountNames, validateJournalEntry } from '@/lib/journalEntry';
 
 export function BranchTransferModal({
   open,
@@ -32,14 +34,15 @@ export function BranchTransferModal({
   // Calculate balances for all options
   const optionBalances = useMemo(() => {
     const balances: Record<string, number> = {};
-    const branchLedgers = ledgers.filter(l => !l.branchId || l.branchId === branchId);
+    const branchLedgers = filterBranchLedgers(ledgers, branchId);
+    const branchTxns = branchId
+      ? transactions.filter(t => t.branchId === branchId)
+      : transactions;
     
-    // Ledger balances
+    // Ledger balances (per branch, even for global ledgers)
+    const assetTxns = branchTxns.filter(t => (t.assetType || 'currency') === assetType);
     branchLedgers.forEach(l => {
-      const toSum = transactions.filter(t => t.to === l.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
-      const fromSum = transactions.filter(t => t.from === l.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
-      const tagSum = transactions.filter(t => t.type === l.name && t.from !== l.name && t.to !== l.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
-      balances[l.name] = toSum - fromSum + tagSum;
+      balances[l.name] = calculateLedgerBalance(l, assetTxns);
     });
 
     // Branch balance
@@ -47,7 +50,7 @@ export function BranchTransferModal({
       if (branchName) {
         let base = branch?.openingBalance || 0;
         const ledgersSet = new Set(branchLedgers.map(l => l.name));
-        transactions.forEach((t: Transaction) => {
+        branchTxns.forEach((t: Transaction) => {
           if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') return;
           const isLedgerTxn = ledgersSet.has(t.from) || ledgersSet.has(t.to) || ledgersSet.has(t.type);
           if (isLedgerTxn) return;
@@ -81,7 +84,7 @@ export function BranchTransferModal({
       opts.push({ id: branchId, name: branchFundLabel, type: 'branch', balance: optionBalances[branchName] || 0 });
     }
     ledgers.forEach(l => {
-      if (!l.branchId || l.branchId === branchId) {
+      if (filterBranchLedgers([l], branchId).length > 0) {
         opts.push({ id: l.id, name: l.name, type: 'ledger', balance: optionBalances[l.name] || 0 });
       }
     });
@@ -127,16 +130,12 @@ export function BranchTransferModal({
   const handleSubmit = async () => {
     const fromName = fromSearch.trim();
     const toName = toSearch.trim();
-    
+
     if (!fromName || !toName || !amount) {
       showToast('Please fill all required fields', 'error');
       return;
     }
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) {
-      showToast('Amount must be greater than zero', 'error');
-      return;
-    }
 
     const fromExists = allOptions.find(o => o.name.trim().toLowerCase() === fromName.toLowerCase());
     const toExists = allOptions.find(o => o.name.trim().toLowerCase() === toName.toLowerCase());
@@ -147,6 +146,23 @@ export function BranchTransferModal({
     }
     if (!toExists) {
       showToast(`Account "${toName}" does not exist. Please create it first.`, 'error');
+      return;
+    }
+
+    const validation = validateJournalEntry(
+      { from: fromExists.name, to: toExists.name, amount: amt, assetType, date },
+      {
+        branchName,
+        branchFundLabel,
+        allowedAccountNames: journalAllowedAccountNames(
+          allOptions.map(o => o.name),
+          branchName,
+          branchFundLabel,
+        ),
+      },
+    );
+    if (!validation.ok) {
+      showToast(validation.error, 'error');
       return;
     }
 
@@ -180,8 +196,9 @@ export function BranchTransferModal({
       category: (() => {
         if (deltaCash > 0 || deltaGold > 0) return 'debit';
         if (deltaCash < 0 || deltaGold < 0) return 'credit';
-        const fromLedger = ledgers.filter(l => !l.branchId || l.branchId === branchId).find(l => l.name === exactFromName);
-        const toLedger = ledgers.filter(l => !l.branchId || l.branchId === branchId).find(l => l.name === exactToName);
+        const branchLedgersForTxn = filterBranchLedgers(ledgers, branchId);
+        const fromLedger = branchLedgersForTxn.find(l => l.name === exactFromName);
+        const toLedger = branchLedgersForTxn.find(l => l.name === exactToName);
         if (fromLedger) {
           return fromLedger.impact === 'positive' ? 'credit' : fromLedger.impact === 'negative' ? 'debit' : 'neutral';
         }
@@ -201,7 +218,7 @@ export function BranchTransferModal({
     }
   };
 
-  const branchLedgers = ledgers.filter(l => !l.branchId || l.branchId === branchId);
+  const branchLedgers = filterBranchLedgers(ledgers, branchId);
 
   const branchTags = useMemo(
     () => transactionTags.filter(t => !t.branchId || t.branchId === branchId),
