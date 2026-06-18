@@ -150,13 +150,6 @@ export function BranchTransferModal({
       return;
     }
 
-    if (fromExists.type === 'entity' || fromExists.type === 'branch') {
-      if (amt > fromExists.balance) {
-        showToast(`Insufficient balance in ${fromExists.name}. Available: ${assetType === 'gold' ? fromExists.balance.toFixed(2) + 'g' : fromExists.balance.toFixed(2)}`, 'error');
-        return;
-      }
-    }
-
     setIsSubmitting(true);
 
     const exactFromName = fromExists.name;
