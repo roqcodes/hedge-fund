@@ -243,6 +243,11 @@ export function BranchTransferModal({
   ) => {
     const filtered = getFilteredOptions(searchValue);
     const hasExactMatch = filtered.some(o => o.name.toLowerCase() === searchValue.toLowerCase().trim());
+
+    const selectOption = (name: string) => {
+      setSearchValue(name);
+      setIsOpen(false);
+    };
     
     return (
       <div className="relative">
@@ -256,18 +261,20 @@ export function BranchTransferModal({
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          onBlur={() => setIsOpen(false)}
+          autoComplete="off"
         />
         {isOpen && (searchValue || filtered.length > 0) && (
-          <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto bg-white border border-slate-200 rounded-lg shadow-xl outline-none ring-1 ring-black/5">
+          <div
+            className="absolute z-50 w-full mt-1 max-h-60 overflow-auto bg-white border border-slate-200 rounded-lg shadow-xl outline-none ring-1 ring-black/5"
+            onMouseDown={e => e.preventDefault()}
+          >
             {filtered.map(o => (
-              <div
+              <button
                 key={o.id}
-                className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between border-b border-slate-100 last:border-0"
-                onClick={() => {
-                  setSearchValue(o.name);
-                  setIsOpen(false);
-                }}
+                type="button"
+                className="w-full px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between border-b border-slate-100 last:border-0 text-left"
+                onMouseDown={() => selectOption(o.name)}
               >
                 <div className="flex flex-col">
                   <span className="text-sm font-medium text-slate-900">{o.name}</span>
@@ -277,12 +284,13 @@ export function BranchTransferModal({
                   <span className="text-xs font-semibold text-slate-700">{formatBalance(o.balance)}</span>
                   <span className="text-[10px] text-slate-400">BALANCE</span>
                 </div>
-              </div>
+              </button>
             ))}
             {searchValue.trim() && !hasExactMatch && (
-              <div 
-                className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-accent"
-                onClick={async () => {
+              <button
+                type="button"
+                className="w-full px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-accent text-left"
+                onMouseDown={async () => {
                   const newName = searchValue.trim();
                   if (!newName) return;
                   const newEntity: Entity = {
@@ -292,14 +300,13 @@ export function BranchTransferModal({
                     createdAt: new Date().toISOString(),
                   };
                   await addEntity(newEntity);
-                  setSearchValue(newName);
-                  setIsOpen(false);
+                  selectOption(newName);
                   showToast(`Entity "${newName}" created successfully!`, 'success');
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
                 <span className="text-sm font-medium">Create "{searchValue.trim()}" as new entity</span>
-              </div>
+              </button>
             )}
           </div>
         )}
