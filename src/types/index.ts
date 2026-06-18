@@ -48,6 +48,13 @@ export interface Entity {
   createdAt?: string;
 }
 
+export interface TransactionTag {
+  id: string;
+  name: string;
+  branchId?: string;
+  createdAt?: string;
+}
+
 export interface Transaction {
   id: string;
   date: string;
@@ -60,6 +67,8 @@ export interface Transaction {
   notes: string;
   category?: string;
   branchId?: string;
+  tags?: string[];
+  tagIds?: string[];
 }
 
 export type ExpenseType = 'capex' | 'opex';

@@ -4,7 +4,9 @@ import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { generateId } from '@/data/mockData';
 import { Transaction, Entity } from '@/types';
-import { formInput, formSelect, formLabel, btnPrimary, btnSecondary } from '@/lib/ui';
+import { formInput, formLabel, btnPrimary, btnSecondary } from '@/lib/ui';
+import TagMultiSelect from '@/components/ui/TagMultiSelect';
+import { TransactionTag } from '@/types';
 
 export function BranchTransferModal({
   open,
@@ -15,7 +17,7 @@ export function BranchTransferModal({
   onClose: () => void;
   targetBranchId?: string;
 }) {
-  const { branches, entities, ledgers, transactions, addEntity, processLedgerTransaction, showToast } = useApp();
+  const { branches, entities, ledgers, transactions, addEntity, processLedgerTransaction, showToast, transactionTags, addTransactionTag } = useApp();
 
   // If targetBranchId is provided, use that branch. Otherwise fallback to assuming the user is a branch manager with only 1 branch.
   const branch = targetBranchId 
@@ -97,7 +99,7 @@ export function BranchTransferModal({
   const [fromOpen, setFromOpen] = useState(false);
   const [toOpen, setToOpen] = useState(false);
 
-  const [ledgerTag, setLedgerTag] = useState(''); // Stores the Ledger ID or Name for categorization
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(() => {
@@ -111,7 +113,7 @@ export function BranchTransferModal({
     if (!open) {
       setFromSearch('');
       setToSearch('');
-      setLedgerTag('');
+      setSelectedTagIds([]);
       setAmount('');
       setNotes('');
       setFromOpen(false);
@@ -178,14 +180,15 @@ export function BranchTransferModal({
       from: exactFromName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactFromName,
       to: exactToName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactToName,
       amount: amt,
-      type: ledgerTag || 'transfer', // Fallback to 'transfer' if no ledger tag selected
+      type: 'transfer',
       assetType,
       status: 'completed',
+      tagIds: selectedTagIds,
       category: (() => {
         if (deltaCash > 0 || deltaGold > 0) return 'debit';
         if (deltaCash < 0 || deltaGold < 0) return 'credit';
-        const fromLedger = branchLedgers.find(l => l.name === exactFromName);
-        const toLedger = branchLedgers.find(l => l.name === exactToName);
+        const fromLedger = ledgers.filter(l => !l.branchId || l.branchId === branchId).find(l => l.name === exactFromName);
+        const toLedger = ledgers.filter(l => !l.branchId || l.branchId === branchId).find(l => l.name === exactToName);
         if (fromLedger) {
           return fromLedger.impact === 'positive' ? 'credit' : fromLedger.impact === 'negative' ? 'debit' : 'neutral';
         }
@@ -206,6 +209,21 @@ export function BranchTransferModal({
   };
 
   const branchLedgers = ledgers.filter(l => !l.branchId || l.branchId === branchId);
+
+  const branchTags = useMemo(
+    () => transactionTags.filter(t => !t.branchId || t.branchId === branchId),
+    [transactionTags, branchId],
+  );
+
+  const handleCreateTag = async (name: string) => {
+    const tag: TransactionTag = {
+      id: generateId('TAG'),
+      name: name.trim(),
+      branchId,
+      createdAt: new Date().toISOString(),
+    };
+    return addTransactionTag(tag);
+  };
 
   const getFilteredOptions = (query: string) => {
     const q = query.toLowerCase();
@@ -360,18 +378,14 @@ export function BranchTransferModal({
         {/* Details row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={formLabel}>Ledger Tag (Optional)</label>
-            <select
-              className={formSelect}
-              value={ledgerTag}
-              onChange={e => setLedgerTag(e.target.value)}
-            >
-              <option value="">No tag (Transfer)</option>
-              {branchLedgers.map(l => (
-                <option key={`tag-${l.id}`} value={l.name}>{l.name}</option>
-              ))}
-            </select>
-            <p className="text-xs text-slate-500 mt-1">Tags help categorize this transaction under a specific KPI ledger.</p>
+            <TagMultiSelect
+              label="Tags"
+              tags={branchTags}
+              selectedIds={selectedTagIds}
+              onChange={setSelectedTagIds}
+              onCreateTag={handleCreateTag}
+              placeholder="Search or add tags..."
+            />
           </div>
 
           <div>

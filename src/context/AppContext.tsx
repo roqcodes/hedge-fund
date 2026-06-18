@@ -46,10 +46,12 @@ import {
   dbProcessLedgerTransactionAction,
   dbUpdateLedgerTransactionAction,
   dbDeleteLedgerTransactionAction,
+  dbUpdateTransactionMetaAction,
   dbAddLedgerAction,
   dbUpdateLedgerAction,
   dbDeleteLedgerAction,
   dbUpdateBranchInitialGoldAction,
+  dbCreateTransactionTagAction,
 } from '@/app/actions/dbActions';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
@@ -76,6 +78,7 @@ interface AppState {
   dealTransactions: DealTransaction[];
   entities: import('@/types').Entity[];
   ledgers: import('@/types').Ledger[];
+  transactionTags: import('@/types').TransactionTag[];
   physicalBalances: PhysicalBalance[];
   physicalBuys: PhysicalBuy[];
   physicalSells: PhysicalSell[];
@@ -139,10 +142,12 @@ interface AppContextType extends AppState {
   deleteEntity: (entityName: string, entityId: string) => Promise<boolean>;
   processLedgerTransaction: (txn: import('@/types').Transaction, deltaCash: number, deltaGold: number, branchId: string) => Promise<boolean>;
   updateLedgerTransaction: (txn: import('@/types').Transaction, oldAmount: number, oldCategory: string | undefined, deltaCash: number, deltaGold: number, branchId: string) => Promise<boolean>;
+  updateTransactionMeta: (txnId: string, date: string, notes: string, tagIds: string[]) => Promise<boolean>;
   deleteLedgerTransaction: (id: string, txnAmount: number, txnCategory: string | undefined, txnAssetType: string | undefined, branchId: string) => Promise<boolean>;
   addLedger: (ledger: import('@/types').Ledger) => Promise<boolean>;
   updateLedger: (ledger: import('@/types').Ledger) => Promise<boolean>;
   deleteLedger: (id: string, name: string) => Promise<boolean>;
+  addTransactionTag: (tag: import('@/types').TransactionTag) => Promise<import('@/types').TransactionTag | null>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -183,6 +188,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dealTransactions: [],
     entities: [],
     ledgers: [],
+    transactionTags: [],
     physicalBalances: [],
     physicalBuys: [],
     physicalSells: [],
@@ -209,6 +215,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             dealTransactions: data.dealTransactions || [],
             entities: data.entities || [],
             ledgers: data.ledgers || [],
+            transactionTags: data.transactionTags || [],
             physicalBalances: data.physicalBalances || [],
             physicalBuys: data.physicalBuys || [],
             physicalSells: data.physicalSells || [],
@@ -268,6 +275,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             dealTransactions: data.dealTransactions || [],
             entities: data.entities || [],
             ledgers: data.ledgers || [],
+            transactionTags: data.transactionTags || [],
             physicalBalances: data.physicalBalances || [],
             physicalBuys: data.physicalBuys || [],
             physicalSells: data.physicalSells || [],
@@ -856,7 +864,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const processLedgerTransaction = useCallback(async (txn: import('@/types').Transaction, deltaCash: number, deltaGold: number, branchId: string) => {
     try {
-      const dbRes = await dbProcessLedgerTransactionAction(txn, deltaCash, deltaGold, branchId);
+      const dbRes = await dbProcessLedgerTransactionAction(txn, deltaCash, deltaGold, branchId, txn.tagIds || []);
       if (dbRes.success && dbRes.data) {
         const processed = dbRes.data;
         setState(s => {
@@ -971,6 +979,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
+  const updateTransactionMeta = useCallback(async (txnId: string, date: string, notes: string, tagIds: string[]) => {
+    try {
+      const dbRes = await dbUpdateTransactionMetaAction(txnId, date, notes, tagIds);
+      if (dbRes.success && dbRes.data) {
+        setState(s => ({
+          ...s,
+          transactions: s.transactions.map(t => (t.id === txnId ? dbRes.data! : t)),
+        }));
+        showToast('Transaction updated successfully', 'success');
+        return true;
+      }
+      showToast(dbRes.error || 'Failed to update transaction', 'error');
+      return false;
+    } catch (error) {
+      console.error('DB updateTransactionMeta failed', error);
+      showToast('Failed to update transaction', 'error');
+      return false;
+    }
+  }, [showToast]);
+
   const addLedger = useCallback(async (ledger: import('@/types').Ledger) => {
     try {
       const dbRes = await dbAddLedgerAction(ledger);
@@ -1028,6 +1056,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('DB deleteLedger failed', e);
       showToast('Failed to delete ledger', 'error');
       return false;
+    }
+  }, [showToast]);
+
+  const addTransactionTag = useCallback(async (tag: import('@/types').TransactionTag) => {
+    try {
+      const dbRes = await dbCreateTransactionTagAction(tag);
+      if (dbRes.success && dbRes.data) {
+        setState(s => {
+          const exists = s.transactionTags.some(t => t.id === dbRes.data!.id);
+          return {
+            ...s,
+            transactionTags: exists
+              ? s.transactionTags.map(t => (t.id === dbRes.data!.id ? dbRes.data! : t))
+              : [...s.transactionTags, dbRes.data!],
+          };
+        });
+        return dbRes.data;
+      }
+      showToast(dbRes.error || 'Failed to create tag', 'error');
+      return null;
+    } catch (e) {
+      console.error('DB addTransactionTag failed', e);
+      showToast('Failed to create tag', 'error');
+      return null;
     }
   }, [showToast]);
 
@@ -1172,10 +1224,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
-      addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction,
-      addLedger, updateLedger, deleteLedger,
+      addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
+      addLedger, updateLedger, deleteLedger, addTransactionTag,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
 
   return (
     <AppContext.Provider value={contextValue}>

@@ -69,6 +69,7 @@ export interface InitialDataPayload {
   dealTransactions: DealTransaction[];
   entities: Entity[];
   ledgers: import('@/types').Ledger[];
+  transactionTags: import('@/types').TransactionTag[];
   physicalBalances: PhysicalBalance[];
   physicalBuys: PhysicalBuy[];
   physicalSells: PhysicalSell[];
@@ -135,19 +136,34 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
 
     // 3. Fetch Transactions
     const txRes = await query('SELECT * FROM transactions ORDER BY date DESC');
-    const transactions: Transaction[] = txRes.rows.map((r) => ({
-      id: r.id,
-      date: new Date(r.date).toISOString(),
-      from: r.from_entity,
-      to: r.to_entity,
-      amount: parseFloat(r.amount),
-      type: r.type,
-      assetType: r.asset_type || 'currency',
-      status: r.status,
-      notes: r.notes,
-      category: r.category || undefined,
-      branchId: r.branch_id || undefined,
-    }));
+    const tagLinksRes = await query(`
+      SELECT ttl.transaction_id, tt.id, tt.name
+      FROM transaction_tag_links ttl
+      JOIN transaction_tags tt ON tt.id = ttl.tag_id
+    `).catch(() => ({ rows: [] as { transaction_id: string; id: string; name: string }[] }));
+    const tagsByTxnId: Record<string, { id: string; name: string }[]> = {};
+    for (const row of tagLinksRes.rows) {
+      if (!tagsByTxnId[row.transaction_id]) tagsByTxnId[row.transaction_id] = [];
+      tagsByTxnId[row.transaction_id].push({ id: row.id, name: row.name });
+    }
+    const transactions: Transaction[] = txRes.rows.map((r) => {
+      const linked = tagsByTxnId[r.id] || [];
+      return {
+        id: r.id,
+        date: new Date(r.date).toISOString(),
+        from: r.from_entity,
+        to: r.to_entity,
+        amount: parseFloat(r.amount),
+        type: r.type,
+        assetType: r.asset_type || 'currency',
+        status: r.status,
+        notes: r.notes,
+        category: r.category || undefined,
+        branchId: r.branch_id || undefined,
+        tags: linked.map(t => t.name),
+        tagIds: linked.map(t => t.id),
+      };
+    });
 
     // 4. Fetch Expenses
     const expRes = await query('SELECT * FROM expenses ORDER BY date DESC');
@@ -390,6 +406,14 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
     }));
 
+    const transactionTagsRes = await query('SELECT * FROM transaction_tags ORDER BY name ASC').catch(() => ({ rows: [] }));
+    const transactionTags: import('@/types').TransactionTag[] = transactionTagsRes.rows.map((r: any) => ({
+      id: r.id,
+      branchId: r.branch_id || undefined,
+      name: r.name,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
     const userRes = await getCurrentUserAction(branchSlug);
     const currentUser = userRes.success ? userRes.data : null;
 
@@ -451,6 +475,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     let finalDealTransactions = dealTransactions;
     let finalEntities = entities;
     let finalLedgers = ledgers;
+    let finalTransactionTags = transactionTags;
     let finalPhysicalBalances = physicalBalances;
     let finalPhysicalBuys = physicalBuys;
     let finalPhysicalSells = physicalSells;
@@ -470,6 +495,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       finalDealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
       finalEntities = entities.filter(e => !e.branchId || e.branchId === bId);
       finalLedgers = ledgers.filter(l => !l.branchId || l.branchId === bId);
+      finalTransactionTags = transactionTags.filter(t => !t.branchId || t.branchId === bId);
       finalPhysicalBalances = physicalBalances.filter(b => b.branchId === bId);
       finalPhysicalBuys = physicalBuys.filter(b => b.branchId === bId);
       const buyIds = new Set(finalPhysicalBuys.map(b => b.id));
@@ -490,6 +516,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         dealTransactions: finalDealTransactions,
         entities: finalEntities,
         ledgers: finalLedgers,
+        transactionTags: finalTransactionTags,
         physicalBalances: finalPhysicalBalances,
         physicalBuys: finalPhysicalBuys,
         physicalSells: finalPhysicalSells,
@@ -1463,7 +1490,7 @@ export async function dbFetchEntitiesAction(): Promise<DbActionResult<Entity[]>>
   }
 }
 
-export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCash: number, deltaGold: number, branchId: string): Promise<DbActionResult<Transaction>> {
+export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCash: number, deltaGold: number, branchId: string, tagIds: string[] = []): Promise<DbActionResult<Transaction>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   const client = await pool.connect();
   try {
@@ -1472,6 +1499,15 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
       `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.assetType || 'currency', txn.status, txn.notes || '', txn.category, txn.branchId || branchId]
     );
+    const tagNames: string[] = [];
+    for (const tagId of tagIds) {
+      await client.query(
+        `INSERT INTO transaction_tag_links (transaction_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [txn.id, tagId]
+      );
+      const tagRes = await client.query('SELECT name FROM transaction_tags WHERE id = $1', [tagId]);
+      if (tagRes.rows[0]?.name) tagNames.push(tagRes.rows[0].name);
+    }
     if (deltaCash !== 0 && txn.status === 'completed') {
       await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);
     }
@@ -1479,12 +1515,38 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
       await client.query(`UPDATE branches SET gold_balance = gold_balance + $1 WHERE id = $2`, [deltaGold, branchId]);
     }
     await client.query('COMMIT');
-    return { success: true, data: { ...txn, branchId: txn.branchId || branchId } };
+    return { success: true, data: { ...txn, branchId: txn.branchId || branchId, tagIds, tags: tagNames } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     return { success: false, error: formatPgError(error) };
   } finally {
     client.release();
+  }
+}
+
+export async function dbCreateTransactionTagAction(tag: import('@/types').TransactionTag): Promise<DbActionResult<import('@/types').TransactionTag>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  try {
+    await query(
+      `INSERT INTO transaction_tags (id, branch_id, name, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (branch_id, name) DO NOTHING`,
+      [tag.id, tag.branchId || null, tag.name, tag.createdAt || new Date().toISOString()]
+    );
+    const existing = await query(
+      'SELECT * FROM transaction_tags WHERE branch_id IS NOT DISTINCT FROM $1 AND name = $2',
+      [tag.branchId || null, tag.name]
+    );
+    const row = existing.rows[0];
+    return {
+      success: true,
+      data: {
+        id: row.id,
+        branchId: row.branch_id || undefined,
+        name: row.name,
+        createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
+      },
+    };
+  } catch (error: unknown) {
+    return { success: false, error: formatPgError(error) };
   }
 }
 
@@ -1532,6 +1594,63 @@ export async function dbUpdateBranchInitialFundAction(id: string, name: string, 
     
     await client.query('COMMIT');
     return { success: true, data: { delta } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: formatPgError(error) };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbUpdateTransactionMetaAction(
+  txnId: string,
+  date: string,
+  notes: string,
+  tagIds: string[] = [],
+): Promise<DbActionResult<Transaction>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE transactions SET date = $1, notes = $2 WHERE id = $3`,
+      [date, notes || '', txnId]
+    );
+    await client.query(`DELETE FROM transaction_tag_links WHERE transaction_id = $1`, [txnId]);
+    const tagNames: string[] = [];
+    for (const tagId of tagIds) {
+      await client.query(
+        `INSERT INTO transaction_tag_links (transaction_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [txnId, tagId]
+      );
+      const tagRes = await client.query('SELECT name FROM transaction_tags WHERE id = $1', [tagId]);
+      if (tagRes.rows[0]?.name) tagNames.push(tagRes.rows[0].name);
+    }
+    const txRes = await client.query('SELECT * FROM transactions WHERE id = $1', [txnId]);
+    if (!txRes.rows.length) {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Transaction not found.' };
+    }
+    const r = txRes.rows[0];
+    await client.query('COMMIT');
+    return {
+      success: true,
+      data: {
+        id: r.id,
+        date: new Date(r.date).toISOString(),
+        from: r.from_entity,
+        to: r.to_entity,
+        amount: parseFloat(r.amount),
+        type: r.type,
+        assetType: r.asset_type || 'currency',
+        status: r.status,
+        notes: r.notes,
+        category: r.category || undefined,
+        branchId: r.branch_id || undefined,
+        tags: tagNames,
+        tagIds,
+      },
+    };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     return { success: false, error: formatPgError(error) };

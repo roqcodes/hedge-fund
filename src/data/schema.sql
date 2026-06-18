@@ -54,6 +54,24 @@ CREATE TABLE IF NOT EXISTS transactions (
     branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE
 );
 
+-- 3.4 Transaction Tags
+CREATE TABLE IF NOT EXISTS transaction_tags (
+    id VARCHAR(50) PRIMARY KEY,
+    branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(branch_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS transaction_tag_links (
+    transaction_id VARCHAR(50) NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    tag_id VARCHAR(50) NOT NULL REFERENCES transaction_tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (transaction_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tx_tag_links_tx ON transaction_tag_links(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_tx_tag_links_tag ON transaction_tag_links(tag_id);
+
 -- 3.5 Entities
 CREATE TABLE IF NOT EXISTS entities (
     id VARCHAR(50) PRIMARY KEY,
