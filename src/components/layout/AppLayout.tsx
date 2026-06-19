@@ -7,7 +7,7 @@ import Topbar from '@/components/layout/Topbar';
 import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isInitialLoading, toasts, sidebarOpen } = useApp();
+  const { isAuthenticated, isInitialLoading, toasts, sidebarCollapsed } = useApp();
   const pathname = usePathname();
 
   if (isInitialLoading) return null;
@@ -21,7 +21,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div
         className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          sidebarOpen ? 'lg:ml-[80px]' : 'lg:ml-[240px]'
+          sidebarCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[240px]'
         }`}
       >
         <Topbar />

@@ -33,11 +33,14 @@ import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { getTransactionTagNames, transactionHasAnyTag } from '@/lib/transactionTags';
+import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
+import { TransactionTagsCell } from '@/components/funds/TransactionTagsCell';
+import { txnTd, txnTdFromTo, txnTh, txnThSortable, txnModalFromTo, txnModalTd, txnModalTh } from '@/lib/transactionTableStyles';
 import { accountNameUsedInTransactions } from '@/lib/accountTransactions';
 import {
   filterBranchLedgers,
   calculateLedgerBalances,
-  calculateInverseImpactSum,
+  calculateCashInLocker,
   getLedgerKpiSubValue,
   getLedgerTabColumns,
   getEntityLedgerHint,
@@ -161,11 +164,9 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
 
   const branchGoldVolume = branches.length === 1 ? branches[0].goldBalance : 0;
 
-  const inverseImpactSum = React.useMemo(() => {
-    return calculateInverseImpactSum(branchLedgers, ledgerBalances);
-  }, [branchLedgers, ledgerBalances]);
-
-  const totalCashInLocker = availableBranchFund - inverseImpactSum;
+  const totalCashInLocker = React.useMemo(() => {
+    return calculateCashInLocker(availableBranchFund, branchLedgers, ledgerBalances);
+  }, [availableBranchFund, branchLedgers, ledgerBalances]);
 
   const tabCounts = React.useMemo(() => {
     const src = filteredTransactions || [];
@@ -228,6 +229,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
           t.to.toLowerCase().includes(query) ||
           t.amount.toString().includes(query) ||
           t.type.toLowerCase().includes(query) ||
+          (t.notes || '').toLowerCase().includes(query) ||
           t.status.toLowerCase().includes(query) ||
           getTransactionTagNames(t).some(tag => tag.toLowerCase().includes(query))
         );
@@ -771,89 +773,75 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                   </tbody>
                 </table>
               ) : (
-                <table className={`${dataTable} min-w-[900px]`}>
+                <table className={`${dataTable} min-w-[860px]`}>
                   <thead>
                     <tr>
-                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('date')}>
+                      <th className={txnThSortable} onClick={() => handleSort('date')}>
                         <div className="flex items-center gap-1">
                           Date &amp; Time <SortIcon field="date" />
                         </div>
                       </th>
-                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('from')}>
+                      <th className={txnThSortable} onClick={() => handleSort('from')}>
                         <div className="flex items-center gap-1">
                           From <SortIcon field="from" />
                         </div>
                       </th>
-                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('to')}>
+                      <th className={txnThSortable} onClick={() => handleSort('to')}>
                         <div className="flex items-center gap-1">
                           To <SortIcon field="to" />
                         </div>
                       </th>
-                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('assetType')}>
-                        <div className="flex items-center gap-1">Asset <SortIcon field="assetType" /></div>
+                      <th className={txnThSortable} onClick={() => handleSort('notes')}>
+                        <div className="flex items-center gap-1">
+                          Notes <SortIcon field="notes" />
+                        </div>
                       </th>
                       {isLedgerTab ? (
                         <>
-                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">{ledgerTabColumns?.outLabel ?? 'Sent'}</th>
-                          <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">{ledgerTabColumns?.inLabel ?? 'Received'}</th>
+                          <th className={txnTh}>{ledgerTabColumns?.outLabel ?? 'Sent'}</th>
+                          <th className={txnTh}>{ledgerTabColumns?.inLabel ?? 'Received'}</th>
                         </>
                       ) : (
-                        <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('amount')}>
+                        <th className={txnThSortable} onClick={() => handleSort('amount')}>
                           <div className="flex items-center gap-1">
                             Amount <SortIcon field="amount" />
                           </div>
                         </th>
                       )}
-                      <th className="group cursor-pointer select-none px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-600 sm:px-5" onClick={() => handleSort('type')}>
-                        <div className="flex items-center gap-1">
-                          Type <SortIcon field="type" />
-                        </div>
-                      </th>
-                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
-                        Tags
-                      </th>
+                      <th className={txnTh}>Tags</th>
                       {isBranchView && branches.length === 1 && (
-                        <th className="px-3 pb-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
-                          Actions
-                        </th>
+                        <th className={`${txnTh} text-right`}>Actions</th>
                       )}
                     </tr>
                   </thead>
                   <tbody>
                     {filteredAndSortedTxns.map((t: Transaction) => (
                       <tr key={t.id} data-interactive-row>
-                        <td className="w-[120px] whitespace-normal border-y border-l border-black/5 bg-white px-3 py-3.5 text-[11px] leading-tight text-slate-600 first:rounded-l-2xl sm:px-4 sm:py-3">
+                        <td className="w-[108px] whitespace-normal border-y border-l border-black/5 bg-white px-2 py-2.5 text-[11px] leading-tight text-slate-600 first:rounded-l-2xl">
                           {formatDateTime(t.date).split(',').map((part, i) => (
                              <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
                           ))}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.from}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">{t.to}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-semibold sm:px-5 sm:py-4">
-                          {t.assetType === 'gold' ? (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">Gold</span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-500/10">AED</span>
-                          )}
+                        <td className={txnTdFromTo}>{t.from}</td>
+                        <td className={txnTdFromTo}>{t.to}</td>
+                        <td className={txnTd}>
+                          <TransactionNotesCell transaction={t} />
                         </td>
                         {isLedgerTab ? (
                           <>
-                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
+                            <td className={`${txnTd} font-mono text-sm font-bold text-slate-900`}>
                               {t.from === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </td>
-                            <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
+                            <td className={`${txnTd} font-mono text-sm font-bold text-slate-900`}>
                               {t.to === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </td>
                           </>
                         ) : (
-                          <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base text-slate-900">
+                          <td className={`${txnTd} font-mono text-sm font-bold text-slate-900`}>
                             {formatTxnAmount(t)}
                           </td>
                         )}
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                          <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
-                        </td>
-                        <td className={`border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4${!(isBranchView && branches.length === 1) ? ' last:rounded-r-2xl border-r' : ''}`}>
+                        <td className={`${txnTd}${!(isBranchView && branches.length === 1) ? ' last:rounded-r-2xl border-r' : ''}`}>
                           <div className="flex flex-wrap gap-1">
                             {getTransactionTagNames(t).length === 0 ? (
                               <span className="text-slate-300">—</span>
@@ -870,7 +858,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                           </div>
                         </td>
                         {isBranchView && branches.length === 1 && (
-                          <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-4 sm:py-3">
+                          <td className="border-y border-r border-black/5 bg-white px-2 py-2 last:rounded-r-2xl">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
@@ -968,7 +956,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                   const entityName = t.category === 'debit' ? t.from : t.category === 'credit' ? t.to : null;
                   return (
                     <div key={t.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] transition-all">
-                      {/* Top row: date + badges */}
+                      {/* Top row: date */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold text-slate-800">
@@ -978,10 +966,9 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                             {formatDateTime(t.date).split(',')[1]?.trim()}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                          <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
-                        </div>
                       </div>
+
+                      <TransactionNotesCell transaction={t} className="max-w-none" />
 
                       {/* Middle: entity route + amount */}
                       <div className="grid grid-cols-2 gap-3 border-y border-slate-50 py-3">
@@ -1018,11 +1005,8 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                         </div>
                       )}
 
-                      {/* Bottom: notes + actions */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-slate-400 truncate flex-1">
-                          {t.notes || <span className="italic">No notes</span>}
-                        </span>
+                      {/* Bottom: actions */}
+                      <div className="flex items-center justify-end gap-2">
                         {isEditable && (
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
@@ -1916,44 +1900,40 @@ function EntityTransactionsModal({
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="py-3 px-4">Date &amp; Time</th>
-                  <th className="py-3 px-4">From</th>
-                  <th className="py-3 px-4">To</th>
-                  <th className="py-3 px-4">Asset</th>
-                  <th className="py-3 px-4">Sent</th>
-                  <th className="py-3 px-4">Received</th>
-                  <th className="py-3 px-4">Type</th>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className={txnModalTh}>Date &amp; Time</th>
+                  <th className={txnModalTh}>From</th>
+                  <th className={txnModalTh}>To</th>
+                  <th className={txnModalTh}>Notes</th>
+                  <th className={txnModalTh}>Sent</th>
+                  <th className={txnModalTh}>Received</th>
+                  <th className={txnModalTh}>Tags</th>
                   {isBranchView && branches.length === 1 && (
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th className={`${txnModalTh} text-right`}>Actions</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-800">
                 {entityTxns.length === 0 ? (
                   <tr>
-                    <td colSpan={isBranchView && branches.length === 1 ? 8 : 7} className="py-8 text-center text-slate-400">
+                    <td colSpan={isBranchView && branches.length === 1 ? 9 : 8} className="py-8 text-center text-slate-400">
                       No transactions found for this entity.
                     </td>
                   </tr>
                 ) : (
                   entityTxns.map((t) => (
                     <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3.5 px-4 text-[11px] leading-tight text-slate-600">
+                      <td className={`${txnModalTd} text-[11px] leading-tight text-slate-600`}>
                         {formatDateTime(t.date).split(',').map((part, i) => (
                            <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
                         ))}
                       </td>
-                      <td className="py-3.5 px-4 font-semibold">{t.from}</td>
-                      <td className="py-3.5 px-4 font-semibold">{t.to}</td>
-                      <td className="py-3.5 px-4 text-[11px] font-semibold">
-                        {t.assetType === 'gold' ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">Gold</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-500/10">AED</span>
-                        )}
+                      <td className={txnModalFromTo}>{t.from}</td>
+                      <td className={txnModalFromTo}>{t.to}</td>
+                      <td className={txnModalTd}>
+                        <TransactionNotesCell transaction={t} />
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                      <td className={`${txnModalTd} font-mono font-bold text-slate-900`}>
                         {t.to === entity.name ? (
                           <div className="flex flex-col gap-1">
                             <span>{formatTxnAmount(t)}</span>
@@ -1970,7 +1950,7 @@ function EntityTransactionsModal({
                           <span className="text-slate-300">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                      <td className={`${txnModalTd} font-mono font-bold text-slate-900`}>
                         {t.from === entity.name ? (
                           <div className="flex flex-col gap-1">
                             <span>{formatTxnAmount(t)}</span>
@@ -1987,11 +1967,11 @@ function EntityTransactionsModal({
                           <span className="text-slate-300">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
+                      <td className={txnModalTd}>
+                        <TransactionTagsCell transaction={t} />
                       </td>
                       {isBranchView && branches.length === 1 && (
-                        <td className="py-3.5 px-4 text-right">
+                        <td className={`${txnModalTd} text-right`}>
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
@@ -2051,15 +2031,16 @@ function EntityTransactionsModal({
                           {formatDateTime(t.date).split(',')[1]?.trim()}
                         </span>
                       </div>
-                      <div className="flex flex-col items-end gap-1.5">
-                        <span className={badgeClass(t.type)}>{t.type.replace('_', ' ').toUpperCase()}</span>
-                        {t.assetType === 'gold' ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">Gold</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-500/10">AED</span>
-                        )}
-                      </div>
                     </div>
+
+                    <TransactionNotesCell transaction={t} className="max-w-none" />
+
+                    {getTransactionTagNames(t).length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tags</span>
+                        <TransactionTagsCell transaction={t} />
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-3 border-y border-slate-50 py-3">
                       <div className="flex flex-col gap-0.5">
@@ -2101,10 +2082,7 @@ function EntityTransactionsModal({
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-[11px] text-slate-400 truncate flex-1">
-                        {t.notes || <span className="italic">No notes</span>}
-                      </span>
+                    <div className="flex justify-end items-center text-xs">
                       {isEditable && (
                         <div className="flex gap-1.5 shrink-0">
                           <button

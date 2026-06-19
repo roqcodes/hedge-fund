@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { Branch, Transaction } from '@/types';
-import { filterBranchLedgers, calculateLedgerBalances, calculateInverseImpactSum } from '@/lib/ledgers';
+import { filterBranchLedgers, calculateLedgerBalances, calculateCashInLocker } from '@/lib/ledgers';
 
 export function useBranchFundKpis(branch?: Branch) {
   const { transactions, ledgers } = useApp();
@@ -49,11 +49,9 @@ export function useBranchFundKpis(branch?: Branch) {
 
   const branchGoldVolume = branch?.goldBalance ?? 0;
 
-  const inverseImpactSum = useMemo(() => {
-    return calculateInverseImpactSum(branchLedgers, ledgerBalances);
-  }, [branchLedgers, ledgerBalances]);
-
-  const totalCashInLocker = availableBranchFund - inverseImpactSum;
+  const totalCashInLocker = useMemo(() => {
+    return calculateCashInLocker(availableBranchFund, branchLedgers, ledgerBalances);
+  }, [availableBranchFund, branchLedgers, ledgerBalances]);
 
   const totalVolume = filteredTransactions.reduce((acc: number, t: Transaction) => acc + t.amount, 0);
   const transferCount = filteredTransactions.filter((t: Transaction) => t.type === 'transfer').length;

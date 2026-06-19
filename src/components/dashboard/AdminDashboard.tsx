@@ -24,7 +24,7 @@ import {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { branches, transactions, getTotalCapital, getNetPL, selectBranch, sidebarOpen, dateRange, setDateRange, user, deals } = useApp();
+  const { branches, transactions, getTotalCapital, getNetPL, selectBranch, sidebarCollapsed, dateRange, setDateRange, user, deals } = useApp();
   const isBranchUser = user?.role === 'branch_manager' || branches.length === 1;
 
   const dateOptions = [
@@ -450,7 +450,7 @@ export default function AdminDashboard() {
       }, 350);
       return () => clearTimeout(timer);
     }
-  }, [sidebarOpen, isLoading, drawPLChart, drawDonut, drawRevExpChart, drawIncomePieChart]);
+  }, [sidebarCollapsed, isLoading, drawPLChart, drawDonut, drawRevExpChart, drawIncomePieChart]);
 
   const handleBranchClick = (branchId: string) => {
     selectBranch(branchId);

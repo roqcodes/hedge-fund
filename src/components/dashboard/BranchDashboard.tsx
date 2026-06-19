@@ -7,6 +7,8 @@ import { useBranchFundKpis } from '@/hooks/useBranchFundKpis';
 import { formatAED, formatAEDStr, formatDateTime } from '@/data/mockData';
 import Card from '@/components/ui/Card';
 import BranchFundKpiSection from '@/components/funds/BranchFundKpiSection';
+import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
+import { txnTd, txnTdFromTo, txnTh } from '@/lib/transactionTableStyles';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { badgeClass } from '@/lib/badgeClass';
 import {
@@ -132,11 +134,11 @@ export default function BranchDashboard() {
             <table className={dataTable}>
               <thead>
                 <tr>
-                  <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:px-4">Date</th>
-                  <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:px-4">From</th>
-                  <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:px-4">To</th>
-                  <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:px-4">Amount</th>
-                  <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:px-4">Type</th>
+                  <th className={txnTh}>Date</th>
+                  <th className={txnTh}>From</th>
+                  <th className={txnTh}>To</th>
+                  <th className={txnTh}>Notes</th>
+                  <th className={txnTh}>Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,20 +151,16 @@ export default function BranchDashboard() {
                 ) : (
                   recentTransactions.map(t => (
                     <tr key={t.id} data-interactive-row>
-                      <td className="border-y border-l border-black/5 bg-white px-3 py-2.5 text-[11px] text-slate-600 first:rounded-xl sm:px-4 sm:py-3">
+                      <td className="border-y border-l border-black/5 bg-white px-2 py-2 text-[11px] text-slate-600 first:rounded-xl">
                         {formatDateTime(t.date).split(',')[0]}
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-2.5 text-xs font-semibold text-slate-900 sm:px-4 sm:py-3">
-                        {t.from}
+                      <td className={txnTdFromTo}>{t.from}</td>
+                      <td className={txnTdFromTo}>{t.to}</td>
+                      <td className={txnTd}>
+                        <TransactionNotesCell transaction={t} />
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-2.5 text-xs font-semibold text-slate-900 sm:px-4 sm:py-3">
-                        {t.to}
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-2.5 font-mono text-xs font-bold text-slate-900 sm:px-4 sm:py-3">
+                      <td className={`${txnTd} border-r font-mono text-sm font-bold text-slate-900 last:rounded-xl`}>
                         {t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAEDStr(t.amount)}
-                      </td>
-                      <td className="border-y border-r border-black/5 bg-white px-3 py-2.5 last:rounded-xl sm:px-4 sm:py-3">
-                        <span className={badgeClass(t.type)}>{t.type.toUpperCase()}</span>
                       </td>
                     </tr>
                   ))

@@ -7,6 +7,8 @@ import { useApp } from '@/context/AppContext';
 import { formatAED, formatDateTime } from '@/data/mockData';
 import { Branch, Transaction, Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
+import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
+import { txnTd, txnTdFromTo, txnTh } from '@/lib/transactionTableStyles';
 import { fetchCognitoUsersAction, createCognitoUserAction, updateCognitoUserAttributesAction, CognitoUser } from '@/app/actions/cognitoActions';
 import { validatePassword, PasswordRequirements } from '@/components/users/UserModals';
 import {
@@ -252,26 +254,26 @@ export default function BranchList() {
                 <table className={`${dataTable} hidden md:table`}>
                   <thead>
                     <tr>
-                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Date</th>
-                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">From</th>
-                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">To</th>
-                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Amount</th>
-                      <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Type</th>
+                      <th className={txnTh}>Date</th>
+                      <th className={txnTh}>From</th>
+                      <th className={txnTh}>To</th>
+                      <th className={txnTh}>Notes</th>
+                      <th className={txnTh}>Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {branchTxns.map((t: Transaction) => (
                       <tr key={t.id} data-interactive-row>
-                        <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
+                        <td className="border-y border-l border-black/5 bg-white px-2 py-2.5 text-xs first:rounded-l-2xl sm:text-sm">
                           {formatDateTime(t.date)}
                         </td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">{t.from}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">{t.to}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 font-mono text-sm font-bold sm:px-5 sm:py-4 sm:text-base">
-                          {formatAED(t.amount)}
+                        <td className={`${txnTdFromTo} first:rounded-none`}>{t.from}</td>
+                        <td className={txnTdFromTo}>{t.to}</td>
+                        <td className={txnTd}>
+                          <TransactionNotesCell transaction={t} />
                         </td>
-                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4">
-                          <span className={badgeClass(t.type)}>{t.type}</span>
+                        <td className={`${txnTd} border-r font-mono text-sm font-bold last:rounded-r-2xl sm:text-base`}>
+                          {formatAED(t.amount)}
                         </td>
                       </tr>
                     ))}
@@ -285,8 +287,8 @@ export default function BranchList() {
                     <div key={t.id} className="flex flex-col gap-2 rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-500">{formatDateTime(t.date)}</span>
-                        <span className={badgeClass(t.type)}>{t.type}</span>
                       </div>
+                      <TransactionNotesCell transaction={t} className="max-w-none" />
                       <div className="flex items-center justify-between mt-1">
                         <div className="flex flex-col">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Route</span>

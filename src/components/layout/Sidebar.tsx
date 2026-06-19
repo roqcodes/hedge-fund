@@ -27,7 +27,7 @@ const navItems: {
   ];
 
 export default function Sidebar() {
-  const { sidebarOpen, toggleSidebar, user, branches, logout, currentSlug } = useApp();
+  const { sidebarOpen, sidebarCollapsed, toggleSidebar, toggleSidebarCollapsed, user, branches, logout, currentSlug } = useApp();
   const pathname = usePathname();
 
   const isBranchUser = user?.role === 'branch_manager';
@@ -52,13 +52,16 @@ export default function Sidebar() {
         aria-hidden
       />
       <aside
-        data-collapsed={sidebarOpen ? 'true' : 'false'}
-        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:-translate-x-[105%] lg:translate-x-0 ${sidebarOpen ? 'max-lg:translate-x-0 lg:w-[80px]' : 'lg:w-[240px]'
-          }`}
+        data-collapsed={sidebarCollapsed ? 'true' : 'false'}
+        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:translate-x-0 ${sidebarOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-[105%]'} ${sidebarCollapsed ? 'lg:w-[80px]' : 'lg:w-[240px]'}`}
       >
-        <div className="flex flex-col items-center gap-2.5 px-4 py-8 sm:px-5 lg:data-[collapsed=true]:py-6">
-          <div className="flex h-14 shrink-0 items-center justify-center transition-transform duration-300 motion-safe:hover:scale-105 sm:h-16">
-            <img src={isBranchUser && branch?.logo_url ? branch.logo_url : "/logo.png"} alt="Branch Logo" className="h-full w-auto max-w-[160px] object-contain" />
+        <div className="flex flex-col items-center gap-2.5 px-4 py-8 sm:px-5 lg:data-[collapsed=true]:px-2 lg:data-[collapsed=true]:py-6">
+          <div className="flex h-14 shrink-0 items-center justify-center transition-transform duration-300 motion-safe:hover:scale-105 sm:h-16 lg:data-[collapsed=true]:h-10">
+            <img
+              src={isBranchUser && branch?.logo_url ? branch.logo_url : '/logo.png'}
+              alt="Branch Logo"
+              className="h-full w-auto max-w-[160px] object-contain lg:data-[collapsed=true]:max-w-[40px]"
+            />
           </div>
           <div className="min-w-0 text-center lg:data-[collapsed=true]:hidden">
             <h1 className="text-xl font-black tracking-[0.05em] text-slate-900 sm:text-2xl uppercase">
@@ -103,6 +106,7 @@ export default function Sidebar() {
                   key={item.id}
                   href={itemHref}
                   id={`nav-${item.id}`}
+                  title={item.label}
                   onClick={closeMobile}
                   className={`relative flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-medium no-underline transition-[background-color,color,transform,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:active:scale-[0.99] lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 sm:text-sm ${isActive
                     ? 'border-l-[3px] border-accent bg-gradient-to-r from-accent/[0.08] to-transparent font-semibold text-accent lg:data-[collapsed=true]:border-l-0 lg:data-[collapsed=true]:bg-accent/12'
@@ -150,6 +154,33 @@ export default function Sidebar() {
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
             </svg>
             <span className="truncate">Sign Out</span>
+          </button>
+        </div>
+
+        {/* Desktop collapse toggle */}
+        <div className="mt-auto hidden border-t border-slate-100 p-2 lg:block">
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 ${sidebarCollapsed ? 'px-0' : ''}`}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <svg
+              className={`size-4 shrink-0 transition-transform duration-300 ${sidebarCollapsed ? 'rotate-180' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            <span className={sidebarCollapsed ? 'sr-only' : 'truncate'}>
+              {sidebarCollapsed ? 'Expand' : 'Collapse'}
+            </span>
           </button>
         </div>
 

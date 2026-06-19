@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   User,
@@ -56,6 +56,8 @@ import {
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
 
+const SIDEBAR_COLLAPSED_KEY = 'hedge_sidebar_collapsed';
+
 interface AppState {
   user: User | null;
   isAuthenticated: boolean;
@@ -68,6 +70,7 @@ interface AppState {
   notifications: Notification[];
   toasts: Toast[];
   sidebarOpen: boolean;
+  sidebarCollapsed: boolean;
   selectedBranchId: string | null;
   selectedInvestorId: string | null;
   investors: Investor[];
@@ -120,6 +123,7 @@ interface AppContextType extends AppState {
   addExpense: (exp: Omit<Expense, 'id'>) => void;
   showToast: (message: string, type?: 'success' | 'error') => void;
   toggleSidebar: () => void;
+  toggleSidebarCollapsed: () => void;
   selectBranch: (id: string | null) => void;
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
@@ -178,6 +182,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notifications: [],
     toasts: [],
     sidebarOpen: false,
+    sidebarCollapsed: false,
     selectedBranchId: null,
     selectedInvestorId: null,
     investors: [],
@@ -331,6 +336,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const toggleSidebar = useCallback(() => {
     setState(s => ({ ...s, sidebarOpen: !s.sidebarOpen }));
+  }, []);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setState(s => {
+      const next = !s.sidebarCollapsed;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+        /* ignore storage errors */
+      }
+      return { ...s, sidebarCollapsed: next };
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      if (stored === 'true') {
+        setState(s => ({ ...s, sidebarCollapsed: true }));
+      }
+    } catch {
+      /* ignore storage errors */
+    }
   }, []);
 
   const selectBranch = useCallback((id: string | null) => {
@@ -1222,12 +1250,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isBranchView,
       currentSlug,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
-      addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor,
+      addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
 
   return (
     <AppContext.Provider value={contextValue}>

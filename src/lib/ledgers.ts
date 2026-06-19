@@ -77,16 +77,19 @@ export function calculateLedgerBalances(ledgers: Ledger[], transactions: Transac
   return balances;
 }
 
-export function calculateInverseImpactSum(
+/**
+ * Physical cash in locker = Branch Fund + sum of adjusting ledger balances.
+ * Matches spreadsheet: Total Cash + Temporary Credit + Customer Deposits (+ other non-neutral ledgers).
+ */
+export function calculateCashInLocker(
+  availableBranchFund: number,
   branchLedgers: Ledger[],
   ledgerBalances: Record<string, number>,
 ): number {
-  return branchLedgers.reduce((acc, l) => {
-    const bal = ledgerBalances[l.id] || 0;
-    if (l.impact === 'positive') return acc - bal;
-    if (l.impact === 'negative') return acc + bal;
-    return acc;
-  }, 0);
+  const ledgerSum = branchLedgers
+    .filter(l => l.impact !== 'neutral')
+    .reduce((sum, l) => sum + (ledgerBalances[l.id] || 0), 0);
+  return availableBranchFund + ledgerSum;
 }
 
 export type LedgerTabColumns = {
