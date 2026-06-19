@@ -1463,6 +1463,23 @@ export async function dbAddEntityAction(entity: Entity): Promise<DbActionResult<
 export async function dbUpdateEntityAction(entity: Entity): Promise<DbActionResult<Entity>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   try {
+    const existing = await query('SELECT name FROM entities WHERE id = $1', [entity.id]);
+    if (!existing.rows.length) return { success: false, error: 'Entity not found.' };
+
+    const oldName: string = existing.rows[0].name;
+    if (entity.name.trim() !== oldName) {
+      const txRes = await query(
+        'SELECT 1 FROM transactions WHERE from_entity = $1 OR to_entity = $1 OR type = $1 LIMIT 1',
+        [oldName],
+      );
+      if (txRes.rowCount && txRes.rowCount > 0) {
+        return {
+          success: false,
+          error: 'Name cannot be changed because this entity has at least one transaction.',
+        };
+      }
+    }
+
     await query(
       `UPDATE entities SET name = $1, phone = $2, branch_id = $3 WHERE id = $4`,
       [entity.name, entity.phone || null, entity.branchId || null, entity.id]
@@ -1838,11 +1855,26 @@ export async function dbAddLedgerAction(ledger: import('@/types').Ledger): Promi
 
 export async function dbUpdateLedgerAction(ledger: import('@/types').Ledger): Promise<DbActionResult<import('@/types').Ledger>> {
   try {
-    const existing = await query('SELECT branch_id FROM ledgers WHERE id = $1', [ledger.id]);
+    const existing = await query('SELECT branch_id, name FROM ledgers WHERE id = $1', [ledger.id]);
     if (!existing.rows.length) return { success: false, error: 'Ledger not found.' };
     if (!existing.rows[0].branch_id) {
       return { success: false, error: 'Global ledgers are system-managed and cannot be modified from the app.' };
     }
+
+    const oldName: string = existing.rows[0].name;
+    if (ledger.name.trim() !== oldName) {
+      const txRes = await query(
+        'SELECT 1 FROM transactions WHERE from_entity = $1 OR to_entity = $1 OR type = $1 LIMIT 1',
+        [oldName],
+      );
+      if (txRes.rowCount && txRes.rowCount > 0) {
+        return {
+          success: false,
+          error: 'Name cannot be changed because this ledger has at least one transaction.',
+        };
+      }
+    }
+
     await query(
       'UPDATE ledgers SET name = $1, impact = $2, is_kpi = $3, sort_order = $4 WHERE id = $5',
       [ledger.name, ledger.impact, ledger.isKpi, ledger.sortOrder || 0, ledger.id]

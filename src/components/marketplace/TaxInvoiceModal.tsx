@@ -6,6 +6,7 @@ import { btnPrimary, btnSecondary, formInput, dataTable, tableWrap } from '@/lib
 import AddStockModal from './AddStockModal';
 
 import { saveTaxInvoice } from '@/app/actions/marketplaceActions';
+import { useApp } from '@/context/AppContext';
 
 interface TaxInvoiceModalProps {
   slug: string;
@@ -23,6 +24,7 @@ const InputField = ({ label, children }: { label: string, children: React.ReactN
 );
 
 export default function TaxInvoiceModal({ slug, open, onClose, onSave, availableStocks = [] }: TaxInvoiceModalProps) {
+  const { user } = useApp();
   const [activeTab, setActiveTab] = useState<'stock' | 'other' | 'doc'>('stock');
   const [isAddStockOpen, setIsAddStockOpen] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
@@ -37,7 +39,6 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
   const [orderType, setOrderType] = useState('Fixed');
   const [refNo, setRefNo] = useState('');
   const [refDate, setRefDate] = useState(new Date().toISOString().split('T')[0]);
-  const [fixingType, setFixingType] = useState('Standard');
   
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerDetails, setCustomerDetails] = useState('');
@@ -51,6 +52,12 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
   const [hedgeRate, setHedgeRate] = useState('0.00');
   const [hedgePremium, setHedgePremium] = useState('0.00');
   const [fheDocNo, setFheDocNo] = useState('');
+
+  useEffect(() => {
+    if (open && user?.name) {
+      setSalesMan(user.name);
+    }
+  }, [open, user?.name]);
 
   // Auto-calculate Hedge Details when items change
   useEffect(() => {
@@ -183,7 +190,7 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
     const invoiceData = {
       doc_no: docNo.trim(), doc_date: docDate, currency, sales_man: salesMan, 
       department, vat_type: vatType, order_type: orderType, ref_no: refNo, ref_date: refDate,
-      customer_details: customerDetails, fixing_type: fixingType,
+      customer_details: customerDetails, fixing_type: 'Standard',
       terms, due_date: dueDate, decl_no: declNo, remarks,
       postFixingHedge, hedgeRate, hedgePremium, fheDocNo,
       items: effectiveItems.map(item => ({
@@ -293,12 +300,6 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
                 </InputField>
                 <InputField label="Ref Date">
                   <input type="date" value={refDate} onChange={(e) => setRefDate(e.target.value)} className={`${formInput} w-full`} />
-                </InputField>
-                <InputField label="Fixing Type">
-                  <select value={fixingType} onChange={(e) => setFixingType(e.target.value)} className={`${formInput} w-full`}>
-                    <option value="Standard">Standard</option>
-                    <option value="Premium">Premium</option>
-                  </select>
                 </InputField>
                 <div className="col-span-2 md:col-span-2">
                   <InputField label="Department">

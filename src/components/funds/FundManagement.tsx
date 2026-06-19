@@ -32,6 +32,7 @@ import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { getTransactionTagNames, transactionHasAnyTag } from '@/lib/transactionTags';
+import { accountNameUsedInTransactions } from '@/lib/accountTransactions';
 import {
   filterBranchLedgers,
   calculateLedgerBalances,
@@ -1380,6 +1381,7 @@ export default function FundManagement() {
       {editingEntity && (
         <EditEntityModal
           entity={editingEntity}
+          nameLocked={accountNameUsedInTransactions(editingEntity.name, transactions)}
           isSaving={isSavingEntity}
           onClose={() => setEditingEntity(null)}
           onSave={async (updated) => {
@@ -1466,15 +1468,20 @@ export default function FundManagement() {
               <p className="text-sm text-slate-500 italic">No ledgers created yet.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {branchLedgers.map((l, index) => (
+                {branchLedgers.map((l, index) => {
+                  const ledgerNameLocked = accountNameUsedInTransactions(l.name, transactions);
+                  return (
                   <div key={l.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
                     {editingLedger?.id === l.id ? (
                       <div className="flex items-center gap-2 w-full">
                         <input
                           type="text"
-                          className={`${formInput} flex-1 text-sm`}
+                          className={`${formInput} flex-1 text-sm${ledgerNameLocked ? ' bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
                           value={editingLedger.name}
                           onChange={e => setEditingLedger({ ...editingLedger, name: e.target.value })}
+                          disabled={ledgerNameLocked}
+                          readOnly={ledgerNameLocked}
+                          title={ledgerNameLocked ? 'Name is locked — this ledger has transactions' : undefined}
                         />
                         <select
                           className={`${formSelect} w-32 text-sm`}
@@ -1497,6 +1504,10 @@ export default function FundManagement() {
                           type="button"
                           className="px-2 py-1 text-xs font-semibold text-white bg-slate-900 rounded hover:bg-slate-800"
                           onClick={async () => {
+                            if (ledgerNameLocked && editingLedger.name.trim() !== l.name) {
+                              showToast('Name cannot be changed because this ledger has at least one transaction.', 'error');
+                              return;
+                            }
                             await updateLedger(editingLedger);
                             setEditingLedger(null);
                           }}
@@ -1593,7 +1604,8 @@ export default function FundManagement() {
                       </>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1605,11 +1617,13 @@ export default function FundManagement() {
 
 function EditEntityModal({
   entity,
+  nameLocked = false,
   isSaving,
   onClose,
   onSave,
 }: {
   entity: import('@/types').Entity;
+  nameLocked?: boolean;
   isSaving: boolean;
   onClose: () => void;
   onSave: (updated: import('@/types').Entity) => void;
@@ -1622,6 +1636,10 @@ function EditEntityModal({
     setError('');
     if (!name.trim()) {
       setError('Name is required.');
+      return;
+    }
+    if (nameLocked && name.trim() !== entity.name.trim()) {
+      setError('Name cannot be changed because this entity has at least one transaction.');
       return;
     }
     onSave({
@@ -1653,11 +1671,16 @@ function EditEntityModal({
             <label className={formLabel}>Name</label>
             <input
               type="text"
-              className={formInput}
+              className={`${formInput}${nameLocked ? ' bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
               value={name}
               onChange={e => setName(e.target.value)}
+              disabled={nameLocked}
+              readOnly={nameLocked}
               placeholder="e.g. John Doe"
             />
+            {nameLocked ? (
+              <p className={formHint}>Name is locked — this entity has transactions.</p>
+            ) : null}
           </div>
           <div className={formGroup}>
             <label className={formLabel}>Phone Number (Optional)</label>
