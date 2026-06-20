@@ -18,6 +18,7 @@ import { getDateFilterLabel } from '@/lib/dateFilterRange';
 import { restoreTransactionsBackupAction } from '@/app/actions/dbActions';
 import { generateId } from '@/data/mockData';
 import { formatDateTime } from '@/data/mockData';
+import { useApp } from '@/context/AppContext';
 
 type Props = {
   open: boolean;
@@ -52,6 +53,8 @@ export default function TransactionsBackupModal({
   branchId,
   branchFilter,
 }: Props) {
+  const { currentSlug } = useApp();
+  const sessionBranchSlug = currentSlug === 'superadmin' ? undefined : currentSlug;
   const [history, setHistory] = useState<BackupHistoryEntry[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -160,7 +163,7 @@ export default function TransactionsBackupModal({
 
     setIsRestoring(true);
     try {
-      const res = await restoreTransactionsBackupAction(restoreFile);
+      const res = await restoreTransactionsBackupAction(restoreFile, sessionBranchSlug);
       if (!res.success) {
         showToast(res.error || 'Restore failed.', 'error');
         return;

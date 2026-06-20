@@ -1909,10 +1909,11 @@ export async function dbDeleteLedgerAction(id: string, name: string): Promise<Db
 
 export async function restoreTransactionsBackupAction(
   backup: TransactionsPageBackup,
+  branchSlug?: string,
 ): Promise<DbActionResult<{ restored: Record<string, number> }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
 
-  const userRes = await getCurrentUserAction();
+  const userRes = await getCurrentUserAction(branchSlug);
   if (!userRes.success || !userRes.data) {
     return { success: false, error: 'You must be signed in to restore a backup.' };
   }
