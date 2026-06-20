@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { Branch, Transaction } from '@/types';
-import { filterBranchLedgers, calculateLedgerBalances, calculateCashInLocker } from '@/lib/ledgers';
+import { filterBranchLedgers, calculateLedgerBalances, calculateCashInLocker, calculateAvailableBranchFund } from '@/lib/ledgers';
 
 export function useBranchFundKpis(branch?: Branch) {
   const { transactions, ledgers } = useApp();
@@ -33,19 +33,8 @@ export function useBranchFundKpis(branch?: Branch) {
 
   const availableBranchFund = useMemo(() => {
     if (!branch) return 0;
-    let base = branch.openingBalance || 0;
-    const bName = branch.name;
-    const ledgersSet = new Set(branchLedgers.map(l => l.name));
-
-    filteredTransactions.forEach((t: Transaction) => {
-      if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') return;
-      const isLedgerTxn = ledgersSet.has(t.from) || ledgersSet.has(t.to) || ledgersSet.has(t.type);
-      if (isLedgerTxn) return;
-      if (t.to === bName) base += t.amount;
-      if (t.from === bName) base -= t.amount;
-    });
-    return base;
-  }, [branch, filteredTransactions, branchLedgers]);
+    return calculateAvailableBranchFund(branch.name, branch.openingBalance || 0, filteredTransactions);
+  }, [branch, filteredTransactions]);
 
   const branchGoldVolume = branch?.goldBalance ?? 0;
 

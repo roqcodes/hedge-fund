@@ -49,8 +49,9 @@ export function ledgerScopeLabel(ledger: Pick<Ledger, 'branchId'>): 'Global' | '
 export const GLOBAL_LEDGER_MUTATION_ERROR = 'Global ledgers are system-managed and cannot be changed from the app.';
 
 /**
- * Temperory Credits: money lent out (from TC) increases balance — a receivable owed back.
- * Customer Accounts & other ledgers: standard to − from.
+ * Ledger balance = inflows − outflows (to − from).
+ * Temperory Credits: negative balance = total lent out (not in locker).
+ *   Lent out: Temporary Credits → Entity. Payback: Entity → Temporary Credits.
  */
 export function calculateLedgerBalance(ledger: Pick<Ledger, 'name'>, transactions: Transaction[]): number {
   const toSum = transactions
@@ -63,9 +64,6 @@ export function calculateLedgerBalance(ledger: Pick<Ledger, 'name'>, transaction
     .filter(t => t.type === ledger.name && t.from !== ledger.name && t.to !== ledger.name)
     .reduce((sum, t) => sum + t.amount, 0);
 
-  if (isTemporaryCreditsLedger(ledger)) {
-    return fromSum - toSum + tagSum;
-  }
   return toSum - fromSum + tagSum;
 }
 
@@ -75,6 +73,26 @@ export function calculateLedgerBalances(ledgers: Ledger[], transactions: Transac
     balances[ledger.id] = calculateLedgerBalance(ledger, transactions);
   }
   return balances;
+}
+
+/**
+ * Branch Fund = opening capital + net flow through the branch account name.
+ * Counts every completed currency txn where the branch is from or to — including
+ * transfers to/from ledgers. Neutral ledgers are excluded from Cash In Locker but
+ * money leaving Branch Fund still reduces this balance.
+ */
+export function calculateAvailableBranchFund(
+  branchName: string,
+  openingBalance: number,
+  transactions: Transaction[],
+): number {
+  let base = openingBalance;
+  for (const t of transactions) {
+    if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') continue;
+    if (t.to === branchName) base += t.amount;
+    if (t.from === branchName) base -= t.amount;
+  }
+  return base;
 }
 
 /**
@@ -103,6 +121,7 @@ export function getLedgerTabColumns(ledgerName: string): LedgerTabColumns {
     return {
       outLabel: 'Lent Out',
       inLabel: 'Recovered',
+      hint: 'Lent out: Temporary Credits → Entity. Payback: Entity → Temporary Credits. Negative balance = total outstanding credit.',
     };
   }
   if (isCustomerAccountsLedger(ledgerName)) {
@@ -115,9 +134,27 @@ export function getLedgerTabColumns(ledgerName: string): LedgerTabColumns {
   return { outLabel: 'Sent', inLabel: 'Received' };
 }
 
+/** Whether a transaction amount belongs in the ledger tab "out" column (Lent Out / Sent / Withdrawn). */
+export function isLedgerTabOutAmount(t: Transaction, ledgerName: string): boolean {
+  return t.from === ledgerName;
+}
+
+/** Whether a transaction amount belongs in the ledger tab "in" column (Recovered / Received / Deposited). */
+export function isLedgerTabInAmount(t: Transaction, ledgerName: string): boolean {
+  return t.to === ledgerName;
+}
+
+export function isEntitySentAmount(t: Transaction, entityName: string): boolean {
+  return t.from === entityName;
+}
+
+export function isEntityReceivedAmount(t: Transaction, entityName: string): boolean {
+  return t.to === entityName;
+}
+
 export function getLedgerKpiSubValue(ledger: Ledger): string {
   if (isTemporaryCreditsLedger(ledger)) {
-    return 'Receivable — owed back to us';
+    return 'Lent out — not in locker (negative = outstanding credit)';
   }
   if (isCustomerAccountsLedger(ledger)) {
     return 'Customer deposits held';
@@ -136,7 +173,7 @@ export function getEntityLedgerHint(t: Transaction, entityName: string): EntityL
     return { label: 'Temp credit lent · due back to branch', tone: 'warning' };
   }
   if (t.from === entityName && isTemporaryCreditsLedger(t.to)) {
-    return { label: 'Temp credit repayment', tone: 'success' };
+    return { label: 'Temp credit payback', tone: 'success' };
   }
   if (isCustomerAccountsLedger(t.from) && t.to === entityName) {
     return { label: 'Customer withdrawal', tone: 'info' };

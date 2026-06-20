@@ -41,9 +41,14 @@ import {
   filterBranchLedgers,
   calculateLedgerBalances,
   calculateCashInLocker,
+  calculateAvailableBranchFund,
   getLedgerKpiSubValue,
   getLedgerTabColumns,
   getEntityLedgerHint,
+  isLedgerTabOutAmount,
+  isLedgerTabInAmount,
+  isEntitySentAmount,
+  isEntityReceivedAmount,
   entityLedgerHintClass,
   isGlobalLedger,
   ledgerScopeLabel,
@@ -139,19 +144,13 @@ export default function FundManagement() {
   }, [filteredTransactions, branchLedgers]);
 
   const availableBranchFund = React.useMemo(() => {
-    let base = branches.length === 1 ? branches[0].openingBalance || 0 : 0;
-    const bName = branches.length === 1 ? branches[0].name : '';
-    const ledgersSet = new Set(branchLedgers.map(l => l.name));
-    
-    filteredTransactions.forEach((t: Transaction) => {
-      if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') return;
-      const isLedgerTxn = ledgersSet.has(t.from) || ledgersSet.has(t.to) || ledgersSet.has(t.type);
-      if (isLedgerTxn) return;
-      if (t.to === bName) base += t.amount;
-      if (t.from === bName) base -= t.amount;
-    });
-    return base;
-  }, [branches, filteredTransactions, branchLedgers]);
+    if (branches.length !== 1) return 0;
+    return calculateAvailableBranchFund(
+      branches[0].name,
+      branches[0].openingBalance || 0,
+      filteredTransactions,
+    );
+  }, [branches, filteredTransactions]);
 
   const branchGoldVolume = branches.length === 1 ? branches[0].goldBalance : 0;
 
@@ -825,10 +824,10 @@ export default function FundManagement() {
                         {isLedgerTab ? (
                           <>
                             <td className={`${txnTd} font-mono text-sm font-bold text-slate-900`}>
-                              {t.from === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                              {isLedgerTabOutAmount(t, activeTab) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </td>
                             <td className={`${txnTd} font-mono text-sm font-bold text-slate-900`}>
-                              {t.to === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                              {isLedgerTabInAmount(t, activeTab) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </td>
                           </>
                         ) : (
@@ -988,13 +987,13 @@ export default function FundManagement() {
                           <div className="flex flex-col gap-0.5">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{ledgerTabColumns?.outLabel ?? 'Sent'}</span>
                             <span className="font-mono text-sm font-bold text-slate-900">
-                              {t.from === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                              {isLedgerTabOutAmount(t, activeTab) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </span>
                           </div>
                           <div className="flex flex-col gap-0.5 items-end">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{ledgerTabColumns?.inLabel ?? 'Received'}</span>
                             <span className="font-mono text-sm font-bold text-slate-900">
-                              {t.to === activeTab ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                              {isLedgerTabInAmount(t, activeTab) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                             </span>
                           </div>
                         </div>
@@ -1945,7 +1944,7 @@ function EntityTransactionsModal({
                         <TransactionNotesCell transaction={t} />
                       </td>
                       <td className={`${txnModalTd} font-mono font-bold text-slate-900`}>
-                        {t.to === entity.name ? (
+                        {isEntitySentAmount(t, entity.name) ? (
                           <div className="flex flex-col gap-1">
                             <span>{formatTxnAmount(t)}</span>
                             {(() => {
@@ -1962,7 +1961,7 @@ function EntityTransactionsModal({
                         )}
                       </td>
                       <td className={`${txnModalTd} font-mono font-bold text-slate-900`}>
-                        {t.from === entity.name ? (
+                        {isEntityReceivedAmount(t, entity.name) ? (
                           <div className="flex flex-col gap-1">
                             <span>{formatTxnAmount(t)}</span>
                             {(() => {
@@ -2066,9 +2065,9 @@ function EntityTransactionsModal({
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sent</span>
                         <span className="font-mono text-xs font-bold text-slate-900">
-                          {t.to === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                          {isEntitySentAmount(t, entity.name) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                         </span>
-                        {t.to === entity.name && (() => {
+                        {isEntitySentAmount(t, entity.name) && (() => {
                           const hint = getEntityLedgerHint(t, entity.name);
                           return hint ? (
                             <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
@@ -2080,9 +2079,9 @@ function EntityTransactionsModal({
                       <div className="flex flex-col gap-0.5 items-end">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Received</span>
                         <span className="font-mono text-xs font-bold text-slate-900">
-                          {t.from === entity.name ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
+                          {isEntityReceivedAmount(t, entity.name) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
                         </span>
-                        {t.from === entity.name && (() => {
+                        {isEntityReceivedAmount(t, entity.name) && (() => {
                           const hint = getEntityLedgerHint(t, entity.name);
                           return hint ? (
                             <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>

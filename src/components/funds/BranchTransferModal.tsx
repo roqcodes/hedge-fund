@@ -7,7 +7,7 @@ import { Transaction, Entity } from '@/types';
 import { formInput, formLabel, btnPrimary, btnSecondary } from '@/lib/ui';
 import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { TransactionTag } from '@/types';
-import { filterBranchLedgers, calculateLedgerBalance } from '@/lib/ledgers';
+import { filterBranchLedgers, calculateLedgerBalance, calculateAvailableBranchFund } from '@/lib/ledgers';
 import { journalAllowedAccountNames, validateJournalEntry } from '@/lib/journalEntry';
 
 export function BranchTransferModal({
@@ -48,16 +48,11 @@ export function BranchTransferModal({
     // Branch balance
     if (assetType === 'currency') {
       if (branchName) {
-        let base = branch?.openingBalance || 0;
-        const ledgersSet = new Set(branchLedgers.map(l => l.name));
-        branchTxns.forEach((t: Transaction) => {
-          if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') return;
-          const isLedgerTxn = ledgersSet.has(t.from) || ledgersSet.has(t.to) || ledgersSet.has(t.type);
-          if (isLedgerTxn) return;
-          if (t.to === branchName) base += t.amount;
-          if (t.from === branchName) base -= t.amount;
-        });
-        balances[branchName] = base;
+        balances[branchName] = calculateAvailableBranchFund(
+          branchName,
+          branch?.openingBalance || 0,
+          branchTxns,
+        );
       }
     } else {
       if (branchName) balances[branchName] = branch?.goldBalance || 0;
