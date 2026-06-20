@@ -28,6 +28,10 @@ import {
   addDealSchema,
   updateDealSchema,
 } from '@/lib/validations';
+import {
+  validateTransactionsPageBackup,
+  type TransactionsPageBackup,
+} from '@/lib/transactionsBackup';
 
 export interface DbActionResult<T> {
   success: boolean;
@@ -1900,5 +1904,169 @@ export async function dbDeleteLedgerAction(id: string, name: string): Promise<Db
     return { success: true, data: undefined };
   } catch (error: unknown) {
     return { success: false, error: formatPgError(error) };
+  }
+}
+
+export async function restoreTransactionsBackupAction(
+  backup: TransactionsPageBackup,
+): Promise<DbActionResult<{ restored: Record<string, number> }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const userRes = await getCurrentUserAction();
+  if (!userRes.success || !userRes.data) {
+    return { success: false, error: 'You must be signed in to restore a backup.' };
+  }
+
+  if (!validateTransactionsPageBackup(backup)) {
+    return { success: false, error: 'Invalid backup file format.' };
+  }
+
+  const client = await pool.connect();
+  const restored: Record<string, number> = {
+    branches: 0,
+    entities: 0,
+    ledgers: 0,
+    transaction_tags: 0,
+    transactions: 0,
+    transaction_tag_links: 0,
+  };
+
+  try {
+    await client.query('BEGIN');
+
+    for (const b of backup.tables.branches) {
+      await client.query(
+        `INSERT INTO branches (id, slug, name, location, manager_name, status)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET
+           slug = EXCLUDED.slug,
+           name = EXCLUDED.name,
+           location = EXCLUDED.location,
+           manager_name = EXCLUDED.manager_name,
+           status = EXCLUDED.status`,
+        [b.id, b.slug, b.name, b.location, b.manager_name, b.status],
+      );
+      restored.branches += 1;
+    }
+
+    for (const e of backup.tables.entities) {
+      await client.query(
+        `INSERT INTO entities (id, name, phone, branch_id, created_at)
+         VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, CURRENT_TIMESTAMP))
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           phone = EXCLUDED.phone,
+           branch_id = EXCLUDED.branch_id`,
+        [e.id, e.name, e.phone, e.branch_id, e.created_at],
+      );
+      restored.entities += 1;
+    }
+
+    for (const l of backup.tables.ledgers) {
+      await client.query(
+        `INSERT INTO ledgers (id, branch_id, name, impact, is_kpi, sort_order, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, CURRENT_TIMESTAMP))
+         ON CONFLICT (id) DO UPDATE SET
+           branch_id = EXCLUDED.branch_id,
+           name = EXCLUDED.name,
+           impact = EXCLUDED.impact,
+           is_kpi = EXCLUDED.is_kpi,
+           sort_order = EXCLUDED.sort_order`,
+        [l.id, l.branch_id, l.name, l.impact, l.is_kpi, l.sort_order, l.created_at],
+      );
+      restored.ledgers += 1;
+    }
+
+    for (const tag of backup.tables.transaction_tags) {
+      await client.query(
+        `INSERT INTO transaction_tags (id, branch_id, name, created_at)
+         VALUES ($1, $2, $3, COALESCE($4::timestamptz, CURRENT_TIMESTAMP))
+         ON CONFLICT (id) DO UPDATE SET
+           branch_id = EXCLUDED.branch_id,
+           name = EXCLUDED.name`,
+        [tag.id, tag.branch_id, tag.name, tag.created_at],
+      );
+      restored.transaction_tags += 1;
+    }
+
+    const { startDate, endDate, branchIds } = backup.scope;
+    const scopedBranchIds =
+      branchIds ??
+      [...new Set(backup.tables.transactions.map(t => t.branch_id).filter(Boolean))] as string[];
+
+    if (startDate && endDate) {
+      if (scopedBranchIds.length === 0) {
+        await client.query(
+          `DELETE FROM transactions
+           WHERE date::date >= $1::date AND date::date <= $2::date`,
+          [startDate, endDate],
+        );
+      } else {
+        await client.query(
+          `DELETE FROM transactions
+           WHERE branch_id = ANY($1::varchar[])
+             AND date::date >= $2::date AND date::date <= $3::date`,
+          [scopedBranchIds, startDate, endDate],
+        );
+      }
+    } else if (scopedBranchIds.length > 0) {
+      await client.query(`DELETE FROM transactions WHERE branch_id = ANY($1::varchar[])`, [
+        scopedBranchIds,
+      ]);
+    } else {
+      await client.query(`DELETE FROM transactions WHERE id = ANY($1::varchar[])`, [
+        backup.tables.transactions.map(t => t.id),
+      ]);
+    }
+
+    for (const t of backup.tables.transactions) {
+      await client.query(
+        `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (id) DO UPDATE SET
+           date = EXCLUDED.date,
+           from_entity = EXCLUDED.from_entity,
+           to_entity = EXCLUDED.to_entity,
+           amount = EXCLUDED.amount,
+           type = EXCLUDED.type,
+           asset_type = EXCLUDED.asset_type,
+           status = EXCLUDED.status,
+           notes = EXCLUDED.notes,
+           category = EXCLUDED.category,
+           branch_id = EXCLUDED.branch_id`,
+        [
+          t.id,
+          t.date,
+          t.from_entity,
+          t.to_entity,
+          t.amount,
+          t.type,
+          t.asset_type,
+          t.status,
+          t.notes,
+          t.category,
+          t.branch_id,
+        ],
+      );
+      restored.transactions += 1;
+    }
+
+    for (const link of backup.tables.transaction_tag_links) {
+      await client.query(
+        `INSERT INTO transaction_tag_links (transaction_id, tag_id)
+         VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [link.transaction_id, link.tag_id],
+      );
+      restored.transaction_tag_links += 1;
+    }
+
+    await client.query('COMMIT');
+    return { success: true, data: { restored } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: formatPgError(error) };
+  } finally {
+    client.release();
   }
 }

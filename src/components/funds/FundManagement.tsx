@@ -34,6 +34,7 @@ import DateFilterBar from '@/components/ui/DateFilterBar';
 import { getTransactionTagNames, transactionHasAnyTag } from '@/lib/transactionTags';
 import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
 import { TransactionTagsCell } from '@/components/funds/TransactionTagsCell';
+import TransactionsBackupModal from '@/components/funds/TransactionsBackupModal';
 import { txnTd, txnTdFromTo, txnTh, txnThSortable, txnModalFromTo, txnModalTd, txnModalTh } from '@/lib/transactionTableStyles';
 import { accountNameUsedInTransactions } from '@/lib/accountTransactions';
 import {
@@ -49,7 +50,7 @@ import {
 } from '@/lib/ledgers';
 
 export default function FundManagement() {
-  const { branches, transactions, transferFunds, hqBalance, isBranchView, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, showToast, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, ledgers, addLedger, updateLedger, deleteLedger, transactionTags, addTransactionTag } = useApp();
+  const { branches, transactions, transferFunds, hqBalance, isBranchView, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, showToast, refetchData, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, ledgers, addLedger, updateLedger, deleteLedger, transactionTags, addTransactionTag } = useApp();
   const [showTransfer, setShowTransfer] = useState(false);
   const [showEditInitialFund, setShowEditInitialFund] = useState(false);
   const [showEditHqBalance, setShowEditHqBalance] = useState(false);
@@ -70,6 +71,7 @@ export default function FundManagement() {
   const [deletingTxn, setDeletingTxn] = useState<Transaction | null>(null);
   const [isSavingTxn, setIsSavingTxn] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'entities' | string>('all');
+  const [showBackupModal, setShowBackupModal] = useState(false);
 
   // Ledger state
   const [showManageLedgers, setShowManageLedgers] = useState(false);
@@ -339,6 +341,18 @@ export default function FundManagement() {
                 Edit Treasury
               </button>
             )}
+            <button
+              type="button"
+              className={`${btnSecondary} w-full sm:w-auto`}
+              onClick={() => setShowBackupModal(true)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Backup
+            </button>
             <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={() => setShowManageLedgers(true)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -1111,6 +1125,23 @@ export default function FundManagement() {
           setDeletingTxn={setDeletingTxn}
         />
       )}
+
+      <TransactionsBackupModal
+        open={showBackupModal}
+        onClose={() => setShowBackupModal(false)}
+        onRestored={() => { void refetchData(); }}
+        showToast={showToast}
+        branches={branches}
+        entities={entities}
+        ledgers={ledgers}
+        transactionTags={transactionTags}
+        transactions={transactions}
+        dateFilter={dateFilter}
+        customStartDate={customStartDate}
+        customEndDate={customEndDate}
+        branchId={branchId}
+        branchFilter={branchFilter}
+      />
 
       {/* Edit Transaction Modal */}
       {editingTxn && isBranchView && branches.length === 1 && (
