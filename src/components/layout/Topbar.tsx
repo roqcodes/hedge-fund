@@ -1,12 +1,14 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { DateRange } from '@/types';
+import GlobalSearch from '@/components/layout/GlobalSearch';
 
 export default function Topbar() {
   const { toggleSidebar, logout, user, refetchData } = useApp();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -14,6 +16,23 @@ export default function Topbar() {
     setIsRefreshing(false);
   };
 
+  const closeSearch = () => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+  };
+
+  useEffect(() => {
+    const onPointerDown = (e: MouseEvent) => {
+      if (!searchWrapRef.current?.contains(e.target as Node)) {
+        if (searchQuery) return;
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [searchQuery]);
+
+  const searchOpen = isSearchOpen || searchQuery.length > 0;
 
   return (
     <header className="sticky top-0 z-50 flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-2.5 shadow-surface-xs backdrop-blur-xl sm:min-h-[3.5rem] sm:gap-4 sm:px-5 md:px-6 lg:px-8">
@@ -21,7 +40,7 @@ export default function Topbar() {
         <button
           type="button"
           className={`flex size-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-surface-xs transition-all duration-300 ${
-            isSearchOpen ? 'max-md:scale-0 max-md:opacity-0' : ''
+            searchOpen ? 'max-md:scale-0 max-md:opacity-0' : ''
           } lg:hidden`}
           onClick={toggleSidebar}
           aria-label="Toggle menu"
@@ -32,38 +51,59 @@ export default function Topbar() {
         </button>
 
         <div
-          className={`min-w-0 flex-1 items-center gap-3 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-md:fixed max-md:inset-x-0 max-md:top-0 max-md:z-[60] max-md:flex max-md:h-14 max-md:bg-white max-md:px-4 ${
+          ref={searchWrapRef}
+          className={`relative min-w-0 flex-1 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-md:fixed max-md:inset-x-0 max-md:top-0 max-md:z-[60] max-md:px-4 max-md:pt-2.5 ${
             isSearchOpen
               ? 'max-md:translate-y-0 max-md:opacity-100'
-              : 'max-md:pointer-events-none max-md:-translate-y-full max-md:opacity-0 md:flex md:max-w-lg md:rounded-full md:border md:border-slate-200/90 md:bg-slate-50/90 md:px-4 md:py-2.5 md:text-sm md:shadow-surface-xs lg:max-w-xl'
+              : 'max-md:pointer-events-none max-md:-translate-y-full max-md:opacity-0 md:opacity-100'
           }`}
         >
-          <svg className="size-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-          <input
-            type="search"
-            placeholder="Search branches, transactions..."
-            id="global-search"
-            autoFocus={isSearchOpen}
-            className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"
+          <div
+            className={`flex items-center gap-3 md:max-w-lg md:rounded-full md:border md:border-slate-200/90 md:bg-slate-50/90 md:px-4 md:py-2.5 md:text-sm md:shadow-surface-xs lg:max-w-xl ${
+              searchOpen ? 'max-md:rounded-2xl max-md:border max-md:border-slate-200 max-md:bg-white max-md:px-3 max-md:py-2.5 max-md:shadow-dropdown' : ''
+            }`}
+          >
+            <svg className="size-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              type="search"
+              placeholder="Search pages, deals, transactions, products…"
+              id="global-search"
+              autoFocus={isSearchOpen}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onFocus={() => setIsSearchOpen(true)}
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {(isSearchOpen || searchQuery) && (
+              <button
+                type="button"
+                onClick={closeSearch}
+                className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-900"
+              >
+                {searchQuery ? 'Clear' : 'Cancel'}
+              </button>
+            )}
+          </div>
+
+          <GlobalSearch
+            query={searchQuery}
+            open={searchOpen}
+            onClose={closeSearch}
+            onQueryChange={setSearchQuery}
           />
-          {isSearchOpen && (
-            <button
-              type="button"
-              onClick={() => setIsSearchOpen(false)}
-              className="text-[10px] font-bold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-900 md:hidden"
-            >
-              Cancel
-            </button>
-          )}
         </div>
       </div>
 
-      <div className={`flex shrink-0 items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 ${
-        isSearchOpen ? 'max-md:scale-0 max-md:opacity-0' : ''
-      }`}>
+      <div
+        className={`flex shrink-0 items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 ${
+          searchOpen ? 'max-md:scale-0 max-md:opacity-0' : ''
+        }`}
+      >
         <button
           type="button"
           className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-surface-xs transition-all md:hidden"
@@ -104,7 +144,7 @@ export default function Topbar() {
                 <div className="truncate text-[11px] font-medium capitalize text-slate-500">{(user?.role || '').replace('_', ' ')}</div>
               </div>
             </div>
-            
+
             <div className="invisible absolute right-0 top-[calc(100%+4px)] z-[300] w-64 origin-top-right scale-95 rounded-2xl border border-slate-200/90 bg-white p-2 opacity-0 shadow-dropdown transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:visible group-hover:scale-100 group-hover:opacity-100">
               <div className="mb-2 border-b border-slate-100 px-3 pb-3 pt-2">
                 <div className="text-sm font-bold text-slate-900">{user?.name || 'User'}</div>
@@ -117,7 +157,7 @@ export default function Topbar() {
                 </div>
                 <div className="flex justify-between">
                   <span>Last Login</span>
-                  <span className="font-semibold">{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  <span className="font-semibold">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
               <div className="mt-2 border-t border-slate-100 pt-2">

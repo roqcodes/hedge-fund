@@ -1,5 +1,6 @@
 'use client';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp, AddInvestorInput } from '@/context/AppContext';
@@ -29,8 +30,16 @@ import {
 } from '@/lib/ui';
 
 export default function InvestorsPage() {
+  const searchParams = useSearchParams();
   const { investors, branches, deals, selectedInvestorId, selectInvestor, addInvestor, updateInvestor, isBranchView } = useApp();
   const [showCreate, setShowCreate] = useState(false);
+
+  useEffect(() => {
+    const investorId = searchParams.get('investor');
+    if (investorId && investors.some(i => i.id === investorId)) {
+      selectInvestor(investorId);
+    }
+  }, [searchParams, investors, selectInvestor]);
   const [showEdit, setShowEdit] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | Investor['status']>('all');
   const [search, setSearch] = useState('');
