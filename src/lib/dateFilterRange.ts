@@ -1,3 +1,5 @@
+import { addCalendarDays } from '@/lib/businessTime';
+
 export type DateFilterId =
   | 'all-time'
   | 'today'
@@ -44,59 +46,53 @@ export function resolveDateFilterRange(
   dateFilter: string,
   customStartDate = '',
   customEndDate = '',
+  /** Anchor "today" as YYYY-MM-DD (pass branch today for ledger filters). */
+  todayAnchor?: string,
 ): DateFilterRange {
   if (dateFilter === 'all-time') {
     return { startDate: null, endDate: null };
   }
 
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = todayAnchor ?? new Date().toISOString().slice(0, 10);
+  const [anchorY, anchorM, anchorD] = todayStr.split('-').map(Number);
+  const anchor = new Date(Date.UTC(anchorY, anchorM - 1, anchorD));
   let startLimit = '';
   let endLimit = '';
 
   if (dateFilter === 'this-month') {
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    startLimit = `${year}-${month}-01`;
-    endLimit = `${year}-${month}-31`;
+    startLimit = `${anchorY}-${String(anchorM).padStart(2, '0')}-01`;
+    endLimit = todayStr;
   } else if (dateFilter === 'last-month') {
-    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const year = prevMonthDate.getFullYear();
-    const month = String(prevMonthDate.getMonth() + 1).padStart(2, '0');
-    startLimit = `${year}-${month}-01`;
-    const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    endLimit = `${year}-${month}-${String(lastDayPrevMonth.getDate()).padStart(2, '0')}`;
+    const prevM = anchorM === 1 ? 12 : anchorM - 1;
+    const prevY = anchorM === 1 ? anchorY - 1 : anchorY;
+    const mm = String(prevM).padStart(2, '0');
+    const lastDay = new Date(Date.UTC(prevY, prevM, 0)).getUTCDate();
+    startLimit = `${prevY}-${mm}-01`;
+    endLimit = `${prevY}-${mm}-${String(lastDay).padStart(2, '0')}`;
   } else if (dateFilter === 'last-3-months') {
-    const start3MonthsDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-    const year = start3MonthsDate.getFullYear();
-    const month = String(start3MonthsDate.getMonth() + 1).padStart(2, '0');
-    startLimit = `${year}-${month}-01`;
+    const start3 = new Date(Date.UTC(anchorY, anchorM - 3, 1));
+    startLimit = `${start3.getUTCFullYear()}-${String(start3.getUTCMonth() + 1).padStart(2, '0')}-01`;
     endLimit = todayStr;
   } else if (dateFilter === 'today') {
     startLimit = todayStr;
     endLimit = todayStr;
   } else if (dateFilter === 'yesterday') {
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-    startLimit = yesterday.toISOString().slice(0, 10);
+    startLimit = addCalendarDays(todayStr, -1);
     endLimit = startLimit;
   } else if (dateFilter === 'this-week') {
-    const dayOfWeek = now.getDay();
-    const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    const monday = new Date(now);
-    monday.setDate(diff);
-    startLimit = monday.toISOString().slice(0, 10);
+    const dow = anchor.getUTCDay();
+    const mondayOffset = dow === 0 ? -6 : 1 - dow;
+    startLimit = addCalendarDays(todayStr, mondayOffset);
     endLimit = todayStr;
   } else if (dateFilter === 'last-week') {
-    const monday = new Date();
-    monday.setDate(now.getDate() - now.getDay() - 6);
-    const sunday = new Date();
-    sunday.setDate(now.getDate() - now.getDay());
-    startLimit = monday.toISOString().slice(0, 10);
-    endLimit = sunday.toISOString().slice(0, 10);
+    const dow = anchor.getUTCDay();
+    const thisMonday = addCalendarDays(todayStr, dow === 0 ? -6 : 1 - dow);
+    const lastSunday = addCalendarDays(thisMonday, -1);
+    startLimit = addCalendarDays(lastSunday, -6);
+    endLimit = lastSunday;
   } else if (dateFilter === 'this-year') {
-    startLimit = `${now.getFullYear()}-01-01`;
-    endLimit = `${now.getFullYear()}-12-31`;
+    startLimit = `${anchorY}-01-01`;
+    endLimit = `${anchorY}-12-31`;
   } else if (dateFilter === 'custom') {
     startLimit = customStartDate || '1970-01-01';
     endLimit = customEndDate || '9999-12-31';
@@ -105,9 +101,9 @@ export function resolveDateFilterRange(
   return { startDate: startLimit || null, endDate: endLimit || null };
 }
 
-export function isDateInRange(dateIso: string, range: DateFilterRange): boolean {
+export function isDateInRange(calendarDate: string, range: DateFilterRange): boolean {
   if (!range.startDate && !range.endDate) return true;
-  const itemDate = dateIso.slice(0, 10);
+  const itemDate = calendarDate.slice(0, 10);
   const start = range.startDate || '1970-01-01';
   const end = range.endDate || '9999-12-31';
   return itemDate >= start && itemDate <= end;

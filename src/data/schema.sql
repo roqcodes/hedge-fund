@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS branches (
     closing_balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     daily_pl DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Dubai',
     last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -595,3 +596,23 @@ CREATE TABLE IF NOT EXISTS products (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(branch_id, sku)
 );
+
+-- Branch daily close (Transaction Beta — day session / Z-report)
+CREATE TABLE IF NOT EXISTS branch_day_closes (
+    id VARCHAR(50) PRIMARY KEY,
+    branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    business_date DATE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    opened_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at TIMESTAMPTZ,
+    closed_by VARCHAR(255),
+    opening_snapshot JSONB NOT NULL DEFAULT '{}',
+    closing_snapshot JSONB,
+    UNIQUE(branch_id, business_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_day_closes_branch_date ON branch_day_closes(branch_id, business_date DESC);
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS business_date DATE;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_branch_business_date ON transactions(branch_id, business_date);

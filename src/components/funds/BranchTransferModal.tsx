@@ -9,15 +9,24 @@ import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { TransactionTag } from '@/types';
 import { filterBranchLedgers, calculateLedgerBalance, calculateAvailableBranchFund } from '@/lib/ledgers';
 import { journalAllowedAccountNames, validateJournalEntry } from '@/lib/journalEntry';
+import {
+  composeBranchInstant,
+  currentTimeHHMM,
+  resolveBranchTimeZone,
+  todayInTimeZone,
+} from '@/lib/businessTime';
 
 export function BranchTransferModal({
   open,
   onClose,
   targetBranchId,
+  activeBusinessDate,
 }: {
   open: boolean;
   onClose: () => void;
   targetBranchId?: string;
+  /** Daily Ledger: force entry onto the open business day. */
+  activeBusinessDate?: string;
 }) {
   const { branches, entities, ledgers, transactions, addEntity, processLedgerTransaction, showToast, transactionTags, addTransactionTag } = useApp();
 
@@ -28,6 +37,7 @@ export function BranchTransferModal({
     
   const branchId = branch?.id || '';
   const branchName = branch?.name || '';
+  const branchTimezone = resolveBranchTimeZone(branch?.timezone);
 
   const [assetType, setAssetType] = useState<'currency' | 'gold'>('currency');
 
@@ -100,15 +110,22 @@ export function BranchTransferModal({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
-  const [date, setDate] = useState(() => {
-    const now = new Date();
-    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
+  const [time, setTime] = useState(() => currentTimeHHMM(branchTimezone));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Reset when modal closes
+  const postingDateLabel = activeBusinessDate
+    ? new Date(`${activeBusinessDate}T12:00:00Z`).toLocaleDateString('en-GB', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : null;
+
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setTime(currentTimeHHMM(branchTimezone));
+    } else {
       setFromSearch('');
       setToSearch('');
       setSelectedTagIds([]);
@@ -118,7 +135,7 @@ export function BranchTransferModal({
       setToOpen(false);
       setAssetType('currency');
     }
-  }, [open]);
+  }, [open, branchTimezone]);
 
   if (!branch) return null;
 
@@ -144,8 +161,11 @@ export function BranchTransferModal({
       return;
     }
 
+    const calendarDate = activeBusinessDate ?? todayInTimeZone(branchTimezone);
+    const txnDate = composeBranchInstant(calendarDate, time, branchTimezone);
+
     const validation = validateJournalEntry(
-      { from: fromExists.name, to: toExists.name, amount: amt, assetType, date },
+      { from: fromExists.name, to: toExists.name, amount: amt, assetType, date: txnDate },
       {
         branchName,
         branchFundLabel,
@@ -180,7 +200,8 @@ export function BranchTransferModal({
 
     const newTxn: Transaction = {
       id: generateId('TXN'),
-      date: new Date(date).toISOString(),
+      date: txnDate,
+      ...(activeBusinessDate ? { businessDate: activeBusinessDate } : {}),
       from: exactFromName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactFromName,
       to: exactToName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactToName,
       amount: amt,
@@ -346,7 +367,7 @@ export function BranchTransferModal({
     >
       <div className="space-y-6 pb-24"> {/* Extra padding for absolute dropdowns */}
         {/* Asset Type Toggle */}
-        <div className="flex gap-4 p-1 bg-slate-100 rounded-lg w-full max-w-sm">
+        <div className="flex w-full gap-1 rounded-lg bg-slate-100 p-1">
           <button
             type="button"
             className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all ${assetType === 'currency' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -363,15 +384,29 @@ export function BranchTransferModal({
           </button>
         </div>
 
-        {/* Date */}
-        <div>
-          <label className={formLabel}>Date &amp; Time</label>
-          <input
-            type="datetime-local"
-            className={formInput}
-            value={date}
-            onChange={e => setDate(e.target.value)}
-          />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          {postingDateLabel ? (
+            <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 text-xs text-slate-600 sm:py-3">
+              Posting to active business day:{' '}
+              <span className="font-semibold text-slate-900">{postingDateLabel}</span>
+            </p>
+          ) : (
+            <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 text-xs text-slate-600 sm:py-3">
+              Posting date:{' '}
+              <span className="font-semibold text-slate-900">
+                {todayInTimeZone(branchTimezone)}
+              </span>
+            </p>
+          )}
+          <div className="sm:w-36">
+            <label className={formLabel}>Time</label>
+            <input
+              type="time"
+              className={formInput}
+              value={time}
+              onChange={e => setTime(e.target.value)}
+            />
+          </div>
         </div>
 
         {/* From / To row */}

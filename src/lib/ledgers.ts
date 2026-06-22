@@ -95,6 +95,21 @@ export function calculateAvailableBranchFund(
   return base;
 }
 
+/** Branch gold volume = opening gold + net gold flow through the branch account name. */
+export function calculateAvailableBranchGold(
+  branchName: string,
+  openingGoldBalance: number,
+  transactions: Transaction[],
+): number {
+  let base = openingGoldBalance;
+  for (const t of transactions) {
+    if (t.assetType !== 'gold' || t.status !== 'completed') continue;
+    if (t.to === branchName) base += t.amount;
+    if (t.from === branchName) base -= t.amount;
+  }
+  return base;
+}
+
 /**
  * Physical cash in locker = Branch Fund + sum of adjusting ledger balances.
  * Matches spreadsheet: Total Cash + Temporary Credit + Customer Deposits (+ other non-neutral ledgers).

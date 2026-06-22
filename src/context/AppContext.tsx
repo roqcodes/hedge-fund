@@ -20,6 +20,7 @@ import {
   PhysicalSell,
 } from '@/types';
 import * as mock from '@/data/mockData';
+import { DEFAULT_BRANCH_TIMEZONE } from '@/lib/businessTime';
 import { getCurrentUserAction, logoutAction } from '@/app/actions/auth';
 import {
   fetchInitialDataAction,
@@ -112,7 +113,7 @@ interface AppContextType extends AppState {
   logout: () => void;
   setPage: (page: PageId) => void;
   setDateRange: (range: DateRange) => void;
-  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }, slug: string) => void;
+  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance' | 'timezone'> & { openingBalance: number; timezone?: string }, slug: string) => void;
   updateBranch: (branch: Branch, slug: string) => Promise<boolean>;
   updateBranchInitialFund: (branchId: string, newAmount: number, newCurrentBalance?: number) => Promise<boolean>;
   updateBranchInitialGold: (branchId: string, newAmount: number, newCurrentBalance?: number) => Promise<boolean>;
@@ -626,7 +627,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const addBranch = useCallback(async (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }, slug: string) => {
+  const addBranch = useCallback(async (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance' | 'timezone'> & { openingBalance: number; timezone?: string }, slug: string) => {
     const total = b.openingBalance;
     const branchId = mock.generateId('BR');
     const now = new Date().toISOString();
@@ -641,6 +642,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       closingBalance: total,
       dailyPL: 0,
       status: 'active',
+      timezone: b.timezone || DEFAULT_BRANCH_TIMEZONE,
       lastActivity: now,
       createdAt: now,
     };

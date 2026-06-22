@@ -35,6 +35,8 @@ export interface Branch {
   status: 'active' | 'inactive';
   lastActivity: string; // ISO timestamp
   createdAt: string;
+  /** IANA timezone for business-day boundaries (e.g. Asia/Dubai). */
+  timezone: string;
 }
 
 export type TransactionType = string;
@@ -67,6 +69,7 @@ export interface Transaction {
   notes: string;
   category?: string;
   branchId?: string;
+  businessDate?: string;
   tags?: string[];
   tagIds?: string[];
 }
@@ -299,4 +302,36 @@ export interface Ledger {
   isKpi: boolean;
   sortOrder?: number;
   createdAt?: string;
+}
+
+/** Frozen KPI values at day open/close (Transaction Beta). */
+export interface DayKpiSnapshot {
+  branchFund: number;
+  gold: number;
+  cashInLocker: number;
+  ledgerBalances: Record<string, number>;
+  totalVolume: number;
+  transferCount: number;
+  pendingCount: number;
+}
+
+export interface BranchDayClose {
+  id: string;
+  branchId: string;
+  businessDate: string;
+  status: 'open' | 'closed';
+  openedAt: string;
+  closedAt?: string;
+  closedBy?: string;
+  opening: DayKpiSnapshot;
+  closing?: DayKpiSnapshot;
+}
+
+export interface DailyCloseContext {
+  workingDate: string;
+  todayDate: string;
+  yesterdayDate: string;
+  yesterdayOpen: boolean;
+  todayDue: boolean;
+  isWorkingDayClosed: boolean;
 }

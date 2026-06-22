@@ -701,7 +701,7 @@ function CreateBranchModal({
 }: {
   open: boolean;
   onClose: () => void;
-  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance'> & { openingBalance: number }, slug: string) => void;
+  addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance' | 'timezone'> & { openingBalance: number; timezone?: string }, slug: string) => void;
 }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');

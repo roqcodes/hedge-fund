@@ -6,7 +6,9 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "backfill:day-closes": "tsx --tsconfig tsconfig.json scripts/backfill-day-closes.ts",
+    "test": "tsx --test src/lib/businessTime.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1052.0",
@@ -35,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

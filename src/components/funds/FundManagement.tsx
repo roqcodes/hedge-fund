@@ -4,6 +4,7 @@ import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatAEDStr, formatDateTime, generateId } from '@/data/mockData';
+import { formatBranchDateTime } from '@/lib/businessTime';
 import { Branch, Transaction, Entity } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import {
@@ -37,6 +38,9 @@ import { TransactionTagsCell } from '@/components/funds/TransactionTagsCell';
 import TransactionsBackupModal from '@/components/funds/TransactionsBackupModal';
 import EntityTransactionsModal from '@/components/funds/EntityTransactionsModal';
 import LedgerTabSummaryBar from '@/components/funds/LedgerTabSummaryBar';
+import TransactionBetaHeader from '@/components/funds/transaction-beta/TransactionBetaHeader';
+import TransactionBetaShell from '@/components/funds/transaction-beta/TransactionBetaShell';
+import { useTransactionBetaPage } from '@/hooks/useTransactionBetaPage';
 import { txnTd, txnTdFromTo, txnTh, txnThSortable } from '@/lib/transactionTableStyles';
 import { accountNameUsedInTransactions } from '@/lib/accountTransactions';
 import {
@@ -44,6 +48,7 @@ import {
   calculateLedgerBalances,
   calculateCashInLocker,
   calculateAvailableBranchFund,
+  calculateAvailableBranchGold,
   getLedgerKpiSubValue,
   getLedgerTabColumns,
   isLedgerTabOutAmount,
@@ -53,8 +58,9 @@ import {
   ledgerScopeLabel,
 } from '@/lib/ledgers';
 
-export default function FundManagement() {
-  const { branches, transactions, transferFunds, hqBalance, isBranchView, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, showToast, refetchData, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, ledgers, addLedger, updateLedger, deleteLedger, transactionTags, addTransactionTag } = useApp();
+export default function FundManagement({ variant = 'default' }: { variant?: 'default' | 'beta' }) {
+  const isBeta = variant === 'beta';
+  const { branches, transactions, transferFunds, hqBalance, isBranchView, currentSlug, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, showToast, refetchData, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, ledgers, addLedger, updateLedger, deleteLedger, transactionTags, addTransactionTag } = useApp();
   const [showTransfer, setShowTransfer] = useState(false);
   const [showEditInitialFund, setShowEditInitialFund] = useState(false);
   const [showEditHqBalance, setShowEditHqBalance] = useState(false);
@@ -108,9 +114,23 @@ export default function FundManagement() {
   const branchName = branches.length === 1 ? branches[0].name : '';
   const branchId = branches.length === 1 ? branches[0].id : undefined;
 
-  const totalVolume = filteredTransactions.reduce((acc: number, t: Transaction) => acc + t.amount, 0);
-  const transferCount = filteredTransactions.filter((t: Transaction) => t.type === 'transfer').length;
-  const pendingCount = filteredTransactions.filter((t: Transaction) => t.status === 'pending').length;
+  const betaPage = useTransactionBetaPage({
+    enabled: isBeta,
+    transactions,
+    branches,
+    ledgers,
+    currentSlug,
+    isBranchView,
+    refetchData,
+  });
+
+  const displayTransactions = isBeta
+    ? betaPage.displayTransactions
+    : filteredTransactions;
+
+  const totalVolume = displayTransactions.reduce((acc: number, t: Transaction) => acc + t.amount, 0);
+  const transferCount = displayTransactions.filter((t: Transaction) => t.type === 'transfer').length;
+  const pendingCount = displayTransactions.filter((t: Transaction) => t.status === 'pending').length;
 
   const branchLedgers = React.useMemo(() => {
     return filterBranchLedgers(ledgers, branchId);
@@ -141,26 +161,33 @@ export default function FundManagement() {
 
   // Calculate Ledger Balances
   const ledgerBalances = React.useMemo(() => {
-    return calculateLedgerBalances(branchLedgers, filteredTransactions);
-  }, [filteredTransactions, branchLedgers]);
+    return calculateLedgerBalances(branchLedgers, displayTransactions);
+  }, [displayTransactions, branchLedgers]);
 
   const availableBranchFund = React.useMemo(() => {
     if (branches.length !== 1) return 0;
     return calculateAvailableBranchFund(
       branches[0].name,
       branches[0].openingBalance || 0,
-      filteredTransactions,
+      displayTransactions,
     );
-  }, [branches, filteredTransactions]);
+  }, [branches, displayTransactions]);
 
-  const branchGoldVolume = branches.length === 1 ? branches[0].goldBalance : 0;
+  const branchGoldVolume = React.useMemo(() => {
+    if (branches.length !== 1) return 0;
+    return calculateAvailableBranchGold(
+      branches[0].name,
+      branches[0].openingGoldBalance || 0,
+      displayTransactions,
+    );
+  }, [branches, displayTransactions]);
 
   const totalCashInLocker = React.useMemo(() => {
     return calculateCashInLocker(availableBranchFund, branchLedgers, ledgerBalances);
   }, [availableBranchFund, branchLedgers, ledgerBalances]);
 
   const tabCounts = React.useMemo(() => {
-    const src = filteredTransactions || [];
+    const src = displayTransactions || [];
     const branchEntitiesCount = entities.filter(e => !branchId || e.branchId === branchId).length;
     
     const counts: Record<string, number> = {
@@ -172,7 +199,7 @@ export default function FundManagement() {
       counts[l.name] = src.filter(t => t.type === l.name || t.from === l.name || t.to === l.name).length;
     });
     return counts;
-  }, [filteredTransactions, entities, branchId, branchLedgers]);
+  }, [displayTransactions, entities, branchId, branchLedgers]);
 
   const filteredEntities = React.useMemo(() => {
     let result = entities.filter(e => {
@@ -203,7 +230,7 @@ export default function FundManagement() {
   }, [entities, searchTerm, sortField, sortDirection, branchId]);
 
   const filteredAndSortedTxns = React.useMemo(() => {
-    let result = filteredTransactions.filter((t: Transaction) => {
+    let result = displayTransactions.filter((t: Transaction) => {
       // Isolate to the specific branch
       if (branchId && t.branchId !== branchId) return false;
 
@@ -246,7 +273,18 @@ export default function FundManagement() {
     });
     
     return result;
-  }, [transactions, filteredTransactions, tagFilterNames, branchFilter, entityFilter, searchTerm, sortField, sortDirection, activeTab, branchId]);
+  }, [displayTransactions, tagFilterNames, branchFilter, entityFilter, searchTerm, sortField, sortDirection, activeTab, branchId]);
+
+  const canEditTxn = (t: Transaction) => {
+    if (!isBranchView || branches.length !== 1) return false;
+    if (isBeta) return betaPage.permissions.canEditEntry(t);
+    return true;
+  };
+
+  const canPostTransactions = isBeta ? betaPage.permissions.canPostEntries : true;
+
+  const formatTxnDateTime = (date: string) =>
+    isBeta ? formatBranchDateTime(date, betaPage.branchTimezone) : formatDateTime(date);
 
   const ledgerTabTotals = React.useMemo(
     () => (showLedgerSummaryBar ? computeLedgerTabTotals(filteredAndSortedTxns, activeTab) : null),
@@ -304,6 +342,24 @@ export default function FundManagement() {
   return (
     <>
       <div className={`animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]${showLedgerSummaryBar ? ' pb-24' : ''}`}>
+        {isBeta ? (
+          <TransactionBetaHeader
+            branchName={branchName}
+            branchTimezone={betaPage.branchTimezone}
+            canPostEntries={canPostTransactions}
+            onPostEntry={() => setShowTransfer(true)}
+            onEditCapital={() => {
+              const b = branches[0];
+              setEditFundAmount(b.openingBalance?.toString() || '0');
+              setEditCurrentBalanceAmount(b.currentBalance?.toString() || '0');
+              setEditGoldFundAmount(b.openingGoldBalance?.toString() || '0');
+              setEditCurrentGoldBalanceAmount(b.goldBalance?.toString() || '0');
+              setShowEditInitialFund(true);
+            }}
+            onBackup={() => setShowBackupModal(true)}
+            onManageLedgers={() => setShowManageLedgers(true)}
+          />
+        ) : (
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Fund Management</h2>
@@ -368,7 +424,11 @@ export default function FundManagement() {
               </svg>
               Manage Ledgers
             </button>
-            <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowTransfer(true)}>
+            <button
+              type="button"
+              className={`${btnPrimary} w-full sm:w-auto`}
+              onClick={() => setShowTransfer(true)}
+            >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
@@ -376,7 +436,34 @@ export default function FundManagement() {
             </button>
           </div>
         </div>
+        )}
 
+        {isBeta && betaPage.sessionLoading && !betaPage.session ? (
+          <div className="mb-5 rounded-2xl border border-slate-100 bg-white px-4 py-8 text-center text-sm text-slate-500 shadow-surface-xs">
+            Loading business day session…
+          </div>
+        ) : null}
+
+        {isBeta && betaPage.session && betaPage.branchId ? (
+          <TransactionBetaShell
+            branchId={betaPage.branchId}
+            branchSlug={betaPage.branchSlug}
+            branchTimezone={betaPage.branchTimezone}
+            session={betaPage.session}
+            sessionLoading={betaPage.sessionLoading}
+            sessionError={betaPage.sessionError}
+            viewStartDate={betaPage.viewStartDate}
+            viewEndDate={betaPage.viewEndDate}
+            isAllTime={betaPage.isAllTime}
+            periodKpis={betaPage.periodKpis}
+            branchLedgers={betaPage.branchLedgers}
+            onViewApply={betaPage.setViewDates}
+            onDayClosed={betaPage.handleDayClosed}
+            showToast={showToast}
+          />
+        ) : null}
+
+        {!isBeta && (
         <DateFilterBar
           dateFilter={dateFilter}
           setDateFilter={setDateFilter}
@@ -385,7 +472,9 @@ export default function FundManagement() {
           customEndDate={customEndDate}
           setCustomEndDate={setCustomEndDate}
         />
+        )}
 
+        {!isBeta && (
         <div className={kpiGrid}>
           {isBranchView && branches.length === 1 ? (
             <>
@@ -502,6 +591,11 @@ export default function FundManagement() {
             </>
           )}
         </div>
+        )}
+
+        {isBeta && (
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Journal entries</p>
+        )}
 
         <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 w-fit mb-4 flex-wrap sm:flex-nowrap">
           {([
@@ -543,7 +637,7 @@ export default function FundManagement() {
         >
           <div className="flex flex-col gap-3 pb-4 px-4 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
             <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">
-              {activeTab === 'entities' ? 'Entities' : 'Transactions'}
+              {activeTab === 'entities' ? 'Entities' : isBeta ? 'General journal' : 'Transactions'}
             </h3>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-2">
               <div className="relative w-full sm:w-44">
@@ -821,7 +915,7 @@ export default function FundManagement() {
                     {filteredAndSortedTxns.map((t: Transaction) => (
                       <tr key={t.id} data-interactive-row>
                         <td className={`w-[108px] whitespace-normal border-y border-l border-black/5 bg-white px-2 py-2.5 text-[11px] leading-tight text-slate-600 first:rounded-l-2xl`}>
-                          {formatDateTime(t.date).split(',').map((part, i) => (
+                          {formatTxnDateTime(t.date).split(',').map((part, i) => (
                              <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
                           ))}
                         </td>
@@ -862,6 +956,7 @@ export default function FundManagement() {
                         </td>
                         {isBranchView && branches.length === 1 && (
                           <td className="border-y border-r border-black/5 bg-white px-2 py-2 last:rounded-r-2xl">
+                            {canEditTxn(t) ? (
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
@@ -888,6 +983,9 @@ export default function FundManagement() {
                                 </svg>
                               </button>
                             </div>
+                            ) : (
+                              <span className="block text-right text-[10px] font-semibold text-slate-400">Locked</span>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -954,8 +1052,8 @@ export default function FundManagement() {
                 filteredAndSortedTxns.length === 0 ? (
                   <div className="py-8 text-center text-sm text-slate-400">No transactions found.</div>
                 ) : filteredAndSortedTxns.map((t: Transaction) => {
-                  const isEditable = isBranchView && branches.length === 1;
-                  const isDeletable = isBranchView && branches.length === 1;
+                  const isEditable = canEditTxn(t);
+                  const isDeletable = canEditTxn(t);
                   const entityName = t.category === 'debit' ? t.from : t.category === 'credit' ? t.to : null;
                   return (
                     <div key={t.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] transition-all">
@@ -963,10 +1061,10 @@ export default function FundManagement() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold text-slate-800">
-                            {formatDateTime(t.date).split(',')[0]}
+                            {formatTxnDateTime(t.date).split(',')[0]}
                           </span>
                           <span className="text-[11px] text-slate-400">
-                            {formatDateTime(t.date).split(',')[1]?.trim()}
+                            {formatTxnDateTime(t.date).split(',')[1]?.trim()}
                           </span>
                         </div>
                       </div>
@@ -1067,6 +1165,11 @@ export default function FundManagement() {
           open={showTransfer}
           onClose={() => setShowTransfer(false)}
           targetBranchId={branchId}
+          activeBusinessDate={
+            isBeta && betaPage.permissions.canPostEntries && betaPage.session
+              ? betaPage.session.workingDate
+              : undefined
+          }
         />
       ) : (
         <TransferFundsModal

@@ -2,6 +2,11 @@
 
 import { getCurrentUserAction } from '@/app/actions/auth';
 import { query, pool } from '@/lib/db';
+import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate } from '@/lib/businessTime';
+import {
+  SQL_BACKFILL_TRANSACTION_BUSINESS_DATES,
+  SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN,
+} from '@/lib/sql/businessDateSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
 import { validateJournalEntry } from '@/lib/journalEntry';
 import {
@@ -108,6 +113,11 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     `);
     // ─────────────────────────────────────────────────────────────────────
 
+    await query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Dubai';`);
+    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS business_date DATE;`);
+    await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES);
+    await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN);
+
     // 1. Fetch HQ Balance
     const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
     const hqBalance = hqRes.rows.length > 0 ? parseFloat(hqRes.rows[0].amount) : 50000000;
@@ -136,6 +146,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       closingBalance: parseFloat(r.closing_balance),
       dailyPL: parseFloat(r.daily_pl),
       status: r.status,
+      timezone: resolveBranchTimeZone(r.timezone ? String(r.timezone) : null),
       lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
     }));
@@ -152,11 +163,16 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       if (!tagsByTxnId[row.transaction_id]) tagsByTxnId[row.transaction_id] = [];
       tagsByTxnId[row.transaction_id].push({ id: row.id, name: row.name });
     }
+    const branchTzById = Object.fromEntries(
+      branches.map(b => [b.id, resolveBranchTimeZone(b.timezone)]),
+    );
     const transactions: Transaction[] = txRes.rows.map((r) => {
       const linked = tagsByTxnId[r.id] || [];
+      const branchTz = r.branch_id ? branchTzById[String(r.branch_id)] : DEFAULT_BRANCH_TIMEZONE;
+      const isoDate = new Date(r.date).toISOString();
       return {
         id: r.id,
-        date: new Date(r.date).toISOString(),
+        date: isoDate,
         from: r.from_entity,
         to: r.to_entity,
         amount: parseFloat(r.amount),
@@ -166,6 +182,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         notes: r.notes,
         category: r.category || undefined,
         branchId: r.branch_id || undefined,
+        businessDate: toBusinessDate(isoDate, branchTz),
         tags: linked.map(t => t.name),
         tagIds: linked.map(t => t.id),
       };
@@ -558,8 +575,8 @@ export async function dbAddBranchAction(
 
     // 1. Insert branch
     await client.query(
-      `INSERT INTO branches (id, slug, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, opening_gold_balance, closing_balance, daily_pl, status, last_activity, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      `INSERT INTO branches (id, slug, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, opening_gold_balance, closing_balance, daily_pl, status, timezone, last_activity, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         branch.id,
         branch.slug,
@@ -574,6 +591,7 @@ export async function dbAddBranchAction(
         branch.closingBalance,
         branch.dailyPL,
         branch.status,
+        resolveBranchTimeZone(branch.timezone),
         branch.lastActivity,
         branch.createdAt,
       ]
@@ -1536,12 +1554,14 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
   try {
     await client.query('BEGIN');
 
-    const branchRes = await client.query('SELECT name FROM branches WHERE id = $1', [branchId]);
+    const branchRes = await client.query('SELECT name, timezone FROM branches WHERE id = $1', [branchId]);
     if (!branchRes.rows.length) {
       await client.query('ROLLBACK');
       return { success: false, error: 'Branch not found.' };
     }
     const branchName: string = branchRes.rows[0].name;
+    const branchTz = resolveBranchTimeZone(branchRes.rows[0].timezone);
+    const businessDate = txn.businessDate ?? toBusinessDate(txn.date, branchTz);
     const branchFundLabel = `${branchName} (Branch Fund)`;
 
     const branchValidation = validateJournalEntry(
@@ -1560,8 +1580,8 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
     }
 
     await client.query(
-      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.assetType || 'currency', txn.status, txn.notes || '', txn.category, txn.branchId || branchId]
+      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id, business_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.assetType || 'currency', txn.status, txn.notes || '', txn.category, txn.branchId || branchId, businessDate]
     );
     const tagNames: string[] = [];
     for (const tagId of tagIds) {
@@ -1579,7 +1599,7 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
       await client.query(`UPDATE branches SET gold_balance = gold_balance + $1 WHERE id = $2`, [deltaGold, branchId]);
     }
     await client.query('COMMIT');
-    return { success: true, data: { ...txn, branchId: txn.branchId || branchId, tagIds, tags: tagNames } };
+    return { success: true, data: { ...txn, branchId: txn.branchId || branchId, businessDate, tagIds, tags: tagNames } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     return { success: false, error: formatPgError(error) };
@@ -1676,10 +1696,24 @@ export async function dbUpdateTransactionMetaAction(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      `UPDATE transactions SET date = $1, notes = $2 WHERE id = $3`,
-      [date, notes || '', txnId]
-    );
+    const txMeta = await client.query('SELECT branch_id FROM transactions WHERE id = $1', [txnId]);
+    const branchId = txMeta.rows[0]?.branch_id as string | undefined;
+    let branchTz = DEFAULT_BRANCH_TIMEZONE;
+    let businessDate: string | undefined;
+    if (branchId) {
+      const tzRes = await client.query('SELECT timezone FROM branches WHERE id = $1', [branchId]);
+      branchTz = resolveBranchTimeZone(tzRes.rows[0]?.timezone);
+      businessDate = toBusinessDate(date, branchTz);
+      await client.query(
+        `UPDATE transactions SET date = $1, notes = $2, business_date = $3 WHERE id = $4`,
+        [date, notes || '', businessDate, txnId],
+      );
+    } else {
+      await client.query(
+        `UPDATE transactions SET date = $1, notes = $2 WHERE id = $3`,
+        [date, notes || '', txnId],
+      );
+    }
     await client.query(`DELETE FROM transaction_tag_links WHERE transaction_id = $1`, [txnId]);
     const tagNames: string[] = [];
     for (const tagId of tagIds) {
@@ -1711,6 +1745,7 @@ export async function dbUpdateTransactionMetaAction(
         notes: r.notes,
         category: r.category || undefined,
         branchId: r.branch_id || undefined,
+        businessDate: businessDate ?? toBusinessDate(new Date(r.date).toISOString(), branchTz),
         tags: tagNames,
         tagIds,
       },

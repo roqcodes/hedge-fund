@@ -13,6 +13,7 @@ const navItems: {
     { id: 'dashboard', path: '/', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4' },
     { id: 'deals', path: '/group', label: 'Group & Deals', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
     { id: 'funds', path: '/funds', label: 'Transaction', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4' },
+    { id: 'transactions-beta', path: '/transactions', label: 'Daily Ledger', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4' },
     { id: 'ic-transfer', path: '/ic-transfer', label: 'IC Transfer & Reverse', icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4' },
     { id: 'finance', path: '/finance', label: 'Finance - Reports', icon: 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
     { id: 'physical', path: '/physical', label: 'Physical', icon: 'M9 6h6l2 2H7z M7 8h10v2H7z M3 14h6l2 2H1z M1 16h10v2H1z M15 14h6l2 2h-10z M13 16h10v2h-10z' },
@@ -82,7 +83,7 @@ export default function Sidebar() {
             .filter(item => {
               if (currentSlug && currentSlug !== 'superadmin') {
                 // Branch portal exact items
-                return ['dashboard', 'deals', 'funds', 'ic-transfer', 'finance', 'physical', 'marketplace', 'products', 'investors', 'usdt', 'settings'].includes(item.id);
+                return ['dashboard', 'deals', 'funds', 'transactions-beta', 'ic-transfer', 'finance', 'physical', 'marketplace', 'products', 'investors', 'usdt', 'settings'].includes(item.id);
               } else {
                 // Superadmin portal exact items
                 return ['dashboard', 'deals', 'funds', 'branches', 'finance', 'physical', 'marketplace', 'products', 'investors', 'usdt', 'settings'].includes(item.id);
@@ -91,7 +92,7 @@ export default function Sidebar() {
             .sort((a, b) => {
               // Enforce the requested order
               if (currentSlug && currentSlug !== 'superadmin') {
-                const order = ['dashboard', 'deals', 'funds', 'ic-transfer', 'finance', 'physical', 'marketplace', 'products', 'investors', 'usdt', 'settings'];
+                const order = ['dashboard', 'deals', 'funds', 'transactions-beta', 'ic-transfer', 'finance', 'physical', 'marketplace', 'products', 'investors', 'usdt', 'settings'];
                 return order.indexOf(a.id) - order.indexOf(b.id);
               } else {
                 const order = ['dashboard', 'deals', 'funds', 'branches', 'finance', 'physical', 'marketplace', 'products', 'investors', 'usdt', 'settings'];
