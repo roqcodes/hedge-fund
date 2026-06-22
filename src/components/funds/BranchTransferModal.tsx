@@ -7,7 +7,7 @@ import { Transaction, Entity } from '@/types';
 import { formInput, formLabel, btnPrimary, btnSecondary } from '@/lib/ui';
 import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { TransactionTag } from '@/types';
-import { filterBranchLedgers, calculateLedgerBalance, calculateAvailableBranchFund } from '@/lib/ledgers';
+import { filterBranchLedgers, calculateLedgerBalance, calculateAvailableBranchFund, computeEntityLedgerTabTotals, CUSTOMER_ACCOUNTS_NAME, TEMPORARY_CREDITS_NAME } from '@/lib/ledgers';
 import { journalAllowedAccountNames, validateJournalEntry } from '@/lib/journalEntry';
 import {
   composeBranchInstant,
@@ -73,7 +73,16 @@ export function BranchTransferModal({
       if (!e.branchId || e.branchId === branchId) {
         const toSum = transactions.filter(t => t.to === e.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
         const fromSum = transactions.filter(t => t.from === e.name && (t.assetType || 'currency') === assetType).reduce((sum, t) => sum + t.amount, 0);
-        balances[e.name] = toSum - fromSum;
+        const baseBalance = toSum - fromSum;
+        
+        let netAmount = baseBalance;
+        if (assetType === 'currency') {
+          const custDep = computeEntityLedgerTabTotals(transactions, e.name, CUSTOMER_ACCOUNTS_NAME);
+          const tempCred = computeEntityLedgerTabTotals(transactions, e.name, TEMPORARY_CREDITS_NAME);
+          netAmount = baseBalance + custDep.net - tempCred.net;
+        }
+        
+        balances[e.name] = netAmount;
       }
     });
 
@@ -104,6 +113,9 @@ export function BranchTransferModal({
   const [fromSearch, setFromSearch] = useState('');
   const [toSearch, setToSearch] = useState('');
   
+  const [fromSubAccount, setFromSubAccount] = useState<'fund' | 'customer_deposit' | 'temp_creds'>('fund');
+  const [toSubAccount, setToSubAccount] = useState<'fund' | 'customer_deposit' | 'temp_creds'>('fund');
+  
   const [fromOpen, setFromOpen] = useState(false);
   const [toOpen, setToOpen] = useState(false);
 
@@ -128,6 +140,8 @@ export function BranchTransferModal({
     } else {
       setFromSearch('');
       setToSearch('');
+      setFromSubAccount('fund');
+      setToSubAccount('fund');
       setSelectedTagIds([]);
       setAmount('');
       setNotes('');
@@ -164,72 +178,118 @@ export function BranchTransferModal({
     const calendarDate = activeBusinessDate ?? todayInTimeZone(branchTimezone);
     const txnDate = composeBranchInstant(calendarDate, time, branchTimezone);
 
-    const validation = validateJournalEntry(
-      { from: fromExists.name, to: toExists.name, amount: amt, assetType, date: txnDate },
-      {
-        branchName,
-        branchFundLabel,
-        allowedAccountNames: journalAllowedAccountNames(
-          allOptions.map(o => o.name),
-          branchName,
-          branchFundLabel,
-        ),
-      },
-    );
-    if (!validation.ok) {
-      showToast(validation.error, 'error');
-      return;
-    }
-
     setIsSubmitting(true);
 
     const exactFromName = fromExists.name;
     const exactToName = toExists.name;
 
-    // If 'from' is the branch fund, cash/gold decreases (-). If 'to' is the branch fund, cash/gold increases (+).
-    let deltaCash = 0;
-    let deltaGold = 0;
-    
-    if (exactFromName.toLowerCase() === branchFundLabel.trim().toLowerCase()) {
-      if (assetType === 'gold') deltaGold = -amt;
-      else deltaCash = -amt;
-    } else if (exactToName.toLowerCase() === branchFundLabel.trim().toLowerCase()) {
-      if (assetType === 'gold') deltaGold = amt;
-      else deltaCash = amt;
+    // Build the legs of the transaction based on selected sub-accounts
+    const legs: { from: string; to: string }[] = [];
+
+    // 1. Source Extraction Leg
+    if (fromExists.type === 'entity') {
+      if (fromSubAccount === 'customer_deposit') {
+        legs.push({ from: CUSTOMER_ACCOUNTS_NAME, to: exactFromName });
+      } else if (fromSubAccount === 'temp_creds') {
+        legs.push({ from: TEMPORARY_CREDITS_NAME, to: exactFromName });
+      }
     }
 
-    const newTxn: Transaction = {
-      id: generateId('TXN'),
-      date: txnDate,
-      ...(activeBusinessDate ? { businessDate: activeBusinessDate } : {}),
-      from: exactFromName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactFromName,
-      to: exactToName.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : exactToName,
-      amount: amt,
-      type: 'transfer',
-      assetType,
-      status: 'completed',
-      tagIds: selectedTagIds,
-      category: (() => {
-        if (deltaCash > 0 || deltaGold > 0) return 'debit';
-        if (deltaCash < 0 || deltaGold < 0) return 'credit';
-        const branchLedgersForTxn = filterBranchLedgers(ledgers, branchId);
-        const fromLedger = branchLedgersForTxn.find(l => l.name === exactFromName);
-        const toLedger = branchLedgersForTxn.find(l => l.name === exactToName);
-        if (fromLedger) {
-          return fromLedger.impact === 'positive' ? 'credit' : fromLedger.impact === 'negative' ? 'debit' : 'neutral';
-        }
-        if (toLedger) {
-          return toLedger.impact === 'positive' ? 'debit' : toLedger.impact === 'negative' ? 'credit' : 'neutral';
-        }
-        return 'neutral';
-      })(),
-      notes: notes || '',
-    };
+    // 2. Main Transfer Leg (only if source differs from destination)
+    if (exactFromName !== exactToName) {
+      legs.push({ from: exactFromName, to: exactToName });
+    }
 
-    const success = await processLedgerTransaction(newTxn, deltaCash, deltaGold, branchId);
+    // 3. Destination Insertion Leg
+    if (toExists.type === 'entity') {
+      if (toSubAccount === 'customer_deposit') {
+        legs.push({ from: exactToName, to: CUSTOMER_ACCOUNTS_NAME });
+      } else if (toSubAccount === 'temp_creds') {
+        legs.push({ from: exactToName, to: TEMPORARY_CREDITS_NAME });
+      }
+    }
+    
+    if (legs.length === 0) {
+      // Edge case: same entity, both "fund"
+      setIsSubmitting(false);
+      showToast('Cannot transfer to the same account and sub-account.', 'error');
+      return;
+    }
+
+    // Validate all legs before processing
+    const allowedNames = journalAllowedAccountNames(allOptions.map(o => o.name), branchName, branchFundLabel);
+    for (const leg of legs) {
+      const legValidation = validateJournalEntry(
+        { from: leg.from, to: leg.to, amount: amt, assetType, date: txnDate },
+        { branchName, branchFundLabel, allowedAccountNames: allowedNames },
+      );
+      if (!legValidation.ok) {
+        setIsSubmitting(false);
+        showToast(`Validation failed for leg (${leg.from} → ${leg.to}): ${legValidation.error}`, 'error');
+        return;
+      }
+    }
+
+    // Process all legs sequentially
+    let allSuccess = true;
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      let deltaCash = 0;
+      let deltaGold = 0;
+
+      // Only apply deltaCash / deltaGold to the branch if the branch fund is involved in THIS leg.
+      if (leg.from.toLowerCase() === branchFundLabel.trim().toLowerCase()) {
+        if (assetType === 'gold') deltaGold = -amt;
+        else deltaCash = -amt;
+      } else if (leg.to.toLowerCase() === branchFundLabel.trim().toLowerCase()) {
+        if (assetType === 'gold') deltaGold = amt;
+        else deltaCash = amt;
+      }
+
+      const branchLedgersForTxn = filterBranchLedgers(ledgers, branchId);
+      const fromLedger = branchLedgersForTxn.find(l => l.name === leg.from);
+      const toLedger = branchLedgersForTxn.find(l => l.name === leg.to);
+
+      let category = 'neutral';
+      if (deltaCash > 0 || deltaGold > 0) category = 'debit';
+      else if (deltaCash < 0 || deltaGold < 0) category = 'credit';
+      else if (fromLedger) {
+        category = fromLedger.impact === 'positive' ? 'credit' : fromLedger.impact === 'negative' ? 'debit' : 'neutral';
+      } else if (toLedger) {
+        category = toLedger.impact === 'positive' ? 'debit' : toLedger.impact === 'negative' ? 'credit' : 'neutral';
+      }
+
+      // Append multi-leg note context
+      let legNote = notes;
+      if (legs.length > 1) {
+        legNote = `[Leg ${i + 1}/${legs.length}] ` + notes;
+      }
+
+      const newTxn: Transaction = {
+        id: generateId('TXN'),
+        date: txnDate,
+        ...(activeBusinessDate ? { businessDate: activeBusinessDate } : {}),
+        from: leg.from.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : leg.from,
+        to: leg.to.toLowerCase() === branchFundLabel.trim().toLowerCase() ? branchName.trim() : leg.to,
+        amount: amt,
+        type: 'transfer',
+        assetType,
+        status: 'completed',
+        tagIds: selectedTagIds,
+        category,
+        notes: legNote || '',
+      };
+
+      const legSuccess = await processLedgerTransaction(newTxn, deltaCash, deltaGold, branchId);
+      if (!legSuccess) {
+        allSuccess = false;
+        break;
+      }
+    }
+
     setIsSubmitting(false);
 
-    if (success) {
+    if (allSuccess) {
       onClose();
     }
   };
@@ -340,6 +400,60 @@ export function BranchTransferModal({
     );
   };
 
+  const renderSubAccountSelector = (
+    entityName: string,
+    subAccount: 'fund' | 'customer_deposit' | 'temp_creds',
+    setSubAccount: (val: 'fund' | 'customer_deposit' | 'temp_creds') => void
+  ) => {
+    const fundBalance = optionBalances[entityName] || 0;
+    const custDepTab = computeEntityLedgerTabTotals(transactions, entityName, CUSTOMER_ACCOUNTS_NAME);
+    const tempCredTab = computeEntityLedgerTabTotals(transactions, entityName, TEMPORARY_CREDITS_NAME);
+    
+    return (
+      <div className="mt-3 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => setSubAccount('fund')}
+          className={`flex items-center justify-between p-3 text-left rounded-lg border text-sm transition-colors ${
+            subAccount === 'fund'
+              ? 'border-accent bg-accent/5 ring-1 ring-accent'
+              : 'border-slate-200 bg-white hover:border-slate-300'
+          }`}
+        >
+          <span className={`font-semibold ${subAccount === 'fund' ? 'text-accent' : 'text-slate-700'}`}>Fund</span>
+          <span className="text-slate-500 font-medium truncate max-w-[50%]" title={formatBalance(fundBalance)}>{formatBalance(fundBalance)}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubAccount('customer_deposit')}
+          className={`flex items-center justify-between p-3 text-left rounded-lg border text-sm transition-colors ${
+            subAccount === 'customer_deposit'
+              ? 'border-accent bg-accent/5 ring-1 ring-accent'
+              : 'border-slate-200 bg-white hover:border-slate-300'
+          }`}
+        >
+          <span className={`font-semibold ${subAccount === 'customer_deposit' ? 'text-accent' : 'text-slate-700'}`}>Cust. Deposit</span>
+          <span className="text-slate-500 font-medium truncate max-w-[50%]" title={formatBalance(custDepTab.net)}>{formatBalance(custDepTab.net)}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubAccount('temp_creds')}
+          className={`flex items-center justify-between p-3 text-left rounded-lg border text-sm transition-colors ${
+            subAccount === 'temp_creds'
+              ? 'border-accent bg-accent/5 ring-1 ring-accent'
+              : 'border-slate-200 bg-white hover:border-slate-300'
+          }`}
+        >
+          <span className={`font-semibold ${subAccount === 'temp_creds' ? 'text-accent' : 'text-slate-700'}`}>Temp Creds</span>
+          <span className="text-slate-500 font-medium truncate max-w-[50%]" title={formatBalance(tempCredTab.net)}>{formatBalance(tempCredTab.net)}</span>
+        </button>
+      </div>
+    );
+  };
+
+  const fromExistsOption = useMemo(() => allOptions.find(o => o.name.toLowerCase() === fromSearch.trim().toLowerCase()), [fromSearch, allOptions]);
+  const toExistsOption = useMemo(() => allOptions.find(o => o.name.toLowerCase() === toSearch.trim().toLowerCase()), [toSearch, allOptions]);
+
   return (
     <Modal
       open={open}
@@ -411,14 +525,16 @@ export function BranchTransferModal({
 
         {/* From / To row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="relative">
+          <div>
             <label className={formLabel}>From Account</label>
             {renderDropdown(fromSearch, setFromSearch, fromOpen, setFromOpen)}
+            {fromExistsOption?.type === 'entity' && renderSubAccountSelector(fromExistsOption.name, fromSubAccount, setFromSubAccount)}
           </div>
 
-          <div className="relative">
+          <div>
             <label className={formLabel}>To Account</label>
             {renderDropdown(toSearch, setToSearch, toOpen, setToOpen)}
+            {toExistsOption?.type === 'entity' && renderSubAccountSelector(toExistsOption.name, toSubAccount, setToSubAccount)}
           </div>
         </div>
 
