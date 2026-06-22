@@ -13,6 +13,7 @@ const cognitoClient = env.COGNITO_REGION
   : null;
 
 export interface SessionPayload {
+  id?: string;
   email: string;
   role: UserRole;
   name: string;
@@ -99,12 +100,17 @@ export async function authenticateWithCognito(email: string, securityKey: string
     const roleAttr = getAttr('custom:role') as UserRole | undefined;
     const branchIdAttr = getAttr('custom:branchId');
     const nameAttr = getAttr('name') || email.split('@')[0];
+    const userId = getAttr('sub');
 
     if (!roleAttr || (roleAttr !== 'admin' && roleAttr !== 'branch_manager')) {
       throw new Error('Access Denied: Your account has not been assigned a valid role by an Administrator.');
     }
+    if (!userId) {
+      throw new Error('Authentication succeeded but no user id was returned by Cognito.');
+    }
 
     return {
+      id: userId,
       email,
       name: nameAttr,
       role: roleAttr,
@@ -184,6 +190,7 @@ export async function getSessionUser(branchSlug?: string): Promise<User | null> 
   if (!branchSlug && payload.role !== 'admin') return null;
 
   return {
+    id: payload.id,
     email: payload.email,
     name: payload.name,
     role: payload.role,

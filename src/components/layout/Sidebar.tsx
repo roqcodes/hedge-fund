@@ -39,11 +39,12 @@ export default function Sidebar() {
     logout,
     currentSlug,
     isICTransferRoute,
+    icTransferMainMenuOpen,
+    showICTransferSubNav,
   } = useApp();
   const pathname = usePathname();
 
-  /** IC Transfer always uses collapsed main sidebar so secondary panel fits flush */
-  const effectivelyCollapsed = isICTransferRoute || sidebarCollapsed;
+  const effectivelyCollapsed = isICTransferRoute ? !icTransferMainMenuOpen : sidebarCollapsed;
 
   const isBranchUser = user?.role === 'branch_manager';
   const branch = isBranchUser
@@ -135,7 +136,12 @@ export default function Sidebar() {
                   href={itemHref}
                   id={`nav-${item.id}`}
                   title={item.label}
-                  onClick={closeMobile}
+                  onClick={() => {
+                    if (item.id === 'ic-transfer' && isICTransferRoute) {
+                      showICTransferSubNav();
+                    }
+                    closeMobile();
+                  }}
                   className={`relative flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-medium no-underline transition-[background-color,color,transform,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:active:scale-[0.99] lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 sm:text-sm ${isActive
                     ? 'border-l-[3px] border-accent bg-gradient-to-r from-accent/[0.08] to-transparent font-semibold text-accent lg:data-[collapsed=true]:border-l-0 lg:data-[collapsed=true]:bg-accent/12'
                     : 'border-l-[3px] border-transparent text-slate-600 motion-safe:hover:bg-slate-50 motion-safe:hover:text-slate-900 lg:data-[collapsed=true]:border-l-0'
@@ -186,7 +192,7 @@ export default function Sidebar() {
         </div>
 
         {/* Desktop collapse toggle — hidden during IC Transfer (secondary sidebar is active) */}
-        <div className={`mt-auto hidden border-t border-slate-100 p-2 lg:block ${isICTransferRoute ? 'lg:hidden' : ''}`}>
+        <div className={`mt-auto hidden border-t border-slate-100 p-2 lg:block ${isICTransferRoute && !icTransferMainMenuOpen ? 'lg:hidden' : ''}`}>
           <button
             type="button"
             onClick={toggleSidebarCollapsed}

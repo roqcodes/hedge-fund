@@ -5,6 +5,8 @@
 export type UserRole = 'admin' | 'branch_manager';
 
 export interface User {
+  /** Cognito `sub` — stable user identifier. Present after sign-in; may be absent on legacy sessions. */
+  id?: string;
   email: string;
   role: UserRole;
   name: string;
@@ -72,6 +74,9 @@ export interface Transaction {
   category?: string;
   branchId?: string;
   businessDate?: string;
+  /** Cognito username / email of user who posted the entry. */
+  enteredByUsername?: string;
+  enteredByName?: string;
   tags?: string[];
   tagIds?: string[];
 }

@@ -115,6 +115,9 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
 
     await query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Dubai';`);
     await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS business_date DATE;`);
+    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255);`);
+    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_name VARCHAR(255);`);
+    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);`);
     await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES);
     await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN);
 
@@ -184,6 +187,8 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         category: r.category || undefined,
         branchId: r.branch_id || undefined,
         businessDate: toBusinessDate(isoDate, branchTz),
+        enteredByUsername: r.entered_by ? String(r.entered_by) : undefined,
+        enteredByName: r.entered_by_name ? String(r.entered_by_name) : undefined,
         tags: linked.map(t => t.name),
         tagIds: linked.map(t => t.id),
       };
@@ -1533,8 +1538,29 @@ export async function dbFetchEntitiesAction(): Promise<DbActionResult<Entity[]>>
   }
 }
 
-export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCash: number, deltaGold: number, branchId: string, tagIds: string[] = []): Promise<DbActionResult<Transaction>> {
+export async function dbProcessLedgerTransactionAction(
+  txn: Transaction,
+  deltaCash: number,
+  deltaGold: number,
+  branchId: string,
+  tagIds: string[] = [],
+  branchSlug?: string,
+): Promise<DbActionResult<Transaction>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  let user = branchSlug ? (await getCurrentUserAction(branchSlug)).data : null;
+  if (!user) {
+    user = (await getCurrentUserAction()).data ?? null;
+  }
+  if (!user) {
+    return { success: false, error: 'You must be signed in.' };
+  }
+  if (!user.id) {
+    return { success: false, error: 'Please sign out and sign in again to post entries.' };
+  }
+  const enteredBy = user.email;
+  const enteredByName = user.name;
+  const enteredByUserId = user.id;
 
   const coreValidation = validateJournalEntry(
     {
@@ -1582,8 +1608,8 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
     }
 
     await client.query(
-      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id, business_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.assetType || 'currency', txn.status, txn.notes || '', txn.category, txn.branchId || branchId, businessDate]
+      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, asset_type, status, notes, category, branch_id, business_date, entered_by, entered_by_name, entered_by_user_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [txn.id, txn.date, txn.from, txn.to, txn.amount, txn.type, txn.assetType || 'currency', txn.status, txn.notes || '', txn.category, txn.branchId || branchId, businessDate, enteredBy, enteredByName, enteredByUserId]
     );
     const tagNames: string[] = [];
     for (const tagId of tagIds) {
@@ -1601,7 +1627,18 @@ export async function dbProcessLedgerTransactionAction(txn: Transaction, deltaCa
       await client.query(`UPDATE branches SET gold_balance = gold_balance + $1 WHERE id = $2`, [deltaGold, branchId]);
     }
     await client.query('COMMIT');
-    return { success: true, data: { ...txn, branchId: txn.branchId || branchId, businessDate, tagIds, tags: tagNames } };
+    return {
+      success: true,
+      data: {
+        ...txn,
+        branchId: txn.branchId || branchId,
+        businessDate,
+        enteredByUsername: enteredBy,
+        enteredByName,
+        tagIds,
+        tags: tagNames,
+      },
+    };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     return { success: false, error: formatPgError(error) };

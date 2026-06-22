@@ -17,7 +17,7 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 export default function ICTransferMobileNav() {
-  const { currentSlug } = useApp();
+  const { currentSlug, openICTransferMainMenu, toggleSidebar, sidebarOpen } = useApp();
   const pathname = usePathname();
   const base = resolveBasePath(currentSlug);
 
@@ -36,9 +36,28 @@ export default function ICTransferMobileNav() {
 
   const links = [...primaryLinks, ...settingsLinks];
 
+  const backToMainMenu = () => {
+    openICTransferMainMenu();
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches && !sidebarOpen) {
+      toggleSidebar();
+    }
+  };
+
   return (
     <div className="mb-4 lg:hidden">
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">IC Transfer menu</p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={backToMainMenu}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden>
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Main menu
+        </button>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">IC Transfer menu</p>
+      </div>
       <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 pb-1">
         <div className="flex min-w-max gap-1.5">
           {links.map(link => (
@@ -48,7 +67,7 @@ export default function ICTransferMobileNav() {
               className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold no-underline transition-colors ${
                 isActive(pathname, link.href)
                   ? 'bg-accent text-white shadow-primary'
-                  : 'border border-slate-200 bg-white text-slate-600'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300'
               }`}
             >
               {link.label}

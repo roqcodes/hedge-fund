@@ -129,6 +129,10 @@ interface AppContextType extends AppState {
   toggleSidebarCollapsed: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   isICTransferRoute: boolean;
+  icTransferMainMenuOpen: boolean;
+  showICTransferSecondarySidebar: boolean;
+  openICTransferMainMenu: () => void;
+  showICTransferSubNav: () => void;
   selectBranch: (id: string | null) => void;
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
@@ -174,6 +178,13 @@ const getSlugFromPath = (path: string): string => {
 export function AppProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const currentSlug = useMemo(() => getSlugFromPath(pathname), [pathname]);
+  const [icTransferMainMenuOpen, setICTransferMainMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!pathname.includes('/ic-transfer')) {
+      setICTransferMainMenuOpen(false);
+    }
+  }, [pathname]);
 
   const [state, setState] = useState<AppState>({
     user: null,
@@ -366,6 +377,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { ...s, sidebarCollapsed: collapsed };
     });
   }, []);
+
+  const openICTransferMainMenu = useCallback(() => {
+    setICTransferMainMenuOpen(true);
+    setSidebarCollapsed(false);
+  }, [setSidebarCollapsed]);
+
+  const showICTransferSubNav = useCallback(() => {
+    setICTransferMainMenuOpen(false);
+    setSidebarCollapsed(true);
+  }, [setSidebarCollapsed]);
 
   useEffect(() => {
     try {
@@ -933,7 +954,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const processLedgerTransaction = useCallback(async (txn: import('@/types').Transaction, deltaCash: number, deltaGold: number, branchId: string) => {
     try {
-      const dbRes = await dbProcessLedgerTransactionAction(txn, deltaCash, deltaGold, branchId, txn.tagIds || []);
+      const branchSlug = currentSlug === 'superadmin' ? undefined : currentSlug;
+      const dbRes = await dbProcessLedgerTransactionAction(txn, deltaCash, deltaGold, branchId, txn.tagIds || [], branchSlug);
       if (dbRes.success && dbRes.data) {
         const processed = dbRes.data;
         setState(s => {
@@ -965,7 +987,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Failed to process transaction', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const updateLedgerTransaction = useCallback(async (txn: import('@/types').Transaction, oldAmount: number, oldCategory: string | undefined, deltaCash: number, deltaGold: number, branchId: string) => {
     try {
@@ -1286,19 +1308,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const isBranchView = !!filterBranchId || filteredState.user?.role === 'branch_manager';
     const isICTransferRoute = pathname.includes('/ic-transfer');
+    const showICTransferSecondarySidebar = isICTransferRoute && !icTransferMainMenuOpen;
 
     return {
       ...filteredState,
       isBranchView,
       isICTransferRoute,
+      icTransferMainMenuOpen,
+      showICTransferSecondarySidebar,
       currentSlug,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
-      addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor,
+      addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
+  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
 
   return (
     <AppContext.Provider value={contextValue}>

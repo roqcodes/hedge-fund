@@ -616,4 +616,8 @@ CREATE INDEX IF NOT EXISTS idx_branch_day_closes_branch_date ON branch_day_close
 
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS business_date DATE;
 
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_name VARCHAR(255);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);
+
 CREATE INDEX IF NOT EXISTS idx_transactions_branch_business_date ON transactions(branch_id, business_date);

@@ -26,7 +26,7 @@ const linkClass = (active: boolean) =>
   }`;
 
 export default function ICTransferSecondarySidebar() {
-  const { currentSlug } = useApp();
+  const { currentSlug, openICTransferMainMenu } = useApp();
   const pathname = usePathname();
   const base = resolveBasePath(currentSlug);
   const [settingsOpen, setSettingsOpen] = useState(() => pathname.includes('/ic-transfer/settings'));
@@ -39,9 +39,32 @@ export default function ICTransferSecondarySidebar() {
       style={{ left: `${MAIN_SIDEBAR_COLLAPSED_W}px` }}
       aria-label="IC Transfer navigation"
     >
-      <div className="flex min-h-[88px] shrink-0 flex-col justify-center border-b border-slate-100 px-4 py-4 xl:min-h-[96px] xl:px-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">IC Transfer</p>
-        <h2 className="mt-0.5 text-sm font-bold leading-tight text-slate-900 xl:text-[15px]">& Reverse</h2>
+      <div className="flex min-h-[88px] shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-4 xl:min-h-[96px] xl:px-4">
+        <button
+          type="button"
+          onClick={openICTransferMainMenu}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+          aria-label="Back to main menu"
+          title="Main menu"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">IC Transfer</p>
+          <h2 className="mt-0.5 truncate text-sm font-bold leading-tight text-slate-900 xl:text-[15px]">& Reverse</h2>
+        </div>
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2.5 py-3">

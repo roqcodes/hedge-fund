@@ -34,11 +34,12 @@ import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { getTransactionTagNames, transactionHasAnyTag } from '@/lib/transactionTags';
 import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
+import TransactionEnteredByAvatar from '@/components/funds/TransactionEnteredByAvatar';
 import { TransactionTagsCell } from '@/components/funds/TransactionTagsCell';
 import TransactionsBackupModal from '@/components/funds/TransactionsBackupModal';
 import EntityTransactionsModal from '@/components/funds/EntityTransactionsModal';
 import LedgerTabSummaryBar from '@/components/funds/LedgerTabSummaryBar';
-import { txnTd, txnTdFromTo, txnTh, txnThSortable } from '@/lib/transactionTableStyles';
+import { txnTd, txnTdBy, txnTdFromTo, txnTdNotes, txnTh, txnThBy, txnThSortable } from '@/lib/transactionTableStyles';
 import { accountNameUsedInTransactions } from '@/lib/accountTransactions';
 import {
   filterBranchLedgers,
@@ -149,7 +150,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
   );
   const formatTxnAmount = (t: Transaction) =>
     t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount);
-  const txnTableColSpan = (isBranchView && branches.length === 1 ? 8 : 7) + (isLedgerTab ? 1 : 0);
+  const txnTableColSpan = (isBranchView && branches.length === 1 ? 9 : 8) + (isLedgerTab ? 1 : 0);
 
   const ledgerBalances = React.useMemo(() => {
     return calculateLedgerBalances(branchLedgers, filteredTransactions);
@@ -813,7 +814,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                           To <SortIcon field="to" />
                         </div>
                       </th>
-                      <th className={txnThSortable} onClick={() => handleSort('notes')}>
+                      <th className={`${txnThSortable} min-w-0`} onClick={() => handleSort('notes')}>
                         <div className="flex items-center gap-1">
                           Notes <SortIcon field="notes" />
                         </div>
@@ -831,6 +832,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                         </th>
                       )}
                       <th className={txnTh}>Tags</th>
+                      <th className={txnThBy}>By</th>
                       {isBranchView && branches.length === 1 && (
                         <th className={`${txnTh} text-right`}>Actions</th>
                       )}
@@ -846,7 +848,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                         </td>
                         <td className={txnTdFromTo}>{t.from}</td>
                         <td className={txnTdFromTo}>{t.to}</td>
-                        <td className={txnTd}>
+                        <td className={txnTdNotes}>
                           <TransactionNotesCell transaction={t} />
                         </td>
                         {isLedgerTab ? (
@@ -878,6 +880,9 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                               ))
                             )}
                           </div>
+                        </td>
+                        <td className={`${txnTdBy}${!(isBranchView && branches.length === 1) ? ' last:rounded-r-2xl border-r' : ''}`}>
+                          <TransactionEnteredByAvatar transaction={t} />
                         </td>
                         {isBranchView && branches.length === 1 && (
                           <td className="border-y border-r border-black/5 bg-white px-2 py-2 last:rounded-r-2xl">
@@ -988,6 +993,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                             {formatDateTime(t.date).split(',')[1]?.trim()}
                           </span>
                         </div>
+                        <TransactionEnteredByAvatar transaction={t} compact={false} className="text-right" />
                       </div>
 
                       <TransactionNotesCell transaction={t} className="max-w-none" />

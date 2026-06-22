@@ -34,6 +34,7 @@ import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { getTransactionTagNames, transactionHasAnyTag } from '@/lib/transactionTags';
 import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
+import TransactionEnteredByAvatar from '@/components/funds/TransactionEnteredByAvatar';
 import { TransactionTagsCell } from '@/components/funds/TransactionTagsCell';
 import TransactionsBackupModal from '@/components/funds/TransactionsBackupModal';
 import EntityTransactionsModal from '@/components/funds/EntityTransactionsModal';
@@ -41,7 +42,7 @@ import LedgerTabSummaryBar from '@/components/funds/LedgerTabSummaryBar';
 import TransactionBetaHeader from '@/components/funds/transaction-beta/TransactionBetaHeader';
 import TransactionBetaShell from '@/components/funds/transaction-beta/TransactionBetaShell';
 import { useTransactionBetaPage } from '@/hooks/useTransactionBetaPage';
-import { txnTd, txnTdFromTo, txnTh, txnThSortable } from '@/lib/transactionTableStyles';
+import { txnTd, txnTdBy, txnTdFromTo, txnTdNotes, txnTh, txnThBy, txnThSortable } from '@/lib/transactionTableStyles';
 import { accountNameUsedInTransactions } from '@/lib/accountTransactions';
 import {
   filterBranchLedgers,
@@ -157,7 +158,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
   );
   const formatTxnAmount = (t: Transaction) =>
     t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount);
-  const txnTableColSpan = (isBranchView && branches.length === 1 ? 8 : 7) + (isLedgerTab ? 1 : 0);
+  const txnTableColSpan = (isBranchView && branches.length === 1 ? 9 : 8) + (isLedgerTab ? 1 : 0);
 
   // Calculate Ledger Balances
   const ledgerBalances = React.useMemo(() => {
@@ -888,7 +889,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                           To <SortIcon field="to" />
                         </div>
                       </th>
-                      <th className={txnThSortable} onClick={() => handleSort('notes')}>
+                      <th className={`${txnThSortable} min-w-0`} onClick={() => handleSort('notes')}>
                         <div className="flex items-center gap-1">
                           Notes <SortIcon field="notes" />
                         </div>
@@ -906,6 +907,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                         </th>
                       )}
                       <th className={txnTh}>Tags</th>
+                      <th className={txnThBy}>By</th>
                       {isBranchView && branches.length === 1 && (
                         <th className={`${txnTh} text-right`}>Actions</th>
                       )}
@@ -921,7 +923,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                         </td>
                         <td className={txnTdFromTo}>{t.from}</td>
                         <td className={txnTdFromTo}>{t.to}</td>
-                        <td className={txnTd}>
+                        <td className={txnTdNotes}>
                           <TransactionNotesCell transaction={t} />
                         </td>
                         {isLedgerTab ? (
@@ -953,6 +955,9 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                               ))
                             )}
                           </div>
+                        </td>
+                        <td className={`${txnTdBy}${!(isBranchView && branches.length === 1) ? ' last:rounded-r-2xl border-r' : ''}`}>
+                          <TransactionEnteredByAvatar transaction={t} />
                         </td>
                         {isBranchView && branches.length === 1 && (
                           <td className="border-y border-r border-black/5 bg-white px-2 py-2 last:rounded-r-2xl">
@@ -1067,6 +1072,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                             {formatTxnDateTime(t.date).split(',')[1]?.trim()}
                           </span>
                         </div>
+                        <TransactionEnteredByAvatar transaction={t} compact={false} className="text-right" />
                       </div>
 
                       <TransactionNotesCell transaction={t} className="max-w-none" />

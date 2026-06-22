@@ -10,15 +10,23 @@ import ICTransferMobileNav from '@/components/ic-transfer/ICTransferMobileNav';
 import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isInitialLoading, toasts, sidebarCollapsed, isICTransferRoute, setSidebarCollapsed } =
-    useApp();
+  const {
+    isAuthenticated,
+    isInitialLoading,
+    toasts,
+    sidebarCollapsed,
+    isICTransferRoute,
+    showICTransferSecondarySidebar,
+    icTransferMainMenuOpen,
+    setSidebarCollapsed,
+  } = useApp();
   const pathname = usePathname();
 
   useLayoutEffect(() => {
-    if (isICTransferRoute) {
+    if (isICTransferRoute && !icTransferMainMenuOpen) {
       setSidebarCollapsed(true);
     }
-  }, [isICTransferRoute, setSidebarCollapsed]);
+  }, [isICTransferRoute, icTransferMainMenuOpen, setSidebarCollapsed]);
 
   if (isInitialLoading) return null;
   if (!isAuthenticated) {
@@ -26,23 +34,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <LoginPage branchSlug={slug} />;
   }
 
+  const contentMargin = showICTransferSecondarySidebar
+    ? 'lg:ml-[300px] xl:ml-[320px]'
+    : sidebarCollapsed
+      ? 'lg:ml-[80px]'
+      : 'lg:ml-[240px]';
+
   return (
     <div className="flex min-h-dvh">
       <BranchPageGuard />
       <Sidebar />
-      {isICTransferRoute && <ICTransferSecondarySidebar />}
+      {showICTransferSecondarySidebar && <ICTransferSecondarySidebar />}
       <div
-        className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:ml-0 ${
-          isICTransferRoute
-            ? 'lg:ml-[300px] xl:ml-[320px]'
-            : sidebarCollapsed
-              ? 'lg:ml-[80px]'
-              : 'lg:ml-[240px]'
-        }`}
+        className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:ml-0 ${contentMargin}`}
       >
         <Topbar />
         <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
-          {isICTransferRoute && <ICTransferMobileNav />}
+          {showICTransferSecondarySidebar && <ICTransferMobileNav />}
           {children}
         </main>
       </div>

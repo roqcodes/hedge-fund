@@ -13,7 +13,7 @@ export function TransactionNotesCell({
     t.assetType === 'gold' ? 'font-semibold text-amber-700' : 'font-semibold text-slate-500';
 
   return (
-    <div className={`min-w-0 max-w-[420px] ${className}`}>
+    <div className={`min-w-0 w-full ${className}`}>
       <p className="text-sm leading-snug text-slate-700 break-words whitespace-normal">
         <span className={`text-xs uppercase tracking-wide ${assetClass}`}>{asset}</span>
         {notes ? (
