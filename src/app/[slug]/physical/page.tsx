@@ -1,5 +1,5 @@
-import PhysicalPage from '@/components/physical/PhysicalPage';
+import MarketplacePage from '@/components/marketplace/MarketplacePage';
 
-export default function BranchPhysical() {
-  return <PhysicalPage />;
+export default function BranchMarketplace() {
+  return <MarketplacePage />;
 }

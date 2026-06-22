@@ -1,4 +1,5 @@
 import type { Branch, Deal, Entity, Investor, PhysicalBuy, Transaction } from '@/types';
+import { isBranchPageEnabled } from '@/lib/branchPages';
 
 export type GlobalSearchCategory =
   | 'pages'
@@ -35,9 +36,9 @@ export const SEARCH_CATEGORY_LABELS: Record<GlobalSearchCategory, string> = {
   transactions: 'Transactions',
   entities: 'Entities',
   investors: 'Investors',
-  physical: 'Physical',
+  physical: 'Physical Sales',
   products: 'Products',
-  marketplace: 'Marketplace',
+  marketplace: 'Physical',
 };
 
 export const SEARCH_PAGE_ITEMS: {
@@ -51,12 +52,13 @@ export const SEARCH_PAGE_ITEMS: {
   { id: 'dashboard', label: 'Dashboard', path: '/', keywords: ['home', 'overview'] },
   { id: 'deals', label: 'Group & Deals', path: '/group', keywords: ['deals', 'groups', 'gold'] },
   { id: 'funds', label: 'Transaction', path: '/funds', keywords: ['funds', 'transfer', 'ledger', 'capital'] },
+  { id: 'transactions-beta', label: 'Daily Ledger', path: '/transactions', keywords: ['daily ledger', 'z-report', 'beta'], branchOnly: true },
   { id: 'ic-transfer', label: 'IC Transfer & Reverse', path: '/ic-transfer', keywords: ['intercompany', 'ic'], branchOnly: true },
   { id: 'finance', label: 'Finance - Reports', path: '/finance', keywords: ['finance', 'reports', 'expense', 'invoice'] },
-  { id: 'physical', label: 'Physical', path: '/physical', keywords: ['gold', 'buy', 'sell', 'inventory'] },
+  { id: 'physical', label: 'Physical Sales', path: '/physical-sales', keywords: ['gold', 'buy', 'sell', 'sales', 'bullion', 'vault'] },
   { id: 'investors', label: 'Investors', path: '/investors', keywords: ['investor', 'capital', 'kyc'] },
   { id: 'usdt', label: 'USDT', path: '/usdt', keywords: ['crypto', 'usdt', 'stablecoin'] },
-  { id: 'marketplace', label: 'Marketplace', path: '/marketplace', keywords: ['marketplace', 'tax', 'invoice', 'stock'] },
+  { id: 'marketplace', label: 'Physical', path: '/physical', keywords: ['physical', 'tax', 'invoice', 'stock'] },
   { id: 'products', label: 'Products', path: '/products', keywords: ['products', 'catalogue', 'sku', 'inventory'] },
   { id: 'settings', label: 'Settings', path: '/settings', keywords: ['settings', 'profile', 'branch'] },
   { id: 'branches', label: 'Branches', path: '/branches', keywords: ['branches', 'locations'], superadminOnly: true },
@@ -93,8 +95,8 @@ function dealHref(deal: Deal, branches: Branch[], basePath: string, currentSlug:
 
 function physicalHref(buy: PhysicalBuy, branches: Branch[], basePath: string): string {
   const slug = branchSlugById(branches, buy.branchId) || (basePath ? basePath.slice(1) : undefined);
-  if (!slug) return basePath ? `${basePath}/physical` : '/physical';
-  return basePath ? `${basePath}/physical/${buy.id}` : `/physical/${slug}/${buy.id}`;
+  if (!slug) return basePath ? `${basePath}/physical-sales` : '/physical-sales';
+  return basePath ? `${basePath}/physical-sales/${buy.id}` : `/physical-sales/${slug}/${buy.id}`;
 }
 
 export function buildContextSearchResults(input: {
@@ -104,6 +106,7 @@ export function buildContextSearchResults(input: {
   isSuperadmin: boolean;
   isBranchUser: boolean;
   branchId?: string;
+  hiddenPages?: string[];
   branches: Branch[];
   transactions: Transaction[];
   entities: Entity[];
@@ -129,6 +132,7 @@ export function buildContextSearchResults(input: {
     if (page.superadminOnly && !input.isSuperadmin) continue;
     if (page.branchOnly && input.isSuperadmin && !input.basePath) continue;
     if (page.branchOnly && input.isSuperadmin && input.basePath) continue;
+    if (input.hiddenPages && !isBranchPageEnabled(page.id, input.hiddenPages)) continue;
     const haystack = [page.label, page.id, ...page.keywords];
     if (!matchesSearch(q, ...haystack)) continue;
     const href = page.id === 'dashboard' ? (input.basePath || '/') : `${input.basePath}${page.path}`;

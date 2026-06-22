@@ -8,6 +8,7 @@ import { formatAED, formatDateTime } from '@/data/mockData';
 import { Branch, Transaction, Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
+import BranchPageSettings from '@/components/branches/BranchPageSettings';
 import { txnTd, txnTdFromTo, txnTh } from '@/lib/transactionTableStyles';
 import { fetchCognitoUsersAction, createCognitoUserAction, updateCognitoUserAttributesAction, CognitoUser } from '@/app/actions/cognitoActions';
 import { validatePassword, PasswordRequirements } from '@/components/users/UserModals';
@@ -244,6 +245,8 @@ export default function BranchList() {
               bgColor="var(--purple-light)"
             />
           </div>
+
+          <BranchPageSettings branchId={b.id} hiddenPages={b.hiddenPages ?? []} />
 
         <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
           <div className="pb-4 px-4 md:border-b md:border-slate-100 md:px-8 md:py-6 sm:px-8 sm:py-6">

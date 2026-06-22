@@ -95,7 +95,7 @@ export async function saveTaxInvoice(data: any, slug: string) {
     }
 
     await client.query('COMMIT');
-    revalidatePath('/[slug]/marketplace');
+    revalidatePath('/[slug]/physical');
     return { success: true, id: invoiceId };
   } catch (err: any) {
     await client.query('ROLLBACK');
@@ -151,7 +151,7 @@ export async function getTaxInvoiceDetails(invoiceId: string) {
 export async function deleteTaxInvoice(invoiceId: string) {
   try {
     await query(`DELETE FROM tax_invoices WHERE id = $1`, [invoiceId]);
-    revalidatePath('/[slug]/marketplace');
+    revalidatePath('/[slug]/physical');
     return { success: true };
   } catch (err: any) {
     console.error('deleteTaxInvoice error:', err);

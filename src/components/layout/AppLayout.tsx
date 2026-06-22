@@ -4,6 +4,7 @@ import { useApp } from '@/context/AppContext';
 import LoginPage from '@/components/auth/LoginPage';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
+import BranchPageGuard from '@/components/layout/BranchPageGuard';
 import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh">
+      <BranchPageGuard />
       <Sidebar />
       <div
         className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${

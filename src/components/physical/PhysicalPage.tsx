@@ -210,8 +210,8 @@ export default function PhysicalPage() {
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
         <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
           <div>
-            <h2 className={pageTitle}>Physical Assets</h2>
-            <p className={pageSubtitle}>Vault inventory, bullion tracking, and physical buys</p>
+            <h2 className={pageTitle}>Physical Sales</h2>
+            <p className={pageSubtitle}>Vault inventory, bullion tracking, and gold buys</p>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setIsInitialSetupOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg gap-2 font-semibold text-sm">
@@ -298,7 +298,7 @@ export default function PhysicalPage() {
 
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
           <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-lg font-bold text-slate-900">Physical Buys</h3>
+            <h3 className="text-lg font-bold text-slate-900">Gold Buys</h3>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative flex-1">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -372,7 +372,7 @@ export default function PhysicalPage() {
                     <tr
                       key={buy.id}
                       data-interactive-row
-                      onClick={() => router.push(`/${branchSlug}/physical/${buy.id}`)}
+                      onClick={() => router.push(`/${branchSlug}/physical-sales/${buy.id}`)}
                       className={`cursor-pointer group hover:bg-slate-50/80 transition-colors ${buy.remainingWeight > 0 ? 'bg-gradient-to-l from-amber-100/80 to-transparent' : ''}`}
                     >
                       <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
@@ -402,7 +402,7 @@ export default function PhysicalPage() {
                           className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/${branchSlug}/physical/${buy.id}`);
+                            router.push(`/${branchSlug}/physical-sales/${buy.id}`);
                           }}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -426,7 +426,7 @@ export default function PhysicalPage() {
                 {filteredAndSortedBuys.map((buy) => (
                   <div 
                     key={buy.id}
-                    onClick={() => router.push(`/${branchSlug}/physical/${buy.id}`)}
+                    onClick={() => router.push(`/${branchSlug}/physical-sales/${buy.id}`)}
                     className={`group flex flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98] ${buy.remainingWeight > 0 ? 'bg-gradient-to-br from-amber-50 to-white' : 'bg-white'}`}
                   >
                     <div className="flex items-center justify-between border-b border-slate-50 pb-3">
@@ -480,7 +480,7 @@ export default function PhysicalPage() {
       {isInitialSetupOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-bold">Physical Capital Setup</h3>
+            <h3 className="mb-4 text-lg font-bold">Gold Capital Setup</h3>
             <form onSubmit={handleInitialSetup} className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-600">Initial Capital (Fund)</label>
@@ -516,7 +516,7 @@ export default function PhysicalPage() {
       {isBuyModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="mb-4 text-lg font-bold">New Physical Buy</h3>
+            <h3 className="mb-4 text-lg font-bold">New Gold Buy</h3>
             <form onSubmit={handleCreateBuy} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>

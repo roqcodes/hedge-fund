@@ -54,6 +54,7 @@ import {
   dbUpdateBranchInitialGoldAction,
   dbCreateTransactionTagAction,
 } from '@/app/actions/dbActions';
+import { updateBranchPageSettingsAction } from '@/app/actions/branchActions';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
 
@@ -115,6 +116,7 @@ interface AppContextType extends AppState {
   setDateRange: (range: DateRange) => void;
   addBranch: (b: Omit<Branch, 'id' | 'status' | 'lastActivity' | 'createdAt' | 'closingBalance' | 'dailyPL' | 'cashBalance' | 'goldBalance' | 'currentBalance' | 'timezone'> & { openingBalance: number; timezone?: string }, slug: string) => void;
   updateBranch: (branch: Branch, slug: string) => Promise<boolean>;
+  updateBranchPages: (branchId: string, hiddenPages: string[]) => Promise<boolean>;
   updateBranchInitialFund: (branchId: string, newAmount: number, newCurrentBalance?: number) => Promise<boolean>;
   updateBranchInitialGold: (branchId: string, newAmount: number, newCurrentBalance?: number) => Promise<boolean>;
   updateHqBalance: (newAmount: number) => Promise<boolean>;
@@ -160,7 +162,7 @@ const AppContext = createContext<AppContextType | null>(null);
 const getSlugFromPath = (path: string): string => {
   const parts = path.split('/').filter(Boolean);
   const first = parts[0];
-  const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 'investors', 'invoices', 'physical', 'reports', 'settings', 'usdt', 'api']);
+  const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 'investors', 'invoices', 'physical', 'physical-sales', 'reports', 'settings', 'usdt', 'api']);
   if (first && !SYSTEM_PATHS.has(first)) {
     return first;
   }
@@ -643,6 +645,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dailyPL: 0,
       status: 'active',
       timezone: b.timezone || DEFAULT_BRANCH_TIMEZONE,
+      hiddenPages: [],
       lastActivity: now,
       createdAt: now,
     };
@@ -682,6 +685,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('DB updateBranch failed', e);
       showToast('Failed to update branch', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateBranchPages = useCallback(async (branchId: string, hiddenPages: string[]) => {
+    try {
+      const res = await updateBranchPageSettingsAction(branchId, hiddenPages);
+      if (res.success && res.hiddenPages) {
+        setState(s => ({
+          ...s,
+          branches: s.branches.map(b =>
+            b.id === branchId ? { ...b, hiddenPages: res.hiddenPages! } : b,
+          ),
+        }));
+        showToast('Branch page access updated');
+        return true;
+      }
+      showToast(res.error || 'Failed to update page access', 'error');
+      return false;
+    } catch (e) {
+      console.error('updateBranchPages failed', e);
+      showToast('Failed to update page access', 'error');
       return false;
     }
   }, [showToast]);
@@ -1251,13 +1276,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...filteredState,
       isBranchView,
       currentSlug,
-      login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
+      login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
 
   return (
     <AppContext.Provider value={contextValue}>

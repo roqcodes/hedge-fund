@@ -111,7 +111,7 @@ export async function searchCatalogAction(
             title: String(row.doc_no),
             subtitle: customer || 'Tax invoice',
             meta: row.net_amt_bc != null ? `AED ${Number(row.net_amt_bc).toLocaleString()}` : undefined,
-            href: `${base}/marketplace`,
+            href: `${base}/physical`,
             badge: 'Invoice',
             badgeTone: 'warning' as const,
           } satisfies GlobalSearchResult;

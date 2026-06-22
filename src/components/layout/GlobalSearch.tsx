@@ -148,6 +148,13 @@ export default function GlobalSearch({ query, open, onClose, onQueryChange }: Pr
   const isBranchUser = user?.role === 'branch_manager';
   const branchId = user?.branchId;
   const catalogSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
+  const hiddenPages = useMemo(() => {
+    if (currentSlug === 'superadmin') return undefined;
+    const branch = isBranchUser
+      ? branches.find(b => b.id === branchId)
+      : branches.find(b => b.slug === currentSlug);
+    return branch?.hiddenPages;
+  }, [currentSlug, isBranchUser, branchId, branches]);
 
   const contextSections = useMemo(() => {
     if (!normalizeSearchQuery(query)) return [];
@@ -158,6 +165,7 @@ export default function GlobalSearch({ query, open, onClose, onQueryChange }: Pr
       isSuperadmin: !!isSuperadmin,
       isBranchUser: !!isBranchUser,
       branchId,
+      hiddenPages,
       branches,
       transactions,
       entities,
@@ -172,6 +180,7 @@ export default function GlobalSearch({ query, open, onClose, onQueryChange }: Pr
     isSuperadmin,
     isBranchUser,
     branchId,
+    hiddenPages,
     branches,
     transactions,
     entities,

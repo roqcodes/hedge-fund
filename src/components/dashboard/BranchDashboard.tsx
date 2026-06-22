@@ -215,7 +215,8 @@ export default function BranchDashboard() {
               {[
                 { href: `${basePath}/funds`, label: 'Transactions', desc: 'Manage funds & entities' },
                 { href: `${basePath}/group`, label: 'Deals', desc: `${branchDeals.length} active groups` },
-                { href: `${basePath}/physical`, label: 'Physical', desc: 'Inventory & bullion' },
+                { href: `${basePath}/physical`, label: 'Physical', desc: 'Tax invoices & trade' },
+                { href: `${basePath}/physical-sales`, label: 'Physical Sales', desc: 'Gold buys & bullion' },
                 { href: `${basePath}/finance`, label: 'Finance', desc: 'Expenses & invoices' },
               ].map(link => (
                 <Link

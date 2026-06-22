@@ -114,21 +114,21 @@ export default function SuperadminPhysical() {
     { value: 'name', label: 'Branch Name' },
     { value: 'inventory', label: 'Total Inventory (g)' },
     { value: 'value', label: 'Total Value' },
-    { value: 'capital', label: 'Initial Physical Capital' }
+    { value: 'capital', label: 'Initial Gold Capital' }
   ];
 
   return (
     <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
       <div className={pageHeader}>
         <div>
-          <h2 className={pageTitle}>Global Physical Assets</h2>
+          <h2 className={pageTitle}>Global Physical Sales</h2>
           <p className={pageSubtitle}>Monitor physical gold inventory and buys across all branches</p>
         </div>
       </div>
 
       <div className={kpiGrid}>
         <KPICard
-          label="Total Gold Inventory"
+          label="Total Sales Volume"
           value={globalMetrics.globalInventory.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
           subValue="Gross weight bought globally"
           icon={
@@ -152,7 +152,7 @@ export default function SuperadminPhysical() {
           bgColor="var(--warning-light)"
         />
         <KPICard
-          label="Total Physical Capital"
+          label="Total Gold Capital"
           value={formatAED(globalMetrics.globalCapital)}
           subValue="Capital allocated for physical"
           icon={
@@ -180,7 +180,7 @@ export default function SuperadminPhysical() {
       <div className="mt-8 mb-6">
         <div className="flex flex-col gap-3 pb-4 md:border-b md:border-slate-100 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">
-            Branches Physical Overview
+            Branches Physical Sales Overview
           </h3>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-2">
             <div className="relative w-full sm:w-44">
@@ -228,7 +228,7 @@ export default function SuperadminPhysical() {
           filteredAndSortedBranches.map(b => (
             <div
               key={b.id}
-              onClick={() => router.push(`/physical/${b.slug}`)}
+              onClick={() => router.push(`/physical-sales/${b.slug}`)}
               className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] transition-all hover:shadow-md hover:border-accent/30 cursor-pointer active:scale-[0.99] group"
             >
               <div className="flex justify-between items-start">

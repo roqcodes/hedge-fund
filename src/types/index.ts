@@ -37,6 +37,8 @@ export interface Branch {
   createdAt: string;
   /** IANA timezone for business-day boundaries (e.g. Asia/Dubai). */
   timezone: string;
+  /** Page IDs hidden from this branch's portal (superadmin-controlled). */
+  hiddenPages?: string[];
 }
 
 export type TransactionType = string;

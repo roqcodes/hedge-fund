@@ -147,6 +147,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       dailyPL: parseFloat(r.daily_pl),
       status: r.status,
       timezone: resolveBranchTimeZone(r.timezone ? String(r.timezone) : null),
+      hiddenPages: Array.isArray(r.hidden_pages) ? r.hidden_pages.map(String) : [],
       lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
     }));
@@ -575,8 +576,8 @@ export async function dbAddBranchAction(
 
     // 1. Insert branch
     await client.query(
-      `INSERT INTO branches (id, slug, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, opening_gold_balance, closing_balance, daily_pl, status, timezone, last_activity, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+      `INSERT INTO branches (id, slug, name, location, manager_name, cash_balance, gold_balance, current_balance, opening_balance, opening_gold_balance, closing_balance, daily_pl, status, timezone, hidden_pages, last_activity, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
       [
         branch.id,
         branch.slug,
@@ -592,6 +593,7 @@ export async function dbAddBranchAction(
         branch.dailyPL,
         branch.status,
         resolveBranchTimeZone(branch.timezone),
+        branch.hiddenPages ?? [],
         branch.lastActivity,
         branch.createdAt,
       ]

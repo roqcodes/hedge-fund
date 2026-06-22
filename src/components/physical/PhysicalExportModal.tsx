@@ -127,7 +127,7 @@ export default function PhysicalExportModal({
     if (ledger.length === 0) return;
 
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Physical Ledger');
+    const sheet = workbook.addWorksheet('Physical Sales');
 
     // Add first header row (STOCK VALUE / STOCK WEIGHT)
     sheet.mergeCells('A1:J1');
@@ -230,7 +230,7 @@ export default function PhysicalExportModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Export Physical Ledger"
+      title="Export Physical Sales"
       maxWidth="max-w-7xl"
       footer={
         <>

@@ -12,9 +12,9 @@ export default async function BranchSettingsPage({ params }: { params: any }) {
   const resolvedParams = await Promise.resolve(params);
   const slug = resolvedParams.slug;
 
-  const user = await getSessionUser();
+  const user = await getSessionUser(slug);
   if (!user) {
-    redirect('/');
+    redirect(`/${slug}`);
   }
 
   // Find the matching branch
@@ -22,6 +22,10 @@ export default async function BranchSettingsPage({ params }: { params: any }) {
   const branches = branchesRes.rows;
   const branch = branches.find((b: any) => (b.slug || b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')) === slug);
   const branchId = branch?.id;
+
+  if (user.role === 'branch_manager' && branchId && user.branchId !== branchId) {
+    redirect(`/${slug}`);
+  }
 
   const { success, data: initialUsers, error } = await fetchCognitoUsersAction();
   

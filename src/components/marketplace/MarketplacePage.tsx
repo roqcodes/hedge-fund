@@ -155,8 +155,8 @@ export default function MarketplacePage() {
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
         <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
           <div>
-            <h2 className={pageTitle}>Marketplace</h2>
-            <p className={pageSubtitle}>Manage your tax invoices and marketplace details</p>
+            <h2 className={pageTitle}>Physical</h2>
+            <p className={pageSubtitle}>Manage tax invoices and physical trade details</p>
           </div>
           <div className="flex items-center gap-3">
             <button 

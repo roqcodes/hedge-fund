@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS branches (
     daily_pl DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Dubai',
+    hidden_pages TEXT[] NOT NULL DEFAULT '{}',
     last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
