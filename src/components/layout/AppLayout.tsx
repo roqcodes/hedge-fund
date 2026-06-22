@@ -1,15 +1,24 @@
 'use client';
-import React from 'react';
+import React, { useLayoutEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import LoginPage from '@/components/auth/LoginPage';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import BranchPageGuard from '@/components/layout/BranchPageGuard';
+import ICTransferSecondarySidebar from '@/components/ic-transfer/ICTransferSecondarySidebar';
+import ICTransferMobileNav from '@/components/ic-transfer/ICTransferMobileNav';
 import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isInitialLoading, toasts, sidebarCollapsed } = useApp();
+  const { isAuthenticated, isInitialLoading, toasts, sidebarCollapsed, isICTransferRoute, setSidebarCollapsed } =
+    useApp();
   const pathname = usePathname();
+
+  useLayoutEffect(() => {
+    if (isICTransferRoute) {
+      setSidebarCollapsed(true);
+    }
+  }, [isICTransferRoute, setSidebarCollapsed]);
 
   if (isInitialLoading) return null;
   if (!isAuthenticated) {
@@ -21,13 +30,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-dvh">
       <BranchPageGuard />
       <Sidebar />
+      {isICTransferRoute && <ICTransferSecondarySidebar />}
       <div
-        className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          sidebarCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[240px]'
+        className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:ml-0 ${
+          isICTransferRoute
+            ? 'lg:ml-[300px] xl:ml-[320px]'
+            : sidebarCollapsed
+              ? 'lg:ml-[80px]'
+              : 'lg:ml-[240px]'
         }`}
       >
         <Topbar />
-        <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">{children}</main>
+        <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
+          {isICTransferRoute && <ICTransferMobileNav />}
+          {children}
+        </main>
       </div>
       <div
         className="pointer-events-none fixed bottom-4 left-4 right-4 z-[500] flex flex-col gap-3 sm:left-auto sm:right-6 sm:max-w-sm"

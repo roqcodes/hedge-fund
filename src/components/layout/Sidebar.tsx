@@ -29,8 +29,21 @@ const navItems: {
   ];
 
 export default function Sidebar() {
-  const { sidebarOpen, sidebarCollapsed, toggleSidebar, toggleSidebarCollapsed, user, branches, logout, currentSlug } = useApp();
+  const {
+    sidebarOpen,
+    sidebarCollapsed,
+    toggleSidebar,
+    toggleSidebarCollapsed,
+    user,
+    branches,
+    logout,
+    currentSlug,
+    isICTransferRoute,
+  } = useApp();
   const pathname = usePathname();
+
+  /** IC Transfer always uses collapsed main sidebar so secondary panel fits flush */
+  const effectivelyCollapsed = isICTransferRoute || sidebarCollapsed;
 
   const isBranchUser = user?.role === 'branch_manager';
   const branch = isBranchUser
@@ -58,19 +71,23 @@ export default function Sidebar() {
         aria-hidden
       />
       <aside
-        data-collapsed={sidebarCollapsed ? 'true' : 'false'}
-        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:translate-x-0 ${sidebarOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-[105%]'} ${sidebarCollapsed ? 'lg:w-[80px]' : 'lg:w-[240px]'}`}
+        data-collapsed={effectivelyCollapsed ? 'true' : 'false'}
+        className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:translate-x-0 ${sidebarOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-[105%]'} ${effectivelyCollapsed ? 'lg:w-[80px]' : 'lg:w-[240px]'}`}
       >
-        <div className="flex flex-col items-center gap-2.5 px-4 py-8 sm:px-5 lg:data-[collapsed=true]:px-2 lg:data-[collapsed=true]:py-6">
-          <div className="flex h-14 shrink-0 items-center justify-center transition-transform duration-300 motion-safe:hover:scale-105 sm:h-16 lg:data-[collapsed=true]:h-10">
+        <div
+          className={`flex flex-col items-center gap-2.5 px-4 py-8 sm:px-5 ${effectivelyCollapsed ? 'lg:gap-1 lg:px-2 lg:py-4' : ''}`}
+        >
+          <div
+            className={`flex shrink-0 items-center justify-center transition-transform duration-300 motion-safe:hover:scale-105 ${effectivelyCollapsed ? 'lg:h-8' : 'h-14 sm:h-16'}`}
+          >
             <img
               src={isBranchUser && branch?.logo_url ? branch.logo_url : '/logo.png'}
               alt="Branch Logo"
-              className="h-full w-auto max-w-[160px] object-contain lg:data-[collapsed=true]:max-w-[40px]"
+              className={`h-full w-auto object-contain ${effectivelyCollapsed ? 'lg:max-h-8 lg:max-w-[28px]' : 'max-w-[160px]'}`}
             />
           </div>
-          <div className="min-w-0 text-center lg:data-[collapsed=true]:hidden">
-            <h1 className="text-xl font-black tracking-[0.05em] text-slate-900 sm:text-2xl uppercase">
+          <div className={`min-w-0 text-center ${effectivelyCollapsed ? 'lg:hidden' : ''}`}>
+            <h1 className="text-xl font-black uppercase tracking-[0.05em] text-slate-900 sm:text-2xl">
               {isBranchUser && branch ? branch.name : 'AIBAK'}
             </h1>
             <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.25em] text-slate-400">
@@ -106,7 +123,12 @@ export default function Sidebar() {
             })
             .map(item => {
               const itemHref = item.id === 'dashboard' ? (basePath || '/') : `${basePath}${item.path}`;
-              const isActive = pathname === itemHref || (item.id === 'dashboard' && pathname === basePath) || (pathname === '/' && item.id === 'dashboard' && !basePath);
+              const isActive =
+                item.id === 'ic-transfer'
+                  ? pathname.includes('/ic-transfer')
+                  : pathname === itemHref ||
+                    (item.id === 'dashboard' && pathname === basePath) ||
+                    (pathname === '/' && item.id === 'dashboard' && !basePath);
               return (
                 <Link
                   key={item.id}
@@ -163,17 +185,17 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Desktop collapse toggle */}
-        <div className="mt-auto hidden border-t border-slate-100 p-2 lg:block">
+        {/* Desktop collapse toggle — hidden during IC Transfer (secondary sidebar is active) */}
+        <div className={`mt-auto hidden border-t border-slate-100 p-2 lg:block ${isICTransferRoute ? 'lg:hidden' : ''}`}>
           <button
             type="button"
             onClick={toggleSidebarCollapsed}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 ${sidebarCollapsed ? 'px-0' : ''}`}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 ${effectivelyCollapsed ? 'px-0' : ''}`}
+            aria-label={effectivelyCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={effectivelyCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             <svg
-              className={`size-4 shrink-0 transition-transform duration-300 ${sidebarCollapsed ? 'rotate-180' : ''}`}
+              className={`size-4 shrink-0 transition-transform duration-300 ${effectivelyCollapsed ? 'rotate-180' : ''}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -184,8 +206,8 @@ export default function Sidebar() {
             >
               <path d="M15 18l-6-6 6-6" />
             </svg>
-            <span className={sidebarCollapsed ? 'sr-only' : 'truncate'}>
-              {sidebarCollapsed ? 'Expand' : 'Collapse'}
+            <span className={effectivelyCollapsed ? 'sr-only' : 'truncate'}>
+              {effectivelyCollapsed ? 'Expand' : 'Collapse'}
             </span>
           </button>
         </div>
