@@ -144,11 +144,26 @@ export function isLedgerTabInAmount(t: Transaction, ledgerName: string): boolean
   return t.to === ledgerName;
 }
 
+/**
+ * All-tab "Sent" column — ledger-aware: TC/CA → entity counts as out (lent / withdrawn),
+ * not received, even though the entity is the `to` party.
+ */
 export function isEntitySentAmount(t: Transaction, entityName: string): boolean {
+  if (isTemporaryCreditsLedger(t.from) && t.to === entityName) return true;
+  if (isCustomerAccountsLedger(t.from) && t.to === entityName) return true;
+  if (isTemporaryCreditsLedger(t.from) || isTemporaryCreditsLedger(t.to)) return false;
+  if (isCustomerAccountsLedger(t.from) || isCustomerAccountsLedger(t.to)) return false;
   return t.from === entityName;
 }
 
+/**
+ * All-tab "Received" column — ledger-aware: entity → TC/CA counts as in (recovered / deposited).
+ */
 export function isEntityReceivedAmount(t: Transaction, entityName: string): boolean {
+  if (t.from === entityName && isTemporaryCreditsLedger(t.to)) return true;
+  if (t.from === entityName && isCustomerAccountsLedger(t.to)) return true;
+  if (isTemporaryCreditsLedger(t.from) || isTemporaryCreditsLedger(t.to)) return false;
+  if (isCustomerAccountsLedger(t.from) || isCustomerAccountsLedger(t.to)) return false;
   return t.to === entityName;
 }
 
@@ -188,4 +203,105 @@ export function entityLedgerHintClass(tone: EntityLedgerHint['tone']): string {
   if (tone === 'warning') return 'bg-amber-50 text-amber-700 ring-amber-600/20';
   if (tone === 'success') return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20';
   return 'bg-sky-50 text-sky-700 ring-sky-600/20';
+}
+
+export type EntityLedgerTabTotals = {
+  outLabel: string;
+  inLabel: string;
+  outTotal: number;
+  inTotal: number;
+  net: number;
+  netLabel: string;
+  netHint: string;
+};
+
+function buildLedgerTabTotals(ledgerName: string, outTotal: number, inTotal: number): EntityLedgerTabTotals {
+  const cols = getLedgerTabColumns(ledgerName);
+  if (isTemporaryCreditsLedger(ledgerName)) {
+    return {
+      outLabel: cols.outLabel,
+      inLabel: cols.inLabel,
+      outTotal,
+      inTotal,
+      net: outTotal - inTotal,
+      netLabel: 'Net outstanding',
+      netHint: 'Lent out minus recovered — temporary credit still owed back to the branch.',
+    };
+  }
+  if (isCustomerAccountsLedger(ledgerName)) {
+    return {
+      outLabel: cols.outLabel,
+      inLabel: cols.inLabel,
+      outTotal,
+      inTotal,
+      net: inTotal - outTotal,
+      netLabel: 'Net deposit balance',
+      netHint: 'Deposited minus withdrawn — customer funds held on their behalf.',
+    };
+  }
+  return {
+    outLabel: cols.outLabel,
+    inLabel: cols.inLabel,
+    outTotal,
+    inTotal,
+    net: inTotal - outTotal,
+    netLabel: 'Net balance',
+    netHint: 'Received minus sent for this ledger.',
+  };
+}
+
+/** Totals for a ledger tab on the funds page (all visible transactions). */
+export function computeLedgerTabTotals(txns: Transaction[], ledgerName: string): EntityLedgerTabTotals {
+  let outTotal = 0;
+  let inTotal = 0;
+  for (const t of txns) {
+    if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') continue;
+    if (isLedgerTabOutAmount(t, ledgerName)) outTotal += t.amount;
+    if (isLedgerTabInAmount(t, ledgerName)) inTotal += t.amount;
+  }
+  return buildLedgerTabTotals(ledgerName, outTotal, inTotal);
+}
+
+/** Entity ↔ ledger tab: out = ledger → entity (lent / withdrawn), in = entity → ledger (recovered / deposited). */
+export function entityLedgerOutAmount(
+  t: Transaction,
+  entityName: string,
+  ledgerName: string,
+): number | null {
+  if (t.from !== ledgerName || t.to !== entityName) return null;
+  return t.amount;
+}
+
+export function entityLedgerInAmount(
+  t: Transaction,
+  entityName: string,
+  ledgerName: string,
+): number | null {
+  if (t.from !== entityName || t.to !== ledgerName) return null;
+  return t.amount;
+}
+
+export function entityInvolvesLedger(t: Transaction, entityName: string, ledgerName: string): boolean {
+  const involvesEntity = t.from === entityName || t.to === entityName;
+  const involvesLedger = t.from === ledgerName || t.to === ledgerName;
+  return involvesEntity && involvesLedger;
+}
+
+export function computeEntityLedgerTabTotals(
+  txns: Transaction[],
+  entityName: string,
+  ledgerName: string,
+): EntityLedgerTabTotals {
+  let outTotal = 0;
+  let inTotal = 0;
+
+  for (const t of txns) {
+    if ((t.assetType || 'currency') !== 'currency' || t.status !== 'completed') continue;
+    const out = entityLedgerOutAmount(t, entityName, ledgerName);
+    const inn = entityLedgerInAmount(t, entityName, ledgerName);
+    if (out != null) outTotal += out;
+    if (inn != null) inTotal += inn;
+  }
+
+  return buildLedgerTabTotals(ledgerName, outTotal, inTotal);
 }

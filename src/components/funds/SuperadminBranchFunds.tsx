@@ -36,7 +36,9 @@ import { getTransactionTagNames, transactionHasAnyTag } from '@/lib/transactionT
 import { TransactionNotesCell } from '@/components/funds/TransactionNotesCell';
 import { TransactionTagsCell } from '@/components/funds/TransactionTagsCell';
 import TransactionsBackupModal from '@/components/funds/TransactionsBackupModal';
-import { txnTd, txnTdFromTo, txnTh, txnThSortable, txnModalFromTo, txnModalTd, txnModalTh } from '@/lib/transactionTableStyles';
+import EntityTransactionsModal from '@/components/funds/EntityTransactionsModal';
+import LedgerTabSummaryBar from '@/components/funds/LedgerTabSummaryBar';
+import { txnTd, txnTdFromTo, txnTh, txnThSortable } from '@/lib/transactionTableStyles';
 import { accountNameUsedInTransactions } from '@/lib/accountTransactions';
 import {
   filterBranchLedgers,
@@ -45,12 +47,9 @@ import {
   calculateAvailableBranchFund,
   getLedgerKpiSubValue,
   getLedgerTabColumns,
-  getEntityLedgerHint,
   isLedgerTabOutAmount,
   isLedgerTabInAmount,
-  isEntitySentAmount,
-  isEntityReceivedAmount,
-  entityLedgerHintClass,
+  computeLedgerTabTotals,
   isGlobalLedger,
   ledgerScopeLabel,
 } from '@/lib/ledgers';
@@ -80,6 +79,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [editingTxn, setEditingTxn] = useState<Transaction | null>(null);
   const [deletingTxn, setDeletingTxn] = useState<Transaction | null>(null);
+  const txnTableRef = React.useRef<HTMLDivElement>(null);
   const [isSavingTxn, setIsSavingTxn] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'entities' | string>('all');
   const [showBackupModal, setShowBackupModal] = useState(false);
@@ -142,6 +142,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
   );
 
   const isLedgerTab = activeTab !== 'all' && activeTab !== 'entities';
+  const showLedgerSummaryBar = isLedgerTab;
   const ledgerTabColumns = React.useMemo(
     () => (isLedgerTab ? getLedgerTabColumns(activeTab) : null),
     [isLedgerTab, activeTab],
@@ -255,6 +256,11 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
     return result;
   }, [transactions, filteredTransactions, tagFilterNames, branchFilter, entityFilter, searchTerm, sortField, sortDirection, activeTab, branchId]);
 
+  const ledgerTabTotals = React.useMemo(
+    () => (showLedgerSummaryBar ? computeLedgerTabTotals(filteredAndSortedTxns, activeTab) : null),
+    [showLedgerSummaryBar, filteredAndSortedTxns, activeTab],
+  );
+
   const handleSort = (field: string) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -305,7 +311,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
 
   return (
     <>
-      <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
+      <div className={`animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]${showLedgerSummaryBar ? ' pb-24' : ''}`}>
         <div className={pageHeader}>
           <div>
             <div className="mb-2 flex items-center gap-3">
@@ -550,7 +556,10 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
           </p>
         ) : null}
 
-        <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+        <div
+          ref={showLedgerSummaryBar ? txnTableRef : undefined}
+          className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover"
+        >
           <div className="flex flex-col gap-3 pb-4 px-4 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
             <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">
               {activeTab === 'entities' ? 'Entities' : 'Transactions'}
@@ -1062,6 +1071,15 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
           </div>
         </div>
       </div>
+
+      {ledgerTabTotals && (
+        <LedgerTabSummaryBar
+          totals={ledgerTabTotals}
+          fixed
+          tableRef={txnTableRef}
+          watchKey={activeTab}
+        />
+      )}
 
       {isBranchView && branches.length === 1 ? (
         <BranchTransferModal
@@ -1870,287 +1888,5 @@ function TransferFundsModal({
       </div>
       {error ? <p className={`${formError} mb-4`}>{error}</p> : null}
     </Modal>
-  );
-}
-
-function EntityTransactionsModal({
-  entity,
-  transactions,
-  onClose,
-  isBranchView,
-  branches,
-  setEditingTxn,
-  setDeletingTxn,
-}: {
-  entity: import('@/types').Entity;
-  transactions: import('@/types').Transaction[];
-  onClose: () => void;
-  isBranchView: boolean;
-  branches: import('@/types').Branch[];
-  setEditingTxn: (txn: import('@/types').Transaction | null) => void;
-  setDeletingTxn: (txn: import('@/types').Transaction | null) => void;
-}) {
-  const entityTxns = React.useMemo(() => {
-    return transactions.filter(t => t.from === entity.name || t.to === entity.name)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, entity.name]);
-
-  const formatTxnAmount = (t: import('@/types').Transaction) =>
-    t.assetType === 'gold' ? `${t.amount.toFixed(2)}g` : formatAED(t.amount);
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-white/30 backdrop-blur-sm transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 visible opacity-100"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-        className="flex max-h-[min(90dvh,100%)] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-slate-200/90 bg-white shadow-modal transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:max-h-[90vh] sm:rounded-[1.75rem] translate-y-0 scale-100"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-slate-50/90 px-5 py-4 sm:px-6">
-          <h3 id="modal-title" className="text-base font-bold text-slate-900">
-            {entity.name} — Transactions History
-          </h3>
-          <button
-            type="button"
-            className="flex size-8 items-center justify-center rounded-full bg-slate-200 text-base text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">
-          
-          {/* Desktop view */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[700px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className={txnModalTh}>Date &amp; Time</th>
-                  <th className={txnModalTh}>From</th>
-                  <th className={txnModalTh}>To</th>
-                  <th className={txnModalTh}>Notes</th>
-                  <th className={txnModalTh}>Sent</th>
-                  <th className={txnModalTh}>Received</th>
-                  <th className={txnModalTh}>Tags</th>
-                  {isBranchView && branches.length === 1 && (
-                    <th className={`${txnModalTh} text-right`}>Actions</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm text-slate-800">
-                {entityTxns.length === 0 ? (
-                  <tr>
-                    <td colSpan={isBranchView && branches.length === 1 ? 9 : 8} className="py-8 text-center text-slate-400">
-                      No transactions found for this entity.
-                    </td>
-                  </tr>
-                ) : (
-                  entityTxns.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                      <td className={`${txnModalTd} text-[11px] leading-tight text-slate-600`}>
-                        {formatDateTime(t.date).split(',').map((part, i) => (
-                           <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
-                        ))}
-                      </td>
-                      <td className={txnModalFromTo}>{t.from}</td>
-                      <td className={txnModalFromTo}>{t.to}</td>
-                      <td className={txnModalTd}>
-                        <TransactionNotesCell transaction={t} />
-                      </td>
-                      <td className={`${txnModalTd} font-mono font-bold text-slate-900`}>
-                        {isEntitySentAmount(t, entity.name) ? (
-                          <div className="flex flex-col gap-1">
-                            <span>{formatTxnAmount(t)}</span>
-                            {(() => {
-                              const hint = getEntityLedgerHint(t, entity.name);
-                              return hint ? (
-                                <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
-                                  {hint.label}
-                                </span>
-                              ) : null;
-                            })()}
-                          </div>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className={`${txnModalTd} font-mono font-bold text-slate-900`}>
-                        {isEntityReceivedAmount(t, entity.name) ? (
-                          <div className="flex flex-col gap-1">
-                            <span>{formatTxnAmount(t)}</span>
-                            {(() => {
-                              const hint = getEntityLedgerHint(t, entity.name);
-                              return hint ? (
-                                <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
-                                  {hint.label}
-                                </span>
-                              ) : null;
-                            })()}
-                          </div>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className={txnModalTd}>
-                        <TransactionTagsCell transaction={t} />
-                      </td>
-                      {isBranchView && branches.length === 1 && (
-                        <td className={`${txnModalTd} text-right`}>
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              title="Edit transaction"
-                              onClick={() => {
-                                onClose();
-                                setEditingTxn({ ...t });
-                              }}
-                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1 text-slate-500 shadow-sm transition-all hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              title="Delete transaction"
-                              onClick={() => {
-                                onClose();
-                                setDeletingTxn(t);
-                              }}
-                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1 text-slate-500 shadow-sm transition-all hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                <path d="M10 11v6M14 11v6" />
-                                <path d="M9 6V4h6v2" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile view */}
-          <div className="flex md:hidden flex-col gap-3">
-            {entityTxns.length === 0 ? (
-              <div className="py-6 text-center text-sm text-slate-400">No transactions found.</div>
-            ) : (
-              entityTxns.map((t) => {
-                const isEditable = isBranchView && branches.length === 1;
-                return (
-                  <div key={t.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)]">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-slate-800">
-                          {formatDateTime(t.date).split(',')[0]}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          {formatDateTime(t.date).split(',')[1]?.trim()}
-                        </span>
-                      </div>
-                    </div>
-
-                    <TransactionNotesCell transaction={t} className="max-w-none" />
-
-                    {getTransactionTagNames(t).length > 0 && (
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tags</span>
-                        <TransactionTagsCell transaction={t} />
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3 border-y border-slate-50 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Route</span>
-                        <span className="text-xs font-semibold text-slate-800 truncate">
-                          {t.from} &rarr; {t.to}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sent</span>
-                        <span className="font-mono text-xs font-bold text-slate-900">
-                          {isEntitySentAmount(t, entity.name) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
-                        </span>
-                        {isEntitySentAmount(t, entity.name) && (() => {
-                          const hint = getEntityLedgerHint(t, entity.name);
-                          return hint ? (
-                            <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
-                              {hint.label}
-                            </span>
-                          ) : null;
-                        })()}
-                      </div>
-                      <div className="flex flex-col gap-0.5 items-end">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Received</span>
-                        <span className="font-mono text-xs font-bold text-slate-900">
-                          {isEntityReceivedAmount(t, entity.name) ? formatTxnAmount(t) : <span className="text-slate-300">—</span>}
-                        </span>
-                        {isEntityReceivedAmount(t, entity.name) && (() => {
-                          const hint = getEntityLedgerHint(t, entity.name);
-                          return hint ? (
-                            <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${entityLedgerHintClass(hint.tone)}`}>
-                              {hint.label}
-                            </span>
-                          ) : null;
-                        })()}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end items-center text-xs">
-                      {isEditable && (
-                        <div className="flex gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onClose();
-                              setEditingTxn({ ...t });
-                            }}
-                            className="p-1 border border-slate-200 rounded text-slate-500 hover:text-accent hover:border-accent"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onClose();
-                              setDeletingTxn(t);
-                            }}
-                            className="p-1 border border-slate-200 rounded text-slate-500 hover:text-red-600 hover:border-red-400"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-        </div>
-        <div className="sticky bottom-0 z-10 flex justify-end border-t border-slate-100 bg-slate-50/90 p-4">
-          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
