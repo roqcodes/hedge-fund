@@ -6,6 +6,7 @@ import type { DayRangeKpiDisplay } from '@/lib/dailyClose';
 import { formatAED } from '@/data/mockData';
 import DailyKpiCard from '@/components/funds/DailyKpiCard';
 import { sectionEyebrow } from '@/lib/ui';
+import { useLedgerKpiInvert } from '@/hooks/useLedgerKpiInvert';
 
 type Props = {
   periodKpis: DayRangeKpiDisplay;
@@ -32,6 +33,7 @@ function formatPeriodLabel(period: DayRangeKpiDisplay) {
 
 export default function TransactionBetaKpiSection({ periodKpis, branchLedgers }: Props) {
   const kpiLedgers = branchLedgers.filter(l => l.isKpi);
+  const { displayAmount } = useLedgerKpiInvert(branchLedgers);
 
   return (
     <section className="mb-8" aria-label="Period summary">
@@ -105,14 +107,16 @@ export default function TransactionBetaKpiSection({ periodKpis, branchLedgers }:
         {kpiLedgers.map(ledger => {
           const open = periodKpis.opening.ledgerBalances[ledger.id] || 0;
           const close = periodKpis.closing.ledgerBalances[ledger.id] || 0;
+          const displayOpen = displayAmount(ledger.id, open);
+          const displayClose = displayAmount(ledger.id, close);
           return (
             <DailyKpiCard
               key={ledger.id}
               label={ledger.name}
-              opening={formatAED(open)}
-              closing={formatAED(close)}
-              openingValue={open}
-              closingValue={close}
+              opening={formatAED(displayOpen)}
+              closing={formatAED(displayClose)}
+              openingValue={displayOpen}
+              closingValue={displayClose}
               locked={periodKpis.endClosed}
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

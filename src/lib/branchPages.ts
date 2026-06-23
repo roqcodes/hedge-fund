@@ -8,6 +8,7 @@ export type BranchPageId =
   | 'physical'
   | 'marketplace'
   | 'products'
+  | 'customers'
   | 'investors'
   | 'usdt'
   | 'settings';
@@ -31,6 +32,7 @@ export const BRANCH_NAV_PAGES: BranchNavPage[] = [
   { id: 'physical', label: 'Physical Sales', path: '/physical-sales', hideable: true },
   { id: 'marketplace', label: 'Physical', path: '/physical', hideable: true },
   { id: 'products', label: 'Products', path: '/products', hideable: true },
+  { id: 'customers', label: 'Customers', path: '/customers', hideable: true },
   { id: 'investors', label: 'Investors', path: '/investors', hideable: true },
   { id: 'usdt', label: 'USDT', path: '/usdt', hideable: true },
   { id: 'settings', label: 'Settings', path: '/settings', hideable: false },
@@ -51,6 +53,7 @@ const PATH_SEGMENT_TO_PAGE_ID: Record<string, BranchPageId> = {
   investors: 'investors',
   usdt: 'usdt',
   products: 'products',
+  customers: 'customers',
   settings: 'settings',
   reports: 'finance',
 };

@@ -6,8 +6,8 @@ import KPICard from '@/components/ui/KPICard';
 import { PhysicalBuy, PhysicalBalance } from '@/types';
 import { 
   dbUpdatePhysicalBalanceAction, 
-  dbAddPhysicalBuyAction 
 } from '@/app/actions/physicalActions';
+import PhysicalBuyModal from './PhysicalBuyModal';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
@@ -36,28 +36,6 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
 
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
-
-  const [buyForm, setBuyForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    particulars: '',
-    grossWeightStr: '',
-    pureConversionStr: '1',
-    idrGramStr: '',
-    idrToUsdtStr: '18000'
-  });
-
-  const buyCalculations = useMemo(() => {
-    const gw = parseFloat(buyForm.grossWeightStr) || 0;
-    const pc = parseFloat(buyForm.pureConversionStr) || 1;
-    const ig = parseFloat(buyForm.idrGramStr) || 0;
-    const itu = parseFloat(buyForm.idrToUsdtStr) || 18000;
-    
-    const pureGram = gw * pc;
-    const idrRate = itu > 0 ? ig / itu : 0;
-    const total = pureGram * idrRate;
-
-    return { pureGram, idrRate, total };
-  }, [buyForm]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
@@ -92,46 +70,8 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
     }
   };
 
-  const handleCreateBuy = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!branchId) return;
-    
-    const grossWeight = parseFloat(buyForm.grossWeightStr) || 0;
-    const pureConversion = parseFloat(buyForm.pureConversionStr) || 1;
-    const idrGram = parseFloat(buyForm.idrGramStr) || 0;
-    const idrToUsdt = parseFloat(buyForm.idrToUsdtStr) || 18000;
-    
-    const { pureGram, idrRate, total } = buyCalculations;
-
-    const buyData = {
-      branchId,
-      date: buyForm.date,
-      particulars: buyForm.particulars,
-      grossWeight,
-      pureConversion,
-      pureGram,
-      idrGram,
-      idrToUsdt,
-      idrRate,
-      total,
-      buyValue: total, // Buy value equals total initially
-    };
-
-    const res = await dbAddPhysicalBuyAction(buyData);
-    if (res.success && res.data) {
-      setIsBuyModalOpen(false);
-      setBuyForm({
-        date: new Date().toISOString().split('T')[0],
-        particulars: '',
-        grossWeightStr: '',
-        pureConversionStr: '1',
-        idrGramStr: '',
-        idrToUsdtStr: '18000'
-      });
-      await refetchData();
-    } else {
-      alert(res.error);
-    }
+  const handleCreateBuySuccess = async () => {
+    await refetchData();
   };
 
   const handleSort = (field: SortField) => {
@@ -202,10 +142,11 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
   return (
     <>
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
-        <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
+        <div className={pageHeader}>
           <div>
             <div className="mb-2 flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => router.push(`/physical-sales`)}
                 className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
                 aria-label="Back to Physical Sales"
@@ -218,18 +159,16 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
             </div>
             <p className={pageSubtitle}>Vault inventory, bullion tracking, and gold buys</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsInitialSetupOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg gap-2 font-semibold text-sm">
-              <span className="hidden sm:inline">Update Capital</span>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="sm:hidden">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button onClick={() => setIsBuyModalOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-accent sm:text-white sm:hover:bg-accent-hover gap-2 font-semibold text-sm">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
+          <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setIsBuyModalOpen(true)}
+              className={`${btnPrimary} w-full sm:w-auto`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              <span className="hidden sm:inline">New Buy</span>
+              Buy
             </button>
           </div>
         </div>
@@ -281,7 +220,7 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
           />
           <KPICard
             label="Total Value"
-            value={totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' AED'}
+            value={totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             subValue="Total amount spent"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -513,128 +452,14 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
         </div>
       )}
 
-      {isBuyModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="mb-4 text-lg font-bold">New Gold Buy</h3>
-            <form onSubmit={handleCreateBuy} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Date</label>
-                  <input
-                    type="date"
-                    name="date"
-                    value={buyForm.date}
-                    onChange={(e) => setBuyForm({ ...buyForm, date: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Particulars</label>
-                  <input
-                    type="text"
-                    name="particulars"
-                    value={buyForm.particulars}
-                    onChange={(e) => setBuyForm({ ...buyForm, particulars: e.target.value })}
-                    placeholder="e.g. 1 KG BUY"
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Gross Weight</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="grossWeight"
-                    value={buyForm.grossWeightStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, grossWeightStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Pure Conversion</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    name="pureConversion"
-                    value={buyForm.pureConversionStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, pureConversionStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR Gram</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="idrGram"
-                    value={buyForm.idrGramStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, idrGramStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR to USDT</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="idrToUsdt"
-                    value={buyForm.idrToUsdtStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, idrToUsdtStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Pure Gram</label>
-                  <input
-                    type="text"
-                    value={buyCalculations.pureGram.toFixed(3)}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-slate-500 outline-none"
-                    readOnly
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR Rate</label>
-                  <input
-                    type="text"
-                    value={buyCalculations.idrRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-slate-500 outline-none"
-                    readOnly
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Buy Value</label>
-                  <input
-                    type="text"
-                    value={buyCalculations.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    className="w-full rounded-xl border border-slate-200 bg-emerald-50 px-3.5 py-2 text-emerald-700 font-bold outline-none"
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsBuyModalOpen(false)} className={btnSecondary}>Cancel</button>
-                <button type="submit" className={btnPrimary}>Create Buy</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {isBuyModalOpen && branchId && (
+        <PhysicalBuyModal
+          open={isBuyModalOpen}
+          slug={branchSlug}
+          branchId={branchId}
+          onClose={() => setIsBuyModalOpen(false)}
+          onSuccess={handleCreateBuySuccess}
+        />
       )}
     </>
   );

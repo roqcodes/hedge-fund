@@ -3,6 +3,11 @@
 // ═══════════════════════════════════════════════════════════
 
 import { Branch, Transaction, Expense, DailyReport, Invoice, Notification, Investor, Deal } from '@/types';
+import {
+  convertFromAed,
+  getLiveCurrencyRates,
+  type CurrencyCode,
+} from '@/lib/currency';
 
 
 
@@ -12,7 +17,7 @@ export function investorTotalExposure(inv: Pick<Investor, 'cashDeposit' | 'goldD
 
 import React from 'react';
 
-export type Currency = 'AED' | 'USD' | 'INR';
+export type Currency = CurrencyCode;
 let globalCurrency: Currency = 'AED';
 
 export function getGlobalCurrency(): Currency {
@@ -23,21 +28,14 @@ export function setGlobalCurrency(c: Currency) {
   globalCurrency = c;
 }
 
-const RATES: Record<Currency, number> = {
-  AED: 1,
-  USD: 0.2723,
-  INR: 22.68,
-};
-
-const SYMBOLS: Record<Currency, string> = {
-  AED: '',
-  USD: '',
-  INR: '',
-};
+function getRate(currency: Currency): number {
+  const rates = getLiveCurrencyRates();
+  return rates[currency] ?? 1;
+}
 
 export function formatAED(amount: number, showPlus = false): React.ReactNode {
   const currency = getGlobalCurrency();
-  const convertedAmount = amount * RATES[currency];
+  const convertedAmount = convertFromAed(amount, currency);
   const absAmount = Math.abs(convertedAmount);
   
   const numStr = absAmount.toLocaleString('en-US', {
@@ -46,19 +44,18 @@ export function formatAED(amount: number, showPlus = false): React.ReactNode {
   });
   
   const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
-  const symbol = SYMBOLS[currency];
   
   return React.createElement(
     React.Fragment,
     null,
-    symbol ? React.createElement('span', { className: 'text-[0.8em] font-bold leading-none mr-[2px]' }, sign ? `${sign}${symbol}` : symbol) : (sign ? `${sign}` : null),
-    numStr
+    sign ? `${sign}` : null,
+    numStr,
   );
 }
 
 export function formatAEDStr(amount: number, showPlus = false): string {
   const currency = getGlobalCurrency();
-  const convertedAmount = amount * RATES[currency];
+  const convertedAmount = convertFromAed(amount, currency);
   const absAmount = Math.abs(convertedAmount);
   
   const numStr = absAmount.toLocaleString('en-US', {
@@ -67,9 +64,27 @@ export function formatAEDStr(amount: number, showPlus = false): string {
   });
   
   const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
-  const symbol = SYMBOLS[currency];
   
-  return `${sign}${symbol}${numStr}`;
+  return `${sign}${numStr}`;
+}
+
+/** Convert AED-base amount to display currency — number only, no code suffix. */
+export function formatMoneyValue(amount: number, currency?: Currency, showPlus = false): string {
+  const curr = currency ?? getGlobalCurrency();
+  const convertedAmount = convertFromAed(amount, curr);
+  const absAmount = Math.abs(convertedAmount);
+  const numStr = absAmount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const sign = amount < 0 ? '-' : showPlus && amount > 0 ? '+' : '';
+  return `${sign}${numStr}`;
+}
+
+/** Format AED-base amount with active currency code suffix. */
+export function formatMoneyLabel(amount: number, currency?: Currency, showPlus = false): string {
+  const curr = currency ?? getGlobalCurrency();
+  return `${formatMoneyValue(amount, curr, showPlus)} ${curr}`;
 }
 
 

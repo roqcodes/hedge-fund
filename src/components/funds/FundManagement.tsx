@@ -39,6 +39,8 @@ import { TransactionTagsCell } from '@/components/funds/TransactionTagsCell';
 import TransactionsBackupModal from '@/components/funds/TransactionsBackupModal';
 import EntityTransactionsModal from '@/components/funds/EntityTransactionsModal';
 import LedgerTabSummaryBar from '@/components/funds/LedgerTabSummaryBar';
+import LedgerSettingsModal from '@/components/funds/LedgerSettingsModal';
+import { useLedgerKpiInvert } from '@/hooks/useLedgerKpiInvert';
 import TransactionBetaHeader from '@/components/funds/transaction-beta/TransactionBetaHeader';
 import TransactionBetaShell from '@/components/funds/transaction-beta/TransactionBetaShell';
 import { useTransactionBetaPage } from '@/hooks/useTransactionBetaPage';
@@ -55,8 +57,6 @@ import {
   isLedgerTabOutAmount,
   isLedgerTabInAmount,
   computeLedgerTabTotals,
-  isGlobalLedger,
-  ledgerScopeLabel,
 } from '@/lib/ledgers';
 
 export default function FundManagement({ variant = 'default' }: { variant?: 'default' | 'beta' }) {
@@ -87,11 +87,6 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
 
   // Ledger state
   const [showManageLedgers, setShowManageLedgers] = useState(false);
-  const [editingLedger, setEditingLedger] = useState<import('@/types').Ledger | null>(null);
-  const [newLedgerName, setNewLedgerName] = useState('');
-  const [newLedgerImpact, setNewLedgerImpact] = useState<'positive' | 'negative' | 'neutral'>('neutral');
-  const [newLedgerIsKpi, setNewLedgerIsKpi] = useState(true);
-  const [isSavingLedger, setIsSavingLedger] = useState(false);
   // Add Entity state
   const [showAddEntity, setShowAddEntity] = useState(false);
   const [newEntityName, setNewEntityName] = useState('');
@@ -136,6 +131,8 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
   const branchLedgers = React.useMemo(() => {
     return filterBranchLedgers(ledgers, branchId);
   }, [ledgers, branchId]);
+
+  const { displayAmount: displayLedgerKpiAmount } = useLedgerKpiInvert(branchLedgers);
 
   const branchTags = React.useMemo(
     () => transactionTags.filter(t => !t.branchId || t.branchId === branchId),
@@ -511,7 +508,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                 <KPICard
                   key={ledger.id}
                   label={ledger.name}
-                  value={formatAED(ledgerBalances[ledger.id] || 0)}
+                  value={formatAED(displayLedgerKpiAmount(ledger.id, ledgerBalances[ledger.id] || 0))}
                   subValue={getLedgerKpiSubValue(ledger)}
                   icon={
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -1533,225 +1530,17 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
           }}
         />
       )}
-      {/* Manage Ledgers Modal */}
-      <Modal
+      <LedgerSettingsModal
         open={showManageLedgers}
+        branchId={branchId}
+        branchLedgers={branchLedgers}
+        transactions={transactions}
         onClose={() => setShowManageLedgers(false)}
-        title="Manage Branch Ledgers"
-        footer={
-          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={() => setShowManageLedgers(false)}>
-            Done
-          </button>
-        }
-      >
-        <div className="flex flex-col gap-6 py-2">
-          {/* Create new ledger form */}
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-sm font-semibold text-slate-800">Create New Ledger</h3>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-slate-600">Name</label>
-                <input
-                  type="text"
-                  className={formInput}
-                  value={newLedgerName}
-                  onChange={e => setNewLedgerName(e.target.value)}
-                  placeholder="e.g. Marketing Expense"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-slate-600">Impact on Cash</label>
-                <select className={formSelect} value={newLedgerImpact} onChange={e => setNewLedgerImpact(e.target.value as any)}>
-                  <option value="positive">Positive (+)</option>
-                  <option value="negative">Negative (-)</option>
-                  <option value="neutral">Neutral</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-slate-600">Show as KPI</label>
-                <select className={formSelect} value={newLedgerIsKpi ? 'yes' : 'no'} onChange={e => setNewLedgerIsKpi(e.target.value === 'yes')}>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1 justify-end">
-                <button
-                  type="button"
-                  className={btnPrimary}
-                  disabled={isSavingLedger || !newLedgerName.trim()}
-                  onClick={async () => {
-                    setIsSavingLedger(true);
-                    const ok = await addLedger({
-                      id: generateId('LDG'),
-                      branchId,
-                      name: newLedgerName.trim(),
-                      impact: newLedgerImpact,
-                      isKpi: newLedgerIsKpi
-                    });
-                    if (ok) {
-                      setNewLedgerName('');
-                      setNewLedgerImpact('neutral');
-                      setNewLedgerIsKpi(true);
-                    }
-                    setIsSavingLedger(false);
-                  }}
-                >
-                  Create
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* List of ledgers */}
-          <div className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold text-slate-800">Existing Ledgers</h3>
-            {branchLedgers.length === 0 ? (
-              <p className="text-sm text-slate-500 italic">No ledgers created yet.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {branchLedgers.map((l, index) => {
-                  const ledgerNameLocked = accountNameUsedInTransactions(l.name, transactions);
-                  return (
-                  <div key={l.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
-                    {editingLedger?.id === l.id ? (
-                      <div className="flex items-center gap-2 w-full">
-                        <input
-                          type="text"
-                          className={`${formInput} flex-1 text-sm${ledgerNameLocked ? ' bg-slate-100 text-slate-500 cursor-not-allowed' : ''}`}
-                          value={editingLedger.name}
-                          onChange={e => setEditingLedger({ ...editingLedger, name: e.target.value })}
-                          disabled={ledgerNameLocked}
-                          readOnly={ledgerNameLocked}
-                          title={ledgerNameLocked ? 'Name is locked — this ledger has transactions' : undefined}
-                        />
-                        <select
-                          className={`${formSelect} w-32 text-sm`}
-                          value={editingLedger.impact}
-                          onChange={e => setEditingLedger({ ...editingLedger, impact: e.target.value as any })}
-                        >
-                          <option value="positive">Positive</option>
-                          <option value="negative">Negative</option>
-                          <option value="neutral">Neutral</option>
-                        </select>
-                        <select
-                          className={`${formSelect} w-24 text-sm`}
-                          value={editingLedger.isKpi ? 'yes' : 'no'}
-                          onChange={e => setEditingLedger({ ...editingLedger, isKpi: e.target.value === 'yes' })}
-                        >
-                          <option value="yes">KPI</option>
-                          <option value="no">Hidden</option>
-                        </select>
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-xs font-semibold text-white bg-slate-900 rounded hover:bg-slate-800"
-                          onClick={async () => {
-                            if (ledgerNameLocked && editingLedger.name.trim() !== l.name) {
-                              showToast('Name cannot be changed because this ledger has at least one transaction.', 'error');
-                              return;
-                            }
-                            await updateLedger(editingLedger);
-                            setEditingLedger(null);
-                          }}
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-xs font-semibold text-slate-600 bg-slate-100 rounded hover:bg-slate-200"
-                          onClick={() => setEditingLedger(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                            {l.name}
-                            <span className={`text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${isGlobalLedger(l) ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
-                              {ledgerScopeLabel(l)}
-                            </span>
-                          </span>
-                          <span className="text-xs text-slate-500 capitalize">Impact: {l.impact} | {l.isKpi ? 'KPI visible' : 'Hidden'}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {isGlobalLedger(l) ? (
-                            <span className="text-xs text-slate-400 italic">System ledger</span>
-                          ) : (
-                            <>
-                          <div className="flex flex-col mr-2">
-                            <button
-                              type="button"
-                              title="Move Up"
-                              disabled={index === 0}
-                              className="text-slate-400 hover:text-slate-700 disabled:opacity-30 p-0.5"
-                              onClick={async () => {
-                                const newLedgers = [...branchLedgers];
-                                const temp = newLedgers[index];
-                                newLedgers[index] = newLedgers[index - 1];
-                                newLedgers[index - 1] = temp;
-                                
-                                for (let i = 0; i < newLedgers.length; i++) {
-                                  if (newLedgers[i].sortOrder !== i) {
-                                    await updateLedger({ ...newLedgers[i], sortOrder: i });
-                                  }
-                                }
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
-                            </button>
-                            <button
-                              type="button"
-                              title="Move Down"
-                              disabled={index === branchLedgers.length - 1}
-                              className="text-slate-400 hover:text-slate-700 disabled:opacity-30 p-0.5"
-                              onClick={async () => {
-                                const newLedgers = [...branchLedgers];
-                                const temp = newLedgers[index];
-                                newLedgers[index] = newLedgers[index + 1];
-                                newLedgers[index + 1] = temp;
-                                
-                                for (let i = 0; i < newLedgers.length; i++) {
-                                  if (newLedgers[i].sortOrder !== i) {
-                                    await updateLedger({ ...newLedgers[i], sortOrder: i });
-                                  }
-                                }
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-accent hover:underline"
-                            onClick={() => setEditingLedger(l)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-red-600 hover:underline"
-                            onClick={async () => {
-                              if (confirm(`Are you sure you want to delete the ledger "${l.name}"?`)) {
-                                await deleteLedger(l.id, l.name);
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </Modal>
+        onAddLedger={addLedger}
+        onUpdateLedger={updateLedger}
+        onDeleteLedger={deleteLedger}
+        showToast={showToast}
+      />
     </>
   );
 }

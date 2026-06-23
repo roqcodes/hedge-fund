@@ -40,6 +40,7 @@ export type LedgerBackupRow = {
   name: string;
   impact: string;
   is_kpi: boolean;
+  kpi_invert?: boolean;
   sort_order: number;
   created_at: string | null;
 };
@@ -137,6 +138,7 @@ function ledgerToRow(l: Ledger): LedgerBackupRow {
     name: l.name,
     impact: l.impact,
     is_kpi: l.isKpi,
+    kpi_invert: l.kpiInvert ?? false,
     sort_order: l.sortOrder ?? 0,
     created_at: l.createdAt || null,
   };

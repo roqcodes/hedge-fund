@@ -209,16 +209,27 @@ export function BranchTransferModal({
       }
     }
     
-    if (legs.length === 0) {
-      // Edge case: same entity, both "fund"
+    // Simplify legs by removing opposites (e.g. A->B and B->A cancel out)
+    const simplifiedLegs: { from: string; to: string }[] = [];
+    for (const leg of legs) {
+      if (leg.from === leg.to) continue; // Skip explicit self-transfers just in case
+      const oppositeIdx = simplifiedLegs.findIndex(l => l.from === leg.to && l.to === leg.from);
+      if (oppositeIdx !== -1) {
+        simplifiedLegs.splice(oppositeIdx, 1);
+      } else {
+        simplifiedLegs.push(leg);
+      }
+    }
+
+    if (simplifiedLegs.length === 0) {
       setIsSubmitting(false);
-      showToast('Cannot transfer to the same account and sub-account.', 'error');
+      showToast('This transaction has no net effect (transferring between the same sub-accounts).', 'error');
       return;
     }
 
     // Validate all legs before processing
     const allowedNames = journalAllowedAccountNames(allOptions.map(o => o.name), branchName, branchFundLabel);
-    for (const leg of legs) {
+    for (const leg of simplifiedLegs) {
       const legValidation = validateJournalEntry(
         { from: leg.from, to: leg.to, amount: amt, assetType, date: txnDate },
         { branchName, branchFundLabel, allowedAccountNames: allowedNames },
@@ -232,8 +243,8 @@ export function BranchTransferModal({
 
     // Process all legs sequentially
     let allSuccess = true;
-    for (let i = 0; i < legs.length; i++) {
-      const leg = legs[i];
+    for (let i = 0; i < simplifiedLegs.length; i++) {
+      const leg = simplifiedLegs[i];
       let deltaCash = 0;
       let deltaGold = 0;
 
@@ -261,8 +272,8 @@ export function BranchTransferModal({
 
       // Append multi-leg note context
       let legNote = notes;
-      if (legs.length > 1) {
-        legNote = `[Leg ${i + 1}/${legs.length}] ` + notes;
+      if (simplifiedLegs.length > 1) {
+        legNote = `[Leg ${i + 1}/${simplifiedLegs.length}] ` + notes;
       }
 
       const newTxn: Transaction = {

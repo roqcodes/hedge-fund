@@ -4,6 +4,7 @@ import { query } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUserAction } from '@/app/actions/auth';
 import { HIDEABLE_BRANCH_PAGE_IDS } from '@/lib/branchPages';
+import { sanitizeEnabledCurrencies } from '@/lib/currency';
 
 export async function updateBranchSettingsAction(
   branchId: string, 
@@ -17,18 +18,20 @@ export async function updateBranchSettingsAction(
     phone: string;
     email: string;
     website: string;
+    enabledCurrencies: string[];
   }
 ) {
   try {
+    const enabledCurrencies = sanitizeEnabledCurrencies(identityDetails.enabledCurrencies);
     if (logoUrl) {
       await query(
-        `UPDATE branches SET name = $1, logo_url = $2, address = $3, city = $4, country = $5, trn = $6, phone = $7, email = $8, website = $9 WHERE id = $10`, 
-        [name, logoUrl, identityDetails.address, identityDetails.city, identityDetails.country, identityDetails.trn, identityDetails.phone, identityDetails.email, identityDetails.website, branchId]
+        `UPDATE branches SET name = $1, logo_url = $2, address = $3, city = $4, country = $5, trn = $6, phone = $7, email = $8, website = $9, enabled_currencies = $10::text[] WHERE id = $11`, 
+        [name, logoUrl, identityDetails.address, identityDetails.city, identityDetails.country, identityDetails.trn, identityDetails.phone, identityDetails.email, identityDetails.website, enabledCurrencies, branchId]
       );
     } else {
       await query(
-        `UPDATE branches SET name = $1, address = $2, city = $3, country = $4, trn = $5, phone = $6, email = $7, website = $8 WHERE id = $9`, 
-        [name, identityDetails.address, identityDetails.city, identityDetails.country, identityDetails.trn, identityDetails.phone, identityDetails.email, identityDetails.website, branchId]
+        `UPDATE branches SET name = $1, address = $2, city = $3, country = $4, trn = $5, phone = $6, email = $7, website = $8, enabled_currencies = $9::text[] WHERE id = $10`, 
+        [name, identityDetails.address, identityDetails.city, identityDetails.country, identityDetails.trn, identityDetails.phone, identityDetails.email, identityDetails.website, enabledCurrencies, branchId]
       );
     }
 

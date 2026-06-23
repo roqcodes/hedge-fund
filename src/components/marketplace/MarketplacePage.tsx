@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import KPICard from '@/components/ui/KPICard';
+import PhysicalSplitKPICard, { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import {
@@ -146,9 +146,15 @@ export default function MarketplacePage() {
 
   const totalValue = invoices.reduce((acc, inv) => acc + (parseFloat(inv.net_amt_dc) || 0), 0);
   const totalVolume = invoices.reduce((acc, inv) => acc + (parseFloat(inv.gross_wt) || 0), 0);
+  const filteredValue = filteredAndSortedInvoices.reduce((acc, inv) => acc + (parseFloat(inv.net_amt_dc) || 0), 0);
 
   const fixedCount = invoices.filter(inv => inv.order_type === 'Fixed').length;
   const unfixedCount = invoices.filter(inv => inv.order_type === 'Unfixed').length;
+
+  const fmtMoney = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtWt = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g';
 
   return (
     <>
@@ -162,13 +168,13 @@ export default function MarketplacePage() {
             <button 
               onClick={() => setIsTaxInvoiceOpen(true)} 
               className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-accent sm:text-white sm:hover:bg-accent/90 gap-2 font-semibold text-sm"
-              title="New Tax Invoice"
+              title="New Invoice"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              <span className="hidden sm:inline">New Tax Invoice</span>
+              <span className="hidden sm:inline">New Invoice</span>
             </button>
           </div>
         </div>
@@ -182,54 +188,50 @@ export default function MarketplacePage() {
           setCustomEndDate={setCustomEndDate}
         />
 
-        <div className={`${kpiGrid} grid-cols-2 md:grid-cols-4 mb-6`}>
-          <KPICard
-            label="Total Invoices"
-            value={invoices.length.toString()}
-            subValue="All time"
+        <div className={`${kpiGrid} mb-6 grid-cols-2 md:grid-cols-4`}>
+          <PhysicalSplitKPICard
+            top={{ label: 'Total Invoices', value: invoices.length }}
+            bottom={{ label: 'Filtered', value: filteredAndSortedInvoices.length }}
+            color="var(--purple)"
+            bgColor="var(--purple-light)"
             icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             }
-            color="var(--purple)"
-            bgColor="var(--purple-light)"
           />
-          <KPICard
-            label="Total Value"
-            value={`$${totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`}
-            subValue="Net amount"
+          <PhysicalSplitKPICard
+            top={{ label: 'Total Value', value: fmtMoney(totalValue) }}
+            bottom={{ label: 'Filtered Value', value: fmtMoney(filteredValue) }}
+            color="var(--success)"
+            bgColor="var(--success-light)"
             icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
-            color="var(--success)"
-            bgColor="var(--success-light)"
           />
-          <KPICard
-            label="Order Types"
-            value={`${fixedCount} Fixed`}
-            subValue={`${unfixedCount} Unfixed`}
+          <PhysicalSplitKPICard
+            top={{ label: 'Fix', value: fixedCount }}
+            bottom={{ label: 'Unfix', value: unfixedCount }}
+            color="var(--warning)"
+            bgColor="var(--warning-light)"
             icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
             }
-            color="var(--warning)"
-            bgColor="var(--warning-light)"
           />
-          <KPICard
-            label="Recent Activity"
-            value={filteredAndSortedInvoices.length.toString()}
-            subValue="Filtered invoices"
+          <PhysicalSingleKPICard
+            label="Gross Weight"
+            value={fmtWt(totalVolume)}
+            color="var(--accent)"
+            bgColor="var(--accent-light)"
             icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
             }
-            color="var(--accent)"
-            bgColor="var(--accent-light)"
           />
         </div>
 

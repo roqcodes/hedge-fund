@@ -41,6 +41,8 @@ export interface Branch {
   timezone: string;
   /** Page IDs hidden from this branch's portal (superadmin-controlled). */
   hiddenPages?: string[];
+  /** Up to 3 display currencies for this branch (stored in AED base). */
+  enabledCurrencies?: import('@/lib/currency').CurrencyCode[];
 }
 
 export type TransactionType = string;
@@ -266,6 +268,8 @@ export interface PhysicalBalance {
   updatedAt?: string;
 }
 
+export type PhysicalPaymentMode = 'CASH' | 'BANK_TRANSFER' | 'USDT' | 'MULTI_CURRENCY';
+
 export interface PhysicalBuy {
   id: string;
   branchId: string;
@@ -282,6 +286,26 @@ export interface PhysicalBuy {
   remainingWeight: number;
   status: 'active' | 'closed';
   createdAt?: string;
+  txnId?: string;
+  customerId?: string;
+  customerName?: string;
+  openingBalance?: number;
+  productId?: string;
+  item?: string;
+  notes?: string;
+  purity?: number;
+  touchLoss?: number;
+  actualPurity?: number;
+  marketUsd?: number;
+  deal?: number;
+  paymentMode?: PhysicalPaymentMode;
+  idrAmount?: number;
+  usdAmount?: number;
+  aedAmount?: number;
+  totalWeight?: number;
+  tltIdrValue?: number;
+  tltAedValue?: number;
+  totalUsdt?: number;
 }
 
 export interface PhysicalSell {
@@ -299,6 +323,27 @@ export interface PhysicalSell {
   sellValue: number;
   profit: number;
   createdAt?: string;
+  txnId?: string;
+  customerId?: string;
+  customerName?: string;
+  openingBalance?: number;
+  narration?: string;
+  notes?: string;
+  purity?: number;
+  touchLoss?: number;
+  actualPurity?: number;
+  marketUsd?: number;
+  deal?: number;
+  paymentMode?: PhysicalPaymentMode;
+  idrAmount?: number;
+  usdAmount?: number;
+  aedAmount?: number;
+  totalWeight?: number;
+  tltIdrValue?: number;
+  tltAedValue?: number;
+  totalUsdt?: number;
+  costValue?: number;
+  margin?: number;
 }
 
 export interface Ledger {
@@ -307,6 +352,7 @@ export interface Ledger {
   name: string;
   impact: 'positive' | 'negative' | 'neutral';
   isKpi: boolean;
+  kpiInvert?: boolean;
   sortOrder?: number;
   createdAt?: string;
 }

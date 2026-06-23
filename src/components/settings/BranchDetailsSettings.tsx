@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { updateBranchSettingsAction } from '@/app/actions/branchActions';
+import { MAX_BRANCH_CURRENCIES, sanitizeEnabledCurrencies, type CurrencyCode } from '@/lib/currency';
+import CurrencyMultiSelect from './CurrencyMultiSelect';
 import { btnPrimary, formInput } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
 
@@ -19,6 +21,9 @@ export default function BranchDetailsSettings({ branch }: { branch: any }) {
   const [phone, setPhone] = useState(branch.phone || '');
   const [email, setEmail] = useState(branch.email || '');
   const [website, setWebsite] = useState(branch.website || '');
+  const [enabledCurrencies, setEnabledCurrencies] = useState<CurrencyCode[]>(
+    sanitizeEnabledCurrencies(branch.enabled_currencies ?? branch.enabledCurrencies),
+  );
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -68,7 +73,7 @@ export default function BranchDetailsSettings({ branch }: { branch: any }) {
 
       // Call Server Action
       const res = await updateBranchSettingsAction(branch.id, name, finalLogoUrl, {
-        address, city, country, trn, phone, email, website
+        address, city, country, trn, phone, email, website, enabledCurrencies,
       });
       
       if (res.success) {
@@ -173,6 +178,18 @@ export default function BranchDetailsSettings({ branch }: { branch: any }) {
               </div>
             </div>
           </div>
+        </div>
+
+        <hr className="border-slate-100" />
+
+        <div className="space-y-3">
+          <div>
+            <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900">Display Currencies</h4>
+            <p className="mt-1 text-xs text-slate-500">
+              Choose up to {MAX_BRANCH_CURRENCIES} currencies for this branch. Amounts are stored in AED and converted using live rates.
+            </p>
+          </div>
+          <CurrencyMultiSelect selected={enabledCurrencies} onChange={setEnabledCurrencies} />
         </div>
 
         <div className="flex justify-end pt-4 border-t border-slate-100">

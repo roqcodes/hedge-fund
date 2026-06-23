@@ -6,13 +6,13 @@ import { pageHeader, pageTitle, pageSubtitle, btnPrimary, btnSecondary, kpiGrid,
 import KPICard from '@/components/ui/KPICard';
 import { PhysicalBuy, PhysicalSell } from '@/types';
 import { 
-  dbAddPhysicalSellAction,
   dbDeletePhysicalSellAction,
   dbDeletePhysicalBuyAction
 } from '@/app/actions/physicalActions';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
+import PhysicalSellModal from './PhysicalSellModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 
 type SortField = 'date' | 'id' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'sellValue' | 'profit';
@@ -26,10 +26,10 @@ interface Props {
 export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
   const { physicalBuys, physicalSells, refetchData, currentSlug } = useApp();
   const basePath = currentSlug === 'superadmin' ? `/physical-sales/${branchSlug}` : `/${branchSlug}/physical-sales`;
-  
+
   const buy = physicalBuys.find(b => b.id === buyId) || null;
   const sells = physicalSells.filter(s => s.buyId === buyId);
-  
+
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -61,32 +61,6 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const [sellForm, setSellForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    particulars: '',
-    grossWeightStr: '',
-    pureConversionStr: '1',
-    idrGramStr: '',
-    idrToUsdtStr: '18000'
-  });
-
-  const costPerGram = buy ? buy.buyValue / buy.pureGram : 0;
-
-  const sellCalculations = useMemo(() => {
-    const gw = parseFloat(sellForm.grossWeightStr) || 0;
-    const pc = parseFloat(sellForm.pureConversionStr) || 1;
-    const ig = parseFloat(sellForm.idrGramStr) || 0;
-    const itu = parseFloat(sellForm.idrToUsdtStr) || 18000;
-    
-    const pureGram = gw * pc;
-    const idrRate = itu > 0 ? ig / itu : 0;
-    const sellValue = pureGram * idrRate;
-    const costOfGoodsSold = pureGram * costPerGram;
-    const profit = sellValue - costOfGoodsSold;
-
-    return { pureGram, idrRate, sellValue, profit };
-  }, [sellForm, costPerGram]);
-
   const {
     dateFilter, setDateFilter,
     customStartDate, setCustomStartDate,
@@ -94,50 +68,8 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
     filteredData: filteredSells
   } = useDateFilter(sells);
 
-  const handleCreateSell = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    
-    const grossWeight = parseFloat(sellForm.grossWeightStr) || 0;
-    const pureConversion = parseFloat(sellForm.pureConversionStr) || 1;
-    const idrGram = parseFloat(sellForm.idrGramStr) || 0;
-    const idrToUsdt = parseFloat(sellForm.idrToUsdtStr) || 18000;
-    
-    const { pureGram, idrRate, sellValue: total } = sellCalculations;
-
-    if (pureGram > buy!.remainingWeight) {
-      alert(`Cannot sell more than remaining weight (${buy!.remainingWeight}g)`);
-      return;
-    }
-
-    const sellData = {
-      buyId,
-      date: sellForm.date,
-      particulars: sellForm.particulars,
-      grossWeight,
-      pureConversion,
-      pureGram,
-      idrGram,
-      idrToUsdt,
-      idrRate,
-      total,
-      sellValue: total, // Sell value equals total
-    };
-
-    const res = await dbAddPhysicalSellAction(sellData);
-    if (res.success && res.data) {
-      setIsSellModalOpen(false);
-      setSellForm({
-        date: new Date().toISOString().split('T')[0],
-        particulars: '',
-        grossWeightStr: '',
-        pureConversionStr: '1',
-        idrGramStr: '',
-        idrToUsdtStr: '18000'
-      });
-      await refetchData();
-    } else {
-      alert(res.error);
-    }
+  const handleSellSuccess = async () => {
+    await refetchData();
   };
 
   const handleSort = (field: SortField) => {
@@ -208,34 +140,43 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
   return (
     <>
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
-        <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
+        <div className={pageHeader}>
           <div>
             <div className="mb-2 flex items-center gap-3">
               <Link
                 href={basePath}
-                className="group flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
+                className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
                 aria-label="Back to Physical Sales"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 12H5M12 19l-7-7 7-7" />
                 </svg>
               </Link>
-              <h2 className={pageTitle}>{buy.particulars || 'Sale Details'}</h2>
+              <h2 className={pageTitle}>{buy.item || buy.particulars || 'Sale Details'}</h2>
             </div>
             <p className={pageSubtitle}>Manage sells and track profits for this inventory</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={handleDeleteBuy} className="flex size-10 items-center justify-center rounded-xl bg-red-100/50 text-red-500 transition-colors hover:bg-red-500 hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-red-50 sm:text-red-600 sm:hover:bg-red-500 sm:hover:text-white gap-2 font-semibold text-sm">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
+          <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
+            <button
+              type="button"
+              onClick={handleDeleteBuy}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 transition-all hover:bg-red-100 sm:w-auto sm:px-4 sm:text-sm"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
               </svg>
-              <span className="hidden sm:inline">Delete Sale</span>
+              Delete Sale
             </button>
-            <button onClick={() => setIsSellModalOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-accent sm:text-white sm:hover:bg-accent-hover gap-2 font-semibold text-sm" disabled={buy.remainingWeight <= 0}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
-                <path d="M12 5v14M5 12h14" />
+            <button
+              type="button"
+              onClick={() => setIsSellModalOpen(true)}
+              disabled={buy.remainingWeight <= 0}
+              className={`${btnPrimary} w-full sm:w-auto disabled:pointer-events-none disabled:opacity-50`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M5 12h14" />
               </svg>
-              <span className="hidden sm:inline">New Sell</span>
+              Sell
             </button>
           </div>
         </div>
@@ -243,7 +184,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
         <div className={`${kpiGrid} grid-cols-2 md:grid-cols-4 mb-6`}>
           <KPICard
             label="Sell Value"
-            value={totalSellValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' AED'}
+            value={totalSellValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             subValue="Total amount sold"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -255,7 +196,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           />
           <KPICard
             label="P&L"
-            value={totalSaleProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' AED'}
+            value={totalSaleProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             subValue="Total Profit/Loss"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -297,6 +238,14 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           <h3 className="mb-4 text-sm font-bold text-slate-800">Inventory Purchase Details</h3>
           <div className="grid grid-cols-2 gap-y-4 gap-x-4 text-sm sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">TXN ID</p>
+              <p className="font-semibold text-slate-800">{buy.txnId || buy.id.split('-')[1]?.toUpperCase()}</p>
+            </div>
+            <div>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Customer</p>
+              <p className="font-semibold text-slate-800">{buy.customerName || '—'}</p>
+            </div>
+            <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy ID</p>
               <p className="font-semibold text-slate-800">{buy.id.split('-')[1].toUpperCase()}</p>
             </div>
@@ -305,8 +254,8 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               <p className="font-semibold text-slate-800">{new Date(buy.date).toLocaleDateString()}</p>
             </div>
             <div className="col-span-2 sm:col-span-1 lg:col-span-2">
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Particulars</p>
-              <p className="font-semibold text-slate-800">{buy.particulars || '-'}</p>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Item</p>
+              <p className="font-semibold text-slate-800">{buy.item || buy.particulars || '-'}</p>
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Gross Wt</p>
@@ -406,8 +355,11 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                     <th className={getThClass('left')} onClick={() => handleSort('date')}>
                       <div className="flex items-center gap-2">Date <SortIcon field="date" /></div>
                     </th>
+                    <th className={getThClass('left')}>
+                      <div className="flex items-center gap-2">Customer</div>
+                    </th>
                     <th className={getThClass('left')} onClick={() => handleSort('particulars')}>
-                      <div className="flex items-center gap-2">Particulars <SortIcon field="particulars" /></div>
+                      <div className="flex items-center gap-2">Narration <SortIcon field="particulars" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('grossWeight')}>
                       <div className="flex items-center justify-center gap-2">Gross Wt <SortIcon field="grossWeight" /></div>
@@ -441,8 +393,11 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                       <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
                         {new Date(sell.date).toLocaleDateString()}
                       </td>
+                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-600 sm:px-5 sm:py-4 sm:text-sm">
+                        {sell.customerName || '—'}
+                      </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
-                        {sell.particulars || '-'}
+                        {sell.narration || sell.particulars || '-'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
                         {sell.grossWeight?.toFixed(2) || '0.00'}
@@ -476,7 +431,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                   ))}
                   {filteredAndSortedSells.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={11} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
                         {searchTerm || dateFilter !== 'all' ? 'No sells found matching your filters.' : 'No sells recorded yet.'}
                       </td>
                     </tr>
@@ -537,144 +492,14 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
         </div>
       </div>
 
-      {/* Modals */}
-      {isSellModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">New Gold Sell</h3>
-              <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">Max available: {buy.remainingWeight}g</span>
-            </div>
-            <form onSubmit={handleCreateSell} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Date</label>
-                  <input
-                    type="date"
-                    name="date"
-                    value={sellForm.date}
-                    onChange={(e) => setSellForm({ ...sellForm, date: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Particulars</label>
-                  <input
-                    type="text"
-                    name="particulars"
-                    value={sellForm.particulars}
-                    onChange={(e) => setSellForm({ ...sellForm, particulars: e.target.value })}
-                    placeholder="e.g. 500G SELL"
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Gross Weight</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="grossWeight"
-                    value={sellForm.grossWeightStr}
-                    onChange={(e) => setSellForm({ ...sellForm, grossWeightStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Pure Conversion</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    name="pureConversion"
-                    value={sellForm.pureConversionStr}
-                    onChange={(e) => setSellForm({ ...sellForm, pureConversionStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR Gram</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="idrGram"
-                    value={sellForm.idrGramStr}
-                    onChange={(e) => setSellForm({ ...sellForm, idrGramStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR to USDT</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="idrToUsdt"
-                    value={sellForm.idrToUsdtStr}
-                    onChange={(e) => setSellForm({ ...sellForm, idrToUsdtStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Pure Gram</label>
-                  <input
-                    type="text"
-                    value={sellCalculations.pureGram.toFixed(3)}
-                    className={`w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 outline-none ${sellCalculations.pureGram > buy!.remainingWeight ? 'text-red-600 font-bold' : 'text-slate-500'}`}
-                    readOnly
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR Rate</label>
-                  <input
-                    type="text"
-                    value={sellCalculations.idrRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-slate-500 outline-none"
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Sell Value</label>
-                  <input
-                    type="text"
-                    value={sellCalculations.sellValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    className="w-full rounded-xl border border-slate-200 bg-emerald-50 px-3.5 py-2 text-emerald-700 font-bold outline-none"
-                    readOnly
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Est. Profit</label>
-                  <input
-                    type="text"
-                    value={(sellCalculations.profit > 0 ? '+' : '') + sellCalculations.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    className={`w-full rounded-xl border border-slate-200 px-3.5 py-2 font-bold outline-none ${sellCalculations.profit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsSellModalOpen(false)} className={btnSecondary}>Cancel</button>
-                <button type="submit" className={btnPrimary}>Register Sell</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {isSellModalOpen && buy && (
+        <PhysicalSellModal
+          open={isSellModalOpen}
+          slug={branchSlug}
+          buy={buy}
+          onClose={() => setIsSellModalOpen(false)}
+          onSuccess={handleSellSuccess}
+        />
       )}
     </>
   );

@@ -7,7 +7,6 @@ import { badgeClass } from '@/lib/badgeClass';
 import KPICard from '@/components/ui/KPICard';
 import EditDealModal from './EditDealModal';
 import DealTransactionsTable from './DealTransactionsTable';
-import CurrencySwitcher from './CurrencySwitcher';
 import CreateDealTransactionModal from './CreateDealTransactionModal';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
@@ -207,9 +206,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
           setCustomStartDate={setCustomStartDate}
           customEndDate={customEndDate}
           setCustomEndDate={setCustomEndDate}
-        >
-          <CurrencySwitcher />
-        </DateFilterBar>
+        />
 
         <div className={`${kpiGrid} grid-cols-2`}>
           <KPICard

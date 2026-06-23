@@ -3,7 +3,8 @@
 import { query, pool } from '@/lib/db';
 import { DbActionResult } from './dbActions';
 import { PhysicalBalance, PhysicalBuy, PhysicalSell } from '@/types';
-// Removed uuid import, using crypto.randomUUID()
+import { mapPhysicalBuyRow, mapPhysicalSellRow } from '@/lib/physicalMappers';
+import { adjustCustomerBalanceInTx } from './customerActions';
 
 export async function dbGetPhysicalBalanceAction(branchId: string): Promise<DbActionResult<PhysicalBalance>> {
   try {
@@ -42,12 +43,9 @@ export async function dbGetPhysicalBalanceAction(branchId: string): Promise<DbAc
 export async function dbUpdatePhysicalBalanceAction(
   branchId: string,
   initialCapital: number,
-  initialVolume: number
+  initialVolume: number,
 ): Promise<DbActionResult<PhysicalBalance>> {
   try {
-    // If setting for the first time, available = initial.
-    // If updating, we should probably just reset it for simplicity or adjust it. 
-    // Usually, this is just called once.
     const res = await query(
       `INSERT INTO physical_balances (branch_id, initial_capital, initial_volume, available_fund, available_volume)
        VALUES ($1, $2, $3, $2, $3)
@@ -56,7 +54,7 @@ export async function dbUpdatePhysicalBalanceAction(
        initial_volume = EXCLUDED.initial_volume,
        updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [branchId, initialCapital, initialVolume]
+      [branchId, initialCapital, initialVolume],
     );
     const r = res.rows[0];
     return {
@@ -78,33 +76,16 @@ export async function dbUpdatePhysicalBalanceAction(
 export async function dbGetPhysicalBuysAction(branchId: string): Promise<DbActionResult<PhysicalBuy[]>> {
   try {
     const res = await query('SELECT * FROM physical_buys WHERE branch_id = $1 ORDER BY date DESC', [branchId]);
-    const buys: PhysicalBuy[] = res.rows.map(r => ({
-      id: r.id,
-      branchId: r.branch_id,
-      date: new Date(r.date).toISOString(),
-      particulars: r.particulars,
-      grossWeight: parseFloat(r.gross_weight),
-      pureConversion: parseFloat(r.pure_conversion),
-      pureGram: parseFloat(r.pure_gram),
-      idrGram: parseFloat(r.idr_gram),
-      idrToUsdt: parseFloat(r.idr_to_usdt),
-      idrRate: parseFloat(r.idr_rate),
-      total: parseFloat(r.total),
-      buyValue: parseFloat(r.buy_value),
-      remainingWeight: parseFloat(r.remaining_weight),
-      status: r.status,
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-    }));
-    return { success: true, data: buys };
+    return { success: true, data: res.rows.map(r => mapPhysicalBuyRow(r)) };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Database error';
     return { success: false, error: message };
   }
 }
 
-export async function dbAddPhysicalBuyAction(
-  buy: Omit<PhysicalBuy, 'id' | 'remainingWeight' | 'status'>
-): Promise<DbActionResult<PhysicalBuy>> {
+type PhysicalBuyInput = Omit<PhysicalBuy, 'id' | 'remainingWeight' | 'status' | 'createdAt'>;
+
+export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbActionResult<PhysicalBuy>> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -112,24 +93,66 @@ export async function dbAddPhysicalBuyAction(
     const id = `pbuy-${crypto.randomUUID().slice(0, 8)}`;
     const remainingWeight = buy.pureGram;
     const status = 'active';
+    let openingBalance = buy.openingBalance;
+
+    if (buy.customerId) {
+      openingBalance = await adjustCustomerBalanceInTx(client, buy.customerId, buy.buyValue);
+    }
 
     await client.query(
       `INSERT INTO physical_buys (
-        id, branch_id, date, particulars, gross_weight, pure_conversion, pure_gram, 
-        idr_gram, idr_to_usdt, idr_rate, total, buy_value, remaining_weight, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        id, branch_id, date, particulars, gross_weight, pure_conversion, pure_gram,
+        idr_gram, idr_to_usdt, idr_rate, total, buy_value, remaining_weight, status,
+        txn_id, customer_id, customer_name, opening_balance, product_id, item, notes,
+        purity, touch_loss, actual_purity, market_usd, deal, payment_mode,
+        idr_amount, usd_amount, aed_amount, total_weight, tlt_idr_value, tlt_aed_value, total_usdt
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+        $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
+      )`,
       [
-        id, buy.branchId, buy.date, buy.particulars, buy.grossWeight, buy.pureConversion, buy.pureGram,
-        buy.idrGram, buy.idrToUsdt, buy.idrRate, buy.total, buy.buyValue, remainingWeight, status
-      ]
+        id,
+        buy.branchId,
+        buy.date,
+        buy.item || buy.particulars,
+        buy.grossWeight,
+        buy.pureConversion,
+        buy.pureGram,
+        buy.idrGram,
+        buy.idrToUsdt,
+        buy.idrRate,
+        buy.total,
+        buy.buyValue,
+        remainingWeight,
+        status,
+        buy.txnId ?? null,
+        buy.customerId ?? null,
+        buy.customerName ?? null,
+        openingBalance ?? null,
+        buy.productId ?? null,
+        buy.item ?? buy.particulars,
+        buy.notes ?? null,
+        buy.purity ?? null,
+        buy.touchLoss ?? null,
+        buy.actualPurity ?? buy.pureGram,
+        buy.marketUsd ?? null,
+        buy.deal ?? null,
+        buy.paymentMode ?? null,
+        buy.idrAmount ?? buy.idrGram,
+        buy.usdAmount ?? null,
+        buy.aedAmount ?? null,
+        buy.totalWeight ?? buy.pureGram,
+        buy.tltIdrValue ?? null,
+        buy.tltAedValue ?? null,
+        buy.totalUsdt ?? null,
+      ],
     );
 
-    // Update branch balance
     await client.query(
-      `UPDATE physical_balances 
+      `UPDATE physical_balances
        SET available_fund = available_fund - $1, available_volume = available_volume + $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [buy.buyValue, buy.pureGram, buy.branchId]
+      [buy.buyValue, buy.pureGram, buy.branchId],
     );
 
     await client.query('COMMIT');
@@ -141,6 +164,7 @@ export async function dbAddPhysicalBuyAction(
         id,
         remainingWeight,
         status,
+        openingBalance,
       },
     };
   } catch (error: unknown) {
@@ -155,37 +179,20 @@ export async function dbAddPhysicalBuyAction(
 export async function dbGetPhysicalSellsAction(buyId: string): Promise<DbActionResult<PhysicalSell[]>> {
   try {
     const res = await query('SELECT * FROM physical_sells WHERE buy_id = $1 ORDER BY date DESC', [buyId]);
-    const sells: PhysicalSell[] = res.rows.map(r => ({
-      id: r.id,
-      buyId: r.buy_id,
-      date: new Date(r.date).toISOString(),
-      particulars: r.particulars,
-      grossWeight: parseFloat(r.gross_weight),
-      pureConversion: parseFloat(r.pure_conversion),
-      pureGram: parseFloat(r.pure_gram),
-      idrGram: parseFloat(r.idr_gram),
-      idrToUsdt: parseFloat(r.idr_to_usdt),
-      idrRate: parseFloat(r.idr_rate),
-      total: parseFloat(r.total),
-      sellValue: parseFloat(r.sell_value),
-      profit: parseFloat(r.profit),
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-    }));
-    return { success: true, data: sells };
+    return { success: true, data: res.rows.map(r => mapPhysicalSellRow(r)) };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Database error';
     return { success: false, error: message };
   }
 }
 
-export async function dbAddPhysicalSellAction(
-  sell: Omit<PhysicalSell, 'id' | 'profit' | 'createdAt'>
-): Promise<DbActionResult<PhysicalSell>> {
+type PhysicalSellInput = Omit<PhysicalSell, 'id' | 'profit' | 'createdAt'>;
+
+export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<DbActionResult<PhysicalSell>> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // 1. Get the Buy
     const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [sell.buyId]);
     if (buyRes.rows.length === 0) throw new Error('Buy deal not found');
     const buy = buyRes.rows[0];
@@ -195,38 +202,84 @@ export async function dbAddPhysicalSellAction(
       throw new Error(`Cannot sell more than remaining weight (${remainingWeight}g)`);
     }
 
-    // 2. Calculate profit
-    // Profit = Sell Value - (Cost per gram * Sell Weight)
     const pureGram = parseFloat(buy.pure_gram);
     const buyValue = parseFloat(buy.buy_value);
     const costPerGram = buyValue / pureGram;
-    const costBasis = costPerGram * sell.pureGram;
-    const profit = sell.sellValue - costBasis;
+    const costValue = sell.costValue ?? costPerGram * sell.pureGram;
+    const profit = sell.sellValue - costValue;
+    const margin = sell.margin ?? (sell.sellValue > 0 ? (profit / sell.sellValue) * 100 : 0);
+
+    let openingBalance = sell.openingBalance;
+    if (sell.customerId) {
+      openingBalance = await adjustCustomerBalanceInTx(client, sell.customerId, -sell.sellValue);
+    }
 
     const id = `psell-${crypto.randomUUID().slice(0, 8)}`;
 
-    // 3. Insert Sell
     await client.query(
-      `INSERT INTO physical_sells (id, buy_id, date, particulars, gross_weight, pure_conversion, pure_gram, idr_gram, idr_to_usdt, idr_rate, total, sell_value, profit)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-      [id, sell.buyId, sell.date, sell.particulars || '', sell.grossWeight, sell.pureConversion, sell.pureGram, sell.idrGram, sell.idrToUsdt, sell.idrRate, sell.total, sell.sellValue, profit]
+      `INSERT INTO physical_sells (
+        id, buy_id, date, particulars, gross_weight, pure_conversion, pure_gram,
+        idr_gram, idr_to_usdt, idr_rate, total, sell_value, profit,
+        txn_id, customer_id, customer_name, opening_balance, narration, notes,
+        purity, touch_loss, actual_purity, market_usd, deal, payment_mode,
+        idr_amount, usd_amount, aed_amount, total_weight, tlt_idr_value, tlt_aed_value, total_usdt,
+        cost_value, margin
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+        $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
+      )`,
+      [
+        id,
+        sell.buyId,
+        sell.date,
+        sell.narration || sell.particulars || '',
+        sell.grossWeight,
+        sell.pureConversion,
+        sell.pureGram,
+        sell.idrGram,
+        sell.idrToUsdt,
+        sell.idrRate,
+        sell.total,
+        sell.sellValue,
+        profit,
+        sell.txnId ?? null,
+        sell.customerId ?? null,
+        sell.customerName ?? null,
+        openingBalance ?? null,
+        sell.narration ?? sell.particulars ?? null,
+        sell.notes ?? null,
+        sell.purity ?? null,
+        sell.touchLoss ?? null,
+        sell.actualPurity ?? sell.pureGram,
+        sell.marketUsd ?? null,
+        sell.deal ?? null,
+        sell.paymentMode ?? null,
+        sell.idrAmount ?? sell.idrGram,
+        sell.usdAmount ?? null,
+        sell.aedAmount ?? null,
+        sell.totalWeight ?? sell.pureGram,
+        sell.tltIdrValue ?? null,
+        sell.tltAedValue ?? null,
+        sell.totalUsdt ?? null,
+        costValue,
+        margin,
+      ],
     );
 
-    // 4. Update Buy remaining weight
     const newRemainingWeight = remainingWeight - sell.pureGram;
-    const status = newRemainingWeight <= 0.001 ? 'closed' : 'active'; // Account for minor float precision
-    await client.query(
-      `UPDATE physical_buys SET remaining_weight = $1, status = $2 WHERE id = $3`,
-      [newRemainingWeight, status, sell.buyId]
-    );
+    const status = newRemainingWeight <= 0.001 ? 'closed' : 'active';
+    await client.query(`UPDATE physical_buys SET remaining_weight = $1, status = $2 WHERE id = $3`, [
+      newRemainingWeight,
+      status,
+      sell.buyId,
+    ]);
 
-    // 5. Update branch balance
     const branchId = buy.branch_id;
     await client.query(
-      `UPDATE physical_balances 
+      `UPDATE physical_balances
        SET available_fund = available_fund + $1, available_volume = available_volume - $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [sell.sellValue, sell.pureGram, branchId]
+      [sell.sellValue, sell.pureGram, branchId],
     );
 
     await client.query('COMMIT');
@@ -236,7 +289,10 @@ export async function dbAddPhysicalSellAction(
       data: {
         id,
         profit,
-        ...sell
+        costValue,
+        margin,
+        openingBalance,
+        ...sell,
       },
     };
   } catch (error: unknown) {
@@ -252,27 +308,7 @@ export async function dbGetPhysicalBuyByIdAction(buyId: string): Promise<DbActio
   try {
     const res = await query('SELECT * FROM physical_buys WHERE id = $1', [buyId]);
     if (res.rows.length === 0) throw new Error('Buy deal not found');
-    const r = res.rows[0];
-    return {
-      success: true,
-      data: {
-        id: r.id,
-        branchId: r.branch_id,
-        date: new Date(r.date).toISOString(),
-        particulars: r.particulars,
-        grossWeight: parseFloat(r.gross_weight),
-        pureConversion: parseFloat(r.pure_conversion),
-        pureGram: parseFloat(r.pure_gram),
-        idrGram: parseFloat(r.idr_gram),
-        idrToUsdt: parseFloat(r.idr_to_usdt),
-        idrRate: parseFloat(r.idr_rate),
-        total: parseFloat(r.total),
-        buyValue: parseFloat(r.buy_value),
-        remainingWeight: parseFloat(r.remaining_weight),
-        status: r.status,
-        createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-      }
-    };
+    return { success: true, data: mapPhysicalBuyRow(res.rows[0]) };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Database error';
     return { success: false, error: message };
@@ -284,36 +320,34 @@ export async function dbDeletePhysicalSellAction(sellId: string): Promise<DbActi
   try {
     await client.query('BEGIN');
 
-    // 1. Get the Sell
     const sellRes = await client.query('SELECT * FROM physical_sells WHERE id = $1 FOR UPDATE', [sellId]);
     if (sellRes.rows.length === 0) throw new Error('Sell deal not found');
     const sell = sellRes.rows[0];
 
-    // 2. Get the Buy
     const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [sell.buy_id]);
     if (buyRes.rows.length === 0) throw new Error('Buy deal not found');
     const buy = buyRes.rows[0];
 
-    // 3. Update Buy remaining weight
     const pureGram = parseFloat(sell.pure_gram);
     const newRemainingWeight = parseFloat(buy.remaining_weight) + pureGram;
-    const status = 'active'; 
-    await client.query(
-      `UPDATE physical_buys SET remaining_weight = $1, status = $2 WHERE id = $3`,
-      [newRemainingWeight, status, sell.buy_id]
-    );
+    await client.query(`UPDATE physical_buys SET remaining_weight = $1, status = 'active' WHERE id = $2`, [
+      newRemainingWeight,
+      sell.buy_id,
+    ]);
 
-    // 4. Update branch balance
     const sellValue = parseFloat(sell.sell_value);
     const branchId = buy.branch_id;
     await client.query(
-      `UPDATE physical_balances 
+      `UPDATE physical_balances
        SET available_fund = available_fund - $1, available_volume = available_volume + $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [sellValue, pureGram, branchId]
+      [sellValue, pureGram, branchId],
     );
 
-    // 5. Delete Sell
+    if (sell.customer_id) {
+      await adjustCustomerBalanceInTx(client, sell.customer_id, sellValue);
+    }
+
     await client.query('DELETE FROM physical_sells WHERE id = $1', [sellId]);
 
     await client.query('COMMIT');
@@ -332,29 +366,29 @@ export async function dbDeletePhysicalBuyAction(buyId: string): Promise<DbAction
   try {
     await client.query('BEGIN');
 
-    // 1. Check for existing sells
     const sellsRes = await client.query('SELECT id FROM physical_sells WHERE buy_id = $1 LIMIT 1', [buyId]);
     if (sellsRes.rows.length > 0) {
       throw new Error('Cannot delete buy with existing sells. Please delete the sells first.');
     }
 
-    // 2. Get the Buy
     const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [buyId]);
     if (buyRes.rows.length === 0) throw new Error('Buy deal not found');
     const buy = buyRes.rows[0];
 
-    // 3. Update branch balance
     const buyValue = parseFloat(buy.buy_value);
     const pureGram = parseFloat(buy.pure_gram);
     const branchId = buy.branch_id;
     await client.query(
-      `UPDATE physical_balances 
+      `UPDATE physical_balances
        SET available_fund = available_fund + $1, available_volume = available_volume - $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [buyValue, pureGram, branchId]
+      [buyValue, pureGram, branchId],
     );
 
-    // 4. Delete Buy
+    if (buy.customer_id) {
+      await adjustCustomerBalanceInTx(client, buy.customer_id, -buyValue);
+    }
+
     await client.query('DELETE FROM physical_buys WHERE id = $1', [buyId]);
 
     await client.query('COMMIT');

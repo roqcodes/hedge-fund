@@ -55,6 +55,12 @@ import {
   dbCreateTransactionTagAction,
 } from '@/app/actions/dbActions';
 import { updateBranchPageSettingsAction } from '@/app/actions/branchActions';
+import { fetchCurrencyRatesAction } from '@/app/actions/currencyActions';
+import {
+  sanitizeEnabledCurrencies,
+  setLiveCurrencyRates,
+  type CurrencyCode,
+} from '@/lib/currency';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
 
@@ -79,7 +85,10 @@ interface AppState {
   deals: Deal[];
   isInitialLoading: boolean;
   hqBalance: number;
-  activeCurrency: 'AED' | 'USD' | 'INR';
+  activeCurrency: CurrencyCode;
+  currencyRates: Record<string, number>;
+  currencyRatesFetchedAt: string | null;
+  currencyRatesLive: boolean;
   dealTransactions: DealTransaction[];
   entities: import('@/types').Entity[];
   ledgers: import('@/types').Ledger[];
@@ -146,7 +155,9 @@ interface AppContextType extends AppState {
   deleteDealTransaction: (id: string, dealId: string) => Promise<boolean>;
   getTotalCapital: () => number;
   getNetPL: () => number;
-  setActiveCurrency: (c: 'AED' | 'USD' | 'INR') => void;
+  setActiveCurrency: (c: CurrencyCode) => void;
+  enabledCurrencies: CurrencyCode[];
+  refetchCurrencyRates: () => Promise<void>;
   refetchData: () => Promise<void>;
   isBranchView: boolean;
   currentSlug: string;
@@ -174,6 +185,23 @@ const getSlugFromPath = (path: string): string => {
   }
   return 'superadmin';
 };
+
+const resolveViewBranchSlug = (pathname: string, currentSlug: string): string | null => {
+  const parts = pathname.split('/').filter(Boolean);
+  const drillPrefixes = new Set(['group', 'funds', 'physical-sales']);
+  if (parts[0] && drillPrefixes.has(parts[0]) && parts[1]) {
+    return parts[1];
+  }
+  if (currentSlug !== 'superadmin') return currentSlug;
+  return null;
+};
+
+const findBranchBySlug = (branches: Branch[], slug: string) =>
+  branches.find(
+    b =>
+      b.slug === slug ||
+      b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === slug,
+  );
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -206,6 +234,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isInitialLoading: true,
     hqBalance: 50000000, // 50M AED initial treasury
     activeCurrency: 'AED',
+    currencyRates: {},
+    currencyRatesFetchedAt: null,
+    currencyRatesLive: false,
     dealTransactions: [],
     entities: [],
     ledgers: [],
@@ -214,6 +245,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     physicalBuys: [],
     physicalSells: [],
   });
+
+  const refetchCurrencyRates = useCallback(async () => {
+    const res = await fetchCurrencyRatesAction();
+    setLiveCurrencyRates(res.rates);
+    setState(s => ({
+      ...s,
+      currencyRates: res.rates,
+      currencyRatesFetchedAt: res.fetchedAt,
+      currencyRatesLive: res.success,
+    }));
+  }, []);
 
   const refetchData = useCallback(async () => {
     try {
@@ -243,10 +285,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
         });
       }
+      await refetchCurrencyRates();
     } catch (e) {
       console.error('Failed to refetch data:', e);
     }
-  }, [currentSlug]);
+  }, [currentSlug, refetchCurrencyRates]);
 
   // Load session and database data on mount or when switching branch prefix
   React.useEffect(() => {
@@ -281,6 +324,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const dbRes = await fetchInitialDataAction(slug);
         if (dbRes.success && dbRes.data) {
           const data = dbRes.data;
+          const rateRes = await fetchCurrencyRatesAction();
+          setLiveCurrencyRates(rateRes.rates);
           setState(s => ({
             ...s,
             user: currentUser,
@@ -300,6 +345,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             physicalBalances: data.physicalBalances || [],
             physicalBuys: data.physicalBuys || [],
             physicalSells: data.physicalSells || [],
+            currencyRates: rateRes.rates,
+            currencyRatesFetchedAt: rateRes.fetchedAt,
+            currencyRatesLive: rateRes.success,
             isInitialLoading: false,
           }));
           return;
@@ -310,10 +358,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.error('Failed to fetch database data', e);
       }
 
+      const rateRes = await fetchCurrencyRatesAction();
+      setLiveCurrencyRates(rateRes.rates);
       setState(s => ({
         ...s,
         user: currentUser,
         isAuthenticated,
+        currencyRates: rateRes.rates,
+        currencyRatesFetchedAt: rateRes.fetchedAt,
+        currencyRatesLive: rateRes.success,
         isInitialLoading: false,
       }));
     }
@@ -1241,7 +1294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast, state.hqBalance]);
 
-  const setActiveCurrency = useCallback((currency: 'AED' | 'USD' | 'INR') => {
+  const setActiveCurrency = useCallback((currency: CurrencyCode) => {
     mock.setGlobalCurrency(currency);
     setState(s => ({ ...s, activeCurrency: currency }));
   }, []);
@@ -1310,6 +1363,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const isICTransferRoute = pathname.includes('/ic-transfer');
     const showICTransferSecondarySidebar = isICTransferRoute && !icTransferMainMenuOpen;
 
+    const viewBranchSlug = resolveViewBranchSlug(pathname, currentSlug);
+    let enabledCurrencies: CurrencyCode[] = sanitizeEnabledCurrencies(['AED', 'USD', 'INR']);
+    const viewBranch = viewBranchSlug
+      ? findBranchBySlug(state.branches, viewBranchSlug)
+      : filteredState.branches.length === 1
+        ? filteredState.branches[0]
+        : undefined;
+    if (viewBranch?.enabledCurrencies?.length) {
+      enabledCurrencies = sanitizeEnabledCurrencies(viewBranch.enabledCurrencies);
+    }
+
     return {
       ...filteredState,
       isBranchView,
@@ -1317,13 +1381,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       icTransferMainMenuOpen,
       showICTransferSecondarySidebar,
       currentSlug,
+      enabledCurrencies,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData,
+      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
     };
-  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
+  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
+
+  useEffect(() => {
+    const enabled = contextValue.enabledCurrencies;
+    if (!enabled.includes(contextValue.activeCurrency)) {
+      setActiveCurrency(enabled[0]);
+    }
+  }, [contextValue.enabledCurrencies, contextValue.activeCurrency, setActiveCurrency]);
 
   return (
     <AppContext.Provider value={contextValue}>

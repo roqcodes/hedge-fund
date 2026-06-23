@@ -8,7 +8,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAED } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
-import CurrencySwitcher from './CurrencySwitcher';
 import { pageHeader, pageTitle, pageSubtitle, tableWrap, dataTable } from '@/lib/ui';
 
 function KPICard({ label, value, colorClass, icon, cardClassName }: { label: string; value: React.ReactNode; colorClass: string; icon: React.ReactNode; cardClassName?: string }) {
@@ -116,10 +115,6 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         </div>
         {/* Buttons — on mobile: col, Expenses above Sell; on sm+: row */}
         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-          <div className={txn.fixOrUnfix === 'unfixed' ? 'w-full sm:w-24' : 'w-full sm:w-auto'}>
-            <CurrencySwitcher />
-          </div>
-
           {/* Expenses button — always visible */}
           <button
             type="button"

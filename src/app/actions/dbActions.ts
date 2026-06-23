@@ -8,6 +8,8 @@ import {
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN,
 } from '@/lib/sql/businessDateSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
+import { mapPhysicalBuyRow, mapPhysicalSellRow } from '@/lib/physicalMappers';
+import { sanitizeEnabledCurrencies } from '@/lib/currency';
 import { validateJournalEntry } from '@/lib/journalEntry';
 import {
   Branch,
@@ -151,6 +153,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       status: r.status,
       timezone: resolveBranchTimeZone(r.timezone ? String(r.timezone) : null),
       hiddenPages: Array.isArray(r.hidden_pages) ? r.hidden_pages.map(String) : [],
+      enabledCurrencies: sanitizeEnabledCurrencies(r.enabled_currencies),
       lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
     }));
@@ -431,6 +434,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       name: r.name,
       impact: r.impact,
       isKpi: r.is_kpi,
+      kpiInvert: Boolean(r.kpi_invert),
       sortOrder: r.sort_order,
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
     }));
@@ -459,41 +463,10 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     }));
 
     const physicalBuysRes = await query('SELECT * FROM physical_buys ORDER BY date DESC');
-    const physicalBuys = physicalBuysRes.rows.map(r => ({
-      id: r.id,
-      branchId: r.branch_id,
-      date: new Date(r.date).toISOString(),
-      particulars: r.particulars,
-      grossWeight: parseFloat(r.gross_weight),
-      pureConversion: parseFloat(r.pure_conversion),
-      pureGram: parseFloat(r.pure_gram),
-      idrGram: parseFloat(r.idr_gram),
-      idrToUsdt: parseFloat(r.idr_to_usdt),
-      idrRate: parseFloat(r.idr_rate),
-      total: parseFloat(r.total),
-      buyValue: parseFloat(r.buy_value),
-      remainingWeight: parseFloat(r.remaining_weight),
-      status: r.status,
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-    }));
+    const physicalBuys = physicalBuysRes.rows.map(r => mapPhysicalBuyRow(r));
 
     const physicalSellsRes = await query('SELECT * FROM physical_sells ORDER BY date DESC');
-    const physicalSells = physicalSellsRes.rows.map(r => ({
-      id: r.id,
-      buyId: r.buy_id,
-      date: new Date(r.date).toISOString(),
-      particulars: r.particulars,
-      grossWeight: parseFloat(r.gross_weight),
-      pureConversion: parseFloat(r.pure_conversion),
-      pureGram: parseFloat(r.pure_gram),
-      idrGram: parseFloat(r.idr_gram),
-      idrToUsdt: parseFloat(r.idr_to_usdt),
-      idrRate: parseFloat(r.idr_rate),
-      total: parseFloat(r.total),
-      sellValue: parseFloat(r.sell_value),
-      profit: parseFloat(r.profit),
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-    }));
+    const physicalSells = physicalSellsRes.rows.map(r => mapPhysicalSellRow(r));
 
     let finalBranches = branches;
     let finalTransactions = transactions;
@@ -1922,8 +1895,8 @@ export async function dbAddLedgerAction(ledger: import('@/types').Ledger): Promi
   }
   try {
     await query(
-      'INSERT INTO ledgers (id, branch_id, name, impact, is_kpi, sort_order, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [ledger.id, ledger.branchId || null, ledger.name, ledger.impact, ledger.isKpi, ledger.sortOrder || 0, ledger.createdAt || new Date().toISOString()]
+      'INSERT INTO ledgers (id, branch_id, name, impact, is_kpi, kpi_invert, sort_order, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [ledger.id, ledger.branchId || null, ledger.name, ledger.impact, ledger.isKpi, ledger.kpiInvert ?? false, ledger.sortOrder || 0, ledger.createdAt || new Date().toISOString()]
     );
     return { success: true, data: ledger };
   } catch (error: unknown) {
@@ -1936,7 +1909,11 @@ export async function dbUpdateLedgerAction(ledger: import('@/types').Ledger): Pr
     const existing = await query('SELECT branch_id, name FROM ledgers WHERE id = $1', [ledger.id]);
     if (!existing.rows.length) return { success: false, error: 'Ledger not found.' };
     if (!existing.rows[0].branch_id) {
-      return { success: false, error: 'Global ledgers are system-managed and cannot be modified from the app.' };
+      await query(
+        'UPDATE ledgers SET is_kpi = $1, kpi_invert = $2 WHERE id = $3',
+        [ledger.isKpi, ledger.kpiInvert ?? false, ledger.id],
+      );
+      return { success: true, data: ledger };
     }
 
     const oldName: string = existing.rows[0].name;
@@ -1954,8 +1931,8 @@ export async function dbUpdateLedgerAction(ledger: import('@/types').Ledger): Pr
     }
 
     await query(
-      'UPDATE ledgers SET name = $1, impact = $2, is_kpi = $3, sort_order = $4 WHERE id = $5',
-      [ledger.name, ledger.impact, ledger.isKpi, ledger.sortOrder || 0, ledger.id]
+      'UPDATE ledgers SET name = $1, impact = $2, is_kpi = $3, kpi_invert = $4, sort_order = $5 WHERE id = $6',
+      [ledger.name, ledger.impact, ledger.isKpi, ledger.kpiInvert ?? false, ledger.sortOrder || 0, ledger.id],
     );
     return { success: true, data: ledger };
   } catch (error: unknown) {
@@ -2039,15 +2016,16 @@ export async function restoreTransactionsBackupAction(
 
     for (const l of backup.tables.ledgers) {
       await client.query(
-        `INSERT INTO ledgers (id, branch_id, name, impact, is_kpi, sort_order, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, CURRENT_TIMESTAMP))
+        `INSERT INTO ledgers (id, branch_id, name, impact, is_kpi, kpi_invert, sort_order, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::timestamptz, CURRENT_TIMESTAMP))
          ON CONFLICT (id) DO UPDATE SET
            branch_id = EXCLUDED.branch_id,
            name = EXCLUDED.name,
            impact = EXCLUDED.impact,
            is_kpi = EXCLUDED.is_kpi,
+           kpi_invert = EXCLUDED.kpi_invert,
            sort_order = EXCLUDED.sort_order`,
-        [l.id, l.branch_id, l.name, l.impact, l.is_kpi, l.sort_order, l.created_at],
+        [l.id, l.branch_id, l.name, l.impact, l.is_kpi, l.kpi_invert ?? false, l.sort_order, l.created_at],
       );
       restored.ledgers += 1;
     }

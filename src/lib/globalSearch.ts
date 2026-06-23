@@ -60,6 +60,7 @@ export const SEARCH_PAGE_ITEMS: {
   { id: 'usdt', label: 'USDT', path: '/usdt', keywords: ['crypto', 'usdt', 'stablecoin'] },
   { id: 'marketplace', label: 'Physical', path: '/physical', keywords: ['physical', 'tax', 'invoice', 'stock'] },
   { id: 'products', label: 'Products', path: '/products', keywords: ['products', 'catalogue', 'sku', 'inventory'] },
+  { id: 'customers', label: 'Customers', path: '/customers', keywords: ['customers', 'client', 'balance', 'phone', 'email'] },
   { id: 'settings', label: 'Settings', path: '/settings', keywords: ['settings', 'profile', 'branch'] },
   { id: 'branches', label: 'Branches', path: '/branches', keywords: ['branches', 'locations'], superadminOnly: true },
   { id: 'users', label: 'Users & Roles', path: '/users', keywords: ['users', 'roles', 'admin'], superadminOnly: true },

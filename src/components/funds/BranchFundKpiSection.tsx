@@ -6,6 +6,7 @@ import { formatAED, formatAEDStr } from '@/data/mockData';
 import { Branch, Ledger } from '@/types';
 import { getLedgerKpiSubValue } from '@/lib/ledgers';
 import { btnSecondary, kpiGrid } from '@/lib/ui';
+import { useLedgerKpiInvert } from '@/hooks/useLedgerKpiInvert';
 
 const PRIMARY_ROW_SIZE = 4;
 
@@ -66,11 +67,15 @@ type KpiCardConfig = {
   bgColor: string;
 };
 
-function ledgerCardProps(ledger: Ledger, balance: number): KpiCardConfig {
+function ledgerCardProps(
+  ledger: Ledger,
+  balance: number,
+  displayAmount: (ledgerId: string, amount: number) => number,
+): KpiCardConfig {
   return {
     key: ledger.id,
     label: ledger.name,
-    value: formatAED(balance),
+    value: formatAED(displayAmount(ledger.id, balance)),
     subValue: getLedgerKpiSubValue(ledger),
     icon: ledgerIcon,
     color: ledger.impact === 'positive' ? 'var(--success)' : ledger.impact === 'negative' ? 'var(--warning)' : 'var(--info)',
@@ -100,6 +105,7 @@ export default function BranchFundKpiSection({
   pendingCount: number;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { displayAmount } = useLedgerKpiInvert(branchLedgers);
 
   const allCards = useMemo<KpiCardConfig[]>(() => {
     const cards: KpiCardConfig[] = [
@@ -126,7 +132,7 @@ export default function BranchFundKpiSection({
     branchLedgers
       .filter(l => l.isKpi)
       .forEach(ledger => {
-        cards.push(ledgerCardProps(ledger, ledgerBalances[ledger.id] || 0));
+        cards.push(ledgerCardProps(ledger, ledgerBalances[ledger.id] || 0, displayAmount));
       });
 
     cards.push({
@@ -140,7 +146,7 @@ export default function BranchFundKpiSection({
     });
 
     return cards;
-  }, [branch, availableBranchFund, branchGoldVolume, branchLedgers, ledgerBalances, totalCashInLocker]);
+  }, [branch, availableBranchFund, branchGoldVolume, branchLedgers, ledgerBalances, totalCashInLocker, displayAmount]);
 
   const transactionCards = useMemo<KpiCardConfig[]>(
     () => [

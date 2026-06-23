@@ -102,13 +102,22 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
     const mtlAmt = ((spot + premium) / 31.1034768) * pureQty;
     const amount = mtlAmt + (parseFloat(item.mkgAmt) || 0);
 
-    return { ...item, pureQty, mtlAmt, amount };
+    return { ...item, pureQty, mtlAmt, amount, effectivePremium: premium };
   });
 
   const totalGrossWt = effectiveItems.reduce((acc, item) => acc + (parseFloat(item.grossQtyStr) || 0), 0);
   const totalPureWt = effectiveItems.reduce((acc, item) => acc + (item.pureQty || 0), 0);
   const totalMkgAmt = effectiveItems.reduce((acc, item) => acc + (item.mkgAmt || 0), 0);
   const totalMtlAmt = effectiveItems.reduce((acc, item) => acc + (item.mtlAmt || 0), 0);
+
+  const summaryPremium =
+    parsedHedgePremium > 0
+      ? parsedHedgePremium
+      : effectiveItems.length === 1
+        ? effectiveItems[0].effectivePremium
+        : effectiveItems.length > 1
+          ? effectiveItems.reduce((sum, item) => sum + item.effectivePremium, 0) / effectiveItems.length
+          : 0;
 
   const totalGrossAmount = effectiveItems.reduce((acc, item) => acc + (item.amount || 0), 0);
   const totalOtherCharges = 0; // Stub for other charges tab
@@ -226,7 +235,7 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
       <Modal 
         open={open} 
         onClose={handleClose} 
-        title="New Tax Invoice"
+        title="New Invoice"
         maxWidth="max-w-[1200px] w-[96vw]"
         footer={
           <>
@@ -492,6 +501,7 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
               <div className="flex justify-between"><span className="text-slate-500">Add. Chrg.</span><span className="font-bold">{totalOtherCharges.toFixed(2)}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Mak. Chrg.</span><span className="font-bold">{totalMkgAmt.toFixed(2)}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Gold Value</span><span className="font-bold">{totalMtlAmt.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Premium</span><span className="font-bold">{summaryPremium.toFixed(2)}</span></div>
             </div>
 
             {/* Totals & Discounts */}
@@ -529,6 +539,7 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
                     <th className="px-2 py-2 text-right font-bold text-slate-600 border-r border-slate-200">Gross Wt.</th>
                     <th className="px-2 py-2 text-right font-bold text-slate-600 border-r border-slate-200">Mak. Rate</th>
                     <th className="px-2 py-2 text-right font-bold text-slate-600 border-r border-slate-200">Mak. Amt.</th>
+                    <th className="px-2 py-2 text-right font-bold text-slate-600 border-r border-slate-200">Premium</th>
                     <th className="px-2 py-2 text-right font-bold text-slate-600 border-r border-slate-200">Total amount</th>
                     <th className="px-2 py-2 text-center font-bold text-slate-600 border-r border-slate-200">Pcs.</th>
                     <th className="px-2 py-2 text-right font-bold text-slate-600 border-r border-slate-200">Tax</th>
@@ -536,9 +547,9 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
                   </tr>
                 </thead>
                 <tbody>
-                  {invoiceItems.map((item, idx) => {
-                    const tax = item.amount * 0.05; // 5% tax per item for preview
-                    const net = item.amount + tax;
+                  {effectiveItems.map((item, idx) => {
+                    const tax = (item.amount || 0) * 0.05;
+                    const net = (item.amount || 0) + tax;
                     return (
                       <tr key={idx} className="border-b border-slate-200 hover:bg-amber-50/30">
                         <td className="px-2 py-2 border-r border-slate-200 text-center font-medium">{idx + 1}</td>
@@ -548,6 +559,7 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
                         <td className="px-2 py-2 border-r border-slate-200 text-right text-slate-600">{parseFloat(item.grossQtyStr).toFixed(3)}</td>
                         <td className="px-2 py-2 border-r border-slate-200 text-right font-mono text-slate-600">{parseFloat(item.mkgRateStr || '0').toFixed(5)}</td>
                         <td className="px-2 py-2 border-r border-slate-200 text-right text-slate-600">{item.mkgAmt.toFixed(2)}</td>
+                        <td className="px-2 py-2 border-r border-slate-200 text-right font-mono text-slate-600">{item.effectivePremium.toFixed(2)}</td>
                         <td className="px-2 py-2 border-r border-slate-200 text-right font-medium text-slate-700">{item.amount.toFixed(2)}</td>
                         <td className="px-2 py-2 border-r border-slate-200 text-center text-slate-600">{item.piecesStr}</td>
                         <td className="px-2 py-2 border-r border-slate-200 text-right font-medium bg-amber-50/50">{tax.toFixed(2)}</td>
@@ -555,9 +567,9 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
                       </tr>
                     );
                   })}
-                  {invoiceItems.length === 0 && (
+                  {effectiveItems.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-2 py-8 text-center text-slate-400 italic">Preview will appear here once items are added to the invoice.</td>
+                      <td colSpan={12} className="px-2 py-8 text-center text-slate-400 italic">Preview will appear here once items are added to the invoice.</td>
                     </tr>
                   )}
                 </tbody>

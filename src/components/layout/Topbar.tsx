@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import GlobalSearch from '@/components/layout/GlobalSearch';
+import CurrencySwitcher from '@/components/ui/CurrencySwitcher';
 
 export default function Topbar() {
   const { toggleSidebar, logout, user, refetchData } = useApp();
@@ -115,6 +116,8 @@ export default function Topbar() {
             <path d="M21 21l-4.35-4.35" />
           </svg>
         </button>
+
+        <CurrencySwitcher />
 
         <button
           type="button"

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS branches (
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
     timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Dubai',
     hidden_pages TEXT[] NOT NULL DEFAULT '{}',
+    enabled_currencies TEXT[] NOT NULL DEFAULT '{AED}',
     last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -90,6 +91,7 @@ CREATE TABLE IF NOT EXISTS ledgers (
     name VARCHAR(255) NOT NULL,
     impact VARCHAR(20) NOT NULL DEFAULT 'neutral' CHECK (impact IN ('positive', 'negative', 'neutral')),
     is_kpi BOOLEAN NOT NULL DEFAULT true,
+    kpi_invert BOOLEAN NOT NULL DEFAULT false,
     sort_order INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -621,3 +623,61 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_name VARCHAR(255);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);
 
 CREATE INDEX IF NOT EXISTS idx_transactions_branch_business_date ON transactions(branch_id, business_date);
+
+-- Customers
+CREATE TABLE IF NOT EXISTS customers (
+    id VARCHAR(50) PRIMARY KEY,
+    branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50),
+    email VARCHAR(255),
+    balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_customers_branch_id ON customers(branch_id);
+
+-- Physical buy/sell extended fields
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS txn_id VARCHAR(50);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL;
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS opening_balance DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS product_id VARCHAR(50) REFERENCES products(id) ON DELETE SET NULL;
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS item VARCHAR(255);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS purity DECIMAL(15, 7);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS touch_loss DECIMAL(15, 4) DEFAULT 0;
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS actual_purity DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS market_usd DECIMAL(15, 4);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS deal DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(30);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS idr_amount DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS usd_amount DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS aed_amount DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_weight DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_idr_value DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_aed_value DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(15, 4);
+
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS txn_id VARCHAR(50);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL;
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS opening_balance DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS narration TEXT;
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS purity DECIMAL(15, 7);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS touch_loss DECIMAL(15, 4) DEFAULT 0;
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS actual_purity DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS market_usd DECIMAL(15, 4);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS deal DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(30);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS idr_amount DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS usd_amount DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS aed_amount DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS total_weight DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS tlt_idr_value DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS tlt_aed_value DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(15, 4);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS cost_value DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS margin DECIMAL(15, 4);

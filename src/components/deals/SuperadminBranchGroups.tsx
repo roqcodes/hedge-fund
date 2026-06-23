@@ -7,7 +7,6 @@ import { formatAED, formatDateTime } from '@/data/mockData';
 import { Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import CreateDealModal from './CreateDealModal';
-import CurrencySwitcher from './CurrencySwitcher';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import {
@@ -201,9 +200,7 @@ export default function SuperadminBranchGroups({ branchSlug }: { branchSlug: str
           setCustomStartDate={setCustomStartDate}
           customEndDate={customEndDate}
           setCustomEndDate={setCustomEndDate}
-        >
-          <CurrencySwitcher />
-        </DateFilterBar>
+        />
 
         <div className={`${kpiGrid} grid-cols-2`}>
           <KPICard

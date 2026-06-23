@@ -2,17 +2,19 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import KPICard from '@/components/ui/KPICard';
-import { PhysicalBuy, PhysicalBalance } from '@/types';
+import { PhysicalBuy, PhysicalSell } from '@/types';
 import { 
   dbUpdatePhysicalBalanceAction, 
-  dbAddPhysicalBuyAction 
 } from '@/app/actions/physicalActions';
-import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
+import { formatMoneyValue } from '@/data/mockData';
 import { useDateFilter } from '@/hooks/useDateFilter';
+import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import PhysicalExportModal from './PhysicalExportModal';
+import PhysicalBuyModal from './PhysicalBuyModal';
+import PhysicalStockSellModal from './PhysicalStockSellModal';
+import PhysicalSplitKPICard, { PhysicalSingleKPICard } from './PhysicalSplitKPICard';
 import {
   btnPrimary, btnSecondary,
   kpiGrid,
@@ -25,10 +27,15 @@ import {
 } from '@/lib/ui';
 
 type SortField = 'date' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'buyValue' | 'remainingWeight';
+type SellSortField = 'date' | 'customerName' | 'narration' | 'grossWeight' | 'pureGram' | 'sellValue' | 'profit';
 type SortDirection = 'asc' | 'desc';
 
+function isFixedDeal(buy: PhysicalBuy) {
+  return buy.deal != null && buy.deal > 0;
+}
+
 export default function PhysicalPage() {
-  const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, refetchData } = useApp();
+  const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, refetchData, activeCurrency } = useApp();
   const router = useRouter();
   const branchSlug = currentSlug;
   const branchId = branches.find(b => b.slug === currentSlug)?.id;
@@ -37,34 +44,24 @@ export default function PhysicalPage() {
   const buys = physicalBuys.filter(b => b.branchId === branchId);
 
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
+  const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
-  const [buyForm, setBuyForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    particulars: '',
-    grossWeightStr: '',
-    pureConversionStr: '1',
-    idrGramStr: '',
-    idrToUsdtStr: '18000'
-  });
-
-  const buyCalculations = useMemo(() => {
-    const gw = parseFloat(buyForm.grossWeightStr) || 0;
-    const pc = parseFloat(buyForm.pureConversionStr) || 1;
-    const ig = parseFloat(buyForm.idrGramStr) || 0;
-    const itu = parseFloat(buyForm.idrToUsdtStr) || 18000;
-    
-    const pureGram = gw * pc;
-    const idrRate = itu > 0 ? ig / itu : 0;
-    const total = pureGram * idrRate;
-
-    return { pureGram, idrRate, total };
-  }, [buyForm]);
-
   const [searchTerm, setSearchTerm] = useState('');
+  const [sellSearchTerm, setSellSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
+  const [sellSortField, setSellSortField] = useState<SellSortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [sellSortDirection, setSellSortDirection] = useState<SortDirection>('desc');
+
+  const branchBuyIds = useMemo(() => new Set(buys.map(b => b.id)), [buys]);
+  const availableStock = useMemo(() => buys.filter(b => b.remainingWeight > 0.001), [buys]);
+  const branchSells = useMemo(
+    () => physicalSells.filter(s => branchBuyIds.has(s.buyId)),
+    [physicalSells, branchBuyIds],
+  );
+  const buyById = useMemo(() => new Map(buys.map(b => [b.id, b])), [buys]);
 
   const {
     dateFilter, setDateFilter,
@@ -72,6 +69,12 @@ export default function PhysicalPage() {
     customEndDate, setCustomEndDate,
     filteredData: filteredBuys
   } = useDateFilter(buys);
+
+  const filteredSells = useMemo(() => {
+    const range = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);
+    if (!range.startDate && !range.endDate) return branchSells;
+    return branchSells.filter(item => isDateInRange(item.date, range));
+  }, [branchSells, dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
     if (balance && balance.initialCapital === 0 && balance.initialVolume === 0 && buys.length === 0) {
@@ -95,46 +98,8 @@ export default function PhysicalPage() {
     }
   };
 
-  const handleCreateBuy = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!branchId) return;
-    
-    const grossWeight = parseFloat(buyForm.grossWeightStr) || 0;
-    const pureConversion = parseFloat(buyForm.pureConversionStr) || 1;
-    const idrGram = parseFloat(buyForm.idrGramStr) || 0;
-    const idrToUsdt = parseFloat(buyForm.idrToUsdtStr) || 18000;
-    
-    const { pureGram, idrRate, total } = buyCalculations;
-
-    const buyData = {
-      branchId,
-      date: buyForm.date,
-      particulars: buyForm.particulars,
-      grossWeight,
-      pureConversion,
-      pureGram,
-      idrGram,
-      idrToUsdt,
-      idrRate,
-      total,
-      buyValue: total, // Buy value equals total initially
-    };
-
-    const res = await dbAddPhysicalBuyAction(buyData);
-    if (res.success && res.data) {
-      setIsBuyModalOpen(false);
-      setBuyForm({
-        date: new Date().toISOString().split('T')[0],
-        particulars: '',
-        grossWeightStr: '',
-        pureConversionStr: '1',
-        idrGramStr: '',
-        idrToUsdtStr: '18000'
-      });
-      await refetchData();
-    } else {
-      alert(res.error);
-    }
+  const handleCreateBuySuccess = async () => {
+    await refetchData();
   };
 
   const handleSort = (field: SortField) => {
@@ -146,6 +111,15 @@ export default function PhysicalPage() {
     }
   };
 
+  const handleSellSort = (field: SellSortField) => {
+    if (sellSortField === field) {
+      setSellSortDirection(sellSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSellSortField(field);
+      setSellSortDirection('asc');
+    }
+  };
+
   const filteredAndSortedBuys = useMemo(() => {
     let result = [...filteredBuys];
 
@@ -153,6 +127,9 @@ export default function PhysicalPage() {
       const lowerQuery = searchTerm.toLowerCase();
       result = result.filter(buy => 
         (buy.particulars && buy.particulars.toLowerCase().includes(lowerQuery)) ||
+        (buy.item && buy.item.toLowerCase().includes(lowerQuery)) ||
+        (buy.customerName && buy.customerName.toLowerCase().includes(lowerQuery)) ||
+        (buy.txnId && buy.txnId.toLowerCase().includes(lowerQuery)) ||
         buy.date.toLowerCase().includes(lowerQuery)
       );
     }
@@ -173,6 +150,43 @@ export default function PhysicalPage() {
 
     return result;
   }, [filteredBuys, searchTerm, sortField, sortDirection]);
+
+  const filteredAndSortedSells = useMemo(() => {
+    let result = [...filteredSells];
+
+    if (sellSearchTerm.trim()) {
+      const q = sellSearchTerm.toLowerCase();
+      result = result.filter(sell => {
+        const buy = buyById.get(sell.buyId);
+        return (
+          (sell.customerName && sell.customerName.toLowerCase().includes(q)) ||
+          (sell.narration && sell.narration.toLowerCase().includes(q)) ||
+          (sell.particulars && sell.particulars.toLowerCase().includes(q)) ||
+          (sell.txnId && sell.txnId.toLowerCase().includes(q)) ||
+          (buy?.item && buy.item.toLowerCase().includes(q)) ||
+          sell.date.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    result.sort((a, b) => {
+      let valA: unknown = a[sellSortField as keyof PhysicalSell];
+      let valB: unknown = b[sellSortField as keyof PhysicalSell];
+      if (sellSortField === 'narration') {
+        valA = a.narration || a.particulars || '';
+        valB = b.narration || b.particulars || '';
+      }
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
+      }
+      if ((valA as number | string) < (valB as number | string)) return sellSortDirection === 'asc' ? -1 : 1;
+      if ((valA as number | string) > (valB as number | string)) return sellSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [filteredSells, sellSearchTerm, sellSortField, sellSortDirection, buyById]);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
@@ -198,41 +212,87 @@ export default function PhysicalPage() {
 
   if (!branchId) return <div className="p-8 text-center text-red-500">Branch not found.</div>;
 
-  const totalInventory = filteredBuys.reduce((sum, b) => sum + b.pureGram, 0);
-  const totalRemaining = filteredBuys.reduce((sum, b) => sum + b.remainingWeight, 0);
-  
-  const filteredBuyIds = new Set(filteredBuys.map(b => b.id));
-  const filteredSells = physicalSells.filter(s => filteredBuyIds.has(s.buyId));
+  const fmtG = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g';
+  const fmtAed = (n: number) => formatMoneyValue(n, activeCurrency);
+
+  const totalBoughtVolume = filteredBuys.reduce((sum, b) => sum + b.pureGram, 0);
+  const totalBoughtAmount = filteredBuys.reduce((sum, b) => sum + b.buyValue, 0);
+  const totalSoldVolume = filteredSells.reduce((sum, s) => sum + s.pureGram, 0);
+  const totalSoldAmount = filteredSells.reduce((sum, s) => sum + s.sellValue, 0);
+  const fixNumber = filteredBuys.filter(isFixedDeal).length;
+  const unfixNumber = filteredBuys.filter(b => !isFixedDeal(b)).length;
   const totalPL = filteredSells.reduce((sum, s) => sum + s.profit, 0);
+
+  const SellSortIcon = ({ field }: { field: SellSortField }) => {
+    if (sellSortField !== field) {
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    return sellSortDirection === 'asc' ? (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+      </svg>
+    ) : (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
+
+  const paymentLabel = (mode?: string) => {
+    const map: Record<string, string> = {
+      CASH: 'Cash',
+      BANK_TRANSFER: 'Bank / Transfer',
+      USDT: 'USDT',
+      MULTI_CURRENCY: 'Multy Currency',
+    };
+    return mode ? map[mode] ?? mode : '—';
+  };
 
   return (
     <>
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
-        <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
+        <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Physical Sales</h2>
             <p className={pageSubtitle}>Vault inventory, bullion tracking, and gold buys</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsInitialSetupOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg gap-2 font-semibold text-sm">
-              <span className="hidden sm:inline">Update Capital</span>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="sm:hidden">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button onClick={() => setIsExportModalOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg gap-2 font-semibold text-sm">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setIsExportModalOpen(true)}
+              className={`${btnSecondary} w-full sm:w-auto`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              <span className="hidden sm:inline">Export</span>
+              Export
             </button>
-            <button onClick={() => setIsBuyModalOpen(true)} className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-accent sm:text-white sm:hover:bg-accent-hover gap-2 font-semibold text-sm">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
+            <button
+              type="button"
+              onClick={() => setIsBuyModalOpen(true)}
+              className={`${btnPrimary} w-full sm:w-auto`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              <span className="hidden sm:inline">New Buy</span>
+              Buy
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSellModalOpen(true)}
+              disabled={availableStock.length === 0}
+              className={`${btnSecondary} w-full sm:w-auto disabled:pointer-events-none disabled:opacity-50`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M5 12h14" />
+              </svg>
+              Sell
             </button>
           </div>
         </div>
@@ -245,60 +305,57 @@ export default function PhysicalPage() {
           customEndDate={customEndDate}
           setCustomEndDate={setCustomEndDate}
         />
-        <div className={`${kpiGrid} grid-cols-2 md:grid-cols-4 mb-6`}>
-          <KPICard
-            label="Total Purchases"
-            value={filteredBuys.length}
-            subValue="Number of buys"
+        <div className={`${kpiGrid} mb-6 grid-cols-2 md:grid-cols-4`}>
+          <PhysicalSplitKPICard
+            top={{ label: 'Total Bought Volume', value: fmtG(totalBoughtVolume) }}
+            bottom={{ label: 'Total Bought Amount', value: fmtAed(totalBoughtAmount) }}
+            color="var(--accent)"
+            bgColor="var(--accent-light)"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
               </svg>
             }
+          />
+          <PhysicalSplitKPICard
+            top={{ label: 'Total Sold Volume', value: fmtG(totalSoldVolume) }}
+            bottom={{ label: 'Total Sold Amount', value: fmtAed(totalSoldAmount) }}
+            color="var(--action)"
+            bgColor="var(--action-light)"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+              </svg>
+            }
+          />
+          <PhysicalSplitKPICard
+            top={{ label: 'Fix', value: fixNumber }}
+            bottom={{ label: 'Unfix', value: unfixNumber }}
             color="var(--purple)"
             bgColor="var(--purple-light)"
-          />
-          <KPICard
-            label="Total Inventory"
-            value={totalInventory.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
-            subValue="Gross weight bought"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
-            color="var(--accent)"
-            bgColor="var(--accent-light)"
           />
-          <KPICard
-            label="Total Remaining"
-            value={totalRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
-            subValue="Current stock"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-            color="var(--warning)"
-            bgColor="var(--warning-light)"
-          />
-          <KPICard
+          <PhysicalSingleKPICard
             label="P&L"
-            value={totalPL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' AED'}
-            subValue="Total Profit/Loss"
+            value={fmtAed(totalPL)}
+            color={totalPL >= 0 ? 'var(--success)' : 'var(--danger)'}
+            bgColor={totalPL >= 0 ? 'var(--success-light)' : 'var(--danger-light)'}
+            valueClassName={totalPL >= 0 ? 'text-emerald-600' : 'text-red-600'}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             }
-            color={totalPL >= 0 ? "var(--success)" : "var(--danger)"}
-            bgColor={totalPL >= 0 ? "var(--success-light)" : "var(--danger-light)"}
           />
         </div>
 
-        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover mb-6">
           <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-lg font-bold text-slate-900">Gold Buys</h3>
+            <h3 className="text-lg font-bold text-slate-900">Gold Deals</h3>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative flex-1">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -346,8 +403,11 @@ export default function PhysicalPage() {
                     <th className={getThClass('left')} onClick={() => handleSort('date')}>
                       <div className="flex items-center gap-2">Date <SortIcon field="date" /></div>
                     </th>
+                    <th className={getThClass('left')}>
+                      <div className="flex items-center gap-2">Customer</div>
+                    </th>
                     <th className={getThClass('left')} onClick={() => handleSort('particulars')}>
-                      <div className="flex items-center gap-2">Particulars <SortIcon field="particulars" /></div>
+                      <div className="flex items-center gap-2">Item <SortIcon field="particulars" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('grossWeight')}>
                       <div className="flex items-center justify-center gap-2">Gross Wt <SortIcon field="grossWeight" /></div>
@@ -378,8 +438,11 @@ export default function PhysicalPage() {
                       <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {new Date(buy.date).toLocaleDateString()}
                       </td>
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-xs text-slate-600 sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
+                        {buy.customerName || '—'}
+                      </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        {buy.particulars || '-'}
+                        {buy.item || buy.particulars || '-'}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.grossWeight.toFixed(2)}
@@ -414,8 +477,8 @@ export default function PhysicalPage() {
                   ))}
                   {filteredAndSortedBuys.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
-                        {searchTerm || dateFilter !== 'all' ? 'No buys found matching your filters.' : 'No physical buys found. Create one to get started.'}
+                      <td colSpan={9} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
+                        {searchTerm || dateFilter !== 'all-time' ? 'No deals found matching your filters.' : 'No gold deals yet. Create one to get started.'}
                       </td>
                     </tr>
                   )}
@@ -467,8 +530,171 @@ export default function PhysicalPage() {
                 ))}
                 {filteredAndSortedBuys.length === 0 && (
                   <div className="p-8 text-center text-sm text-slate-500">
-                    {searchTerm || dateFilter !== 'all' ? 'No buys found matching your filters.' : 'No physical buys found. Create one to get started.'}
+                    {searchTerm || dateFilter !== 'all-time' ? 'No deals found matching your filters.' : 'No gold deals yet. Create one to get started.'}
                   </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Gold Sales */}
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+          <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-lg font-bold text-slate-900">Gold Sales</h3>
+            <div className="relative flex-1 sm:max-w-xs">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search sales..."
+                value={sellSearchTerm}
+                onChange={e => setSellSearchTerm(e.target.value)}
+                className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm w-full`}
+              />
+            </div>
+          </div>
+          <div className="p-0">
+            <div className={tableWrap}>
+              <table className={`${dataTable} w-full hidden md:table min-w-[1000px]`}>
+                <thead>
+                  <tr>
+                    <th className={getThClass('left')} onClick={() => handleSellSort('date')}>
+                      <div className="flex items-center gap-2">Date <SellSortIcon field="date" /></div>
+                    </th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">TXN ID</th>
+                    <th className={getThClass('left')} onClick={() => handleSellSort('customerName')}>
+                      <div className="flex items-center gap-2">Customer <SellSortIcon field="customerName" /></div>
+                    </th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Source Item</th>
+                    <th className={getThClass('left')} onClick={() => handleSellSort('narration')}>
+                      <div className="flex items-center gap-2">Narration <SellSortIcon field="narration" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSellSort('grossWeight')}>
+                      <div className="flex items-center justify-center gap-2">Gram <SellSortIcon field="grossWeight" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSellSort('pureGram')}>
+                      <div className="flex items-center justify-center gap-2">Pure Gram <SellSortIcon field="pureGram" /></div>
+                    </th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Payment</th>
+                    <th className={getThClass('center')} onClick={() => handleSellSort('sellValue')}>
+                      <div className="flex items-center justify-center gap-2">Sell Value <SellSortIcon field="sellValue" /></div>
+                    </th>
+                    <th className={getThClass('center')} onClick={() => handleSellSort('profit')}>
+                      <div className="flex items-center justify-center gap-2">Profit <SellSortIcon field="profit" /></div>
+                    </th>
+                    <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAndSortedSells.map(sell => {
+                    const buy = buyById.get(sell.buyId);
+                    const isProfit = sell.profit > 0;
+                    const isLoss = sell.profit < 0;
+                    const rowGradient = isProfit
+                      ? 'bg-gradient-to-l from-emerald-50/90 to-transparent'
+                      : isLoss
+                        ? 'bg-gradient-to-l from-red-50/90 to-transparent'
+                        : '';
+                    const cellBg = isProfit || isLoss ? 'bg-transparent' : 'bg-white';
+                    return (
+                      <tr
+                        key={sell.id}
+                        className={`cursor-pointer hover:bg-slate-50/80 transition-colors ${rowGradient}`}
+                        onClick={() => router.push(`/${branchSlug}/physical-sales/${sell.buyId}`)}
+                      >
+                        <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 ${cellBg}`}>
+                          {new Date(sell.date).toLocaleDateString()}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-xs font-mono text-slate-500 sm:px-5 sm:py-4 ${cellBg}`}>
+                          {sell.txnId || '—'}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-700 sm:px-5 sm:py-4 ${cellBg}`}>
+                          {sell.customerName || '—'}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-5 sm:py-4 ${cellBg}`}>
+                          {buy?.item || buy?.particulars || '—'}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-5 sm:py-4 ${cellBg}`}>
+                          {sell.narration || sell.particulars || '—'}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4 ${cellBg}`}>
+                          {sell.grossWeight?.toFixed(2)}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${cellBg}`}>
+                          {sell.pureGram.toFixed(2)}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-center text-xs sm:px-5 sm:py-4 ${cellBg}`}>
+                          {paymentLabel(sell.paymentMode)}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${cellBg}`}>
+                          {sell.sellValue.toLocaleString()}
+                        </td>
+                        <td className={`border-y border-black/5 px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${cellBg} ${sell.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {sell.profit > 0 ? '+' : ''}{sell.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${cellBg}`}>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                            onClick={e => {
+                              e.stopPropagation();
+                              router.push(`/${branchSlug}/physical-sales/${sell.buyId}`);
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredAndSortedSells.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
+                        {sellSearchTerm || dateFilter !== 'all-time' ? 'No sales found matching your filters.' : 'No gold sales recorded yet.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              <div className="flex flex-col gap-4 py-4 px-4 md:hidden">
+                {filteredAndSortedSells.map(sell => {
+                  const buy = buyById.get(sell.buyId);
+                  const cardGradient = sell.profit > 0
+                    ? 'bg-gradient-to-br from-emerald-50 to-white'
+                    : sell.profit < 0
+                      ? 'bg-gradient-to-br from-red-50 to-white'
+                      : 'bg-white';
+                  return (
+                    <div
+                      key={sell.id}
+                      onClick={() => router.push(`/${branchSlug}/physical-sales/${sell.buyId}`)}
+                      className={`flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] ${cardGradient}`}
+                    >
+                      <div className="flex items-start justify-between border-b border-slate-50 pb-3">
+                        <div>
+                          <span className="text-sm font-bold text-slate-900">{sell.customerName || 'Sale'}</span>
+                          <p className="text-[10px] text-slate-400">{new Date(sell.date).toLocaleDateString()} · {sell.txnId || sell.id.slice(0, 8)}</p>
+                        </div>
+                        <span className={`font-mono text-sm font-bold ${sell.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {sell.profit > 0 ? '+' : ''}{sell.profit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Item</span><p>{buy?.item || '—'}</p></div>
+                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value</span><p className="font-bold">{sell.sellValue.toLocaleString()}</p></div>
+                        <div className="col-span-2"><span className="text-[10px] font-bold uppercase text-slate-400">Narration</span><p>{sell.narration || '—'}</p></div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredAndSortedSells.length === 0 && (
+                  <div className="p-8 text-center text-sm text-slate-500">No gold sales recorded yet.</div>
                 )}
               </div>
             </div>
@@ -513,128 +739,24 @@ export default function PhysicalPage() {
         </div>
       )}
 
-      {isBuyModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="mb-4 text-lg font-bold">New Gold Buy</h3>
-            <form onSubmit={handleCreateBuy} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Date</label>
-                  <input
-                    type="date"
-                    name="date"
-                    value={buyForm.date}
-                    onChange={(e) => setBuyForm({ ...buyForm, date: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Particulars</label>
-                  <input
-                    type="text"
-                    name="particulars"
-                    value={buyForm.particulars}
-                    onChange={(e) => setBuyForm({ ...buyForm, particulars: e.target.value })}
-                    placeholder="e.g. 1 KG BUY"
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Gross Weight</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="grossWeight"
-                    value={buyForm.grossWeightStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, grossWeightStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Pure Conversion</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    name="pureConversion"
-                    value={buyForm.pureConversionStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, pureConversionStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
+      {isBuyModalOpen && branchSlug && (
+        <PhysicalBuyModal
+          open={isBuyModalOpen}
+          slug={branchSlug}
+          branchId={branchId}
+          onClose={() => setIsBuyModalOpen(false)}
+          onSuccess={handleCreateBuySuccess}
+        />
+      )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR Gram</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="idrGram"
-                    value={buyForm.idrGramStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, idrGramStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR to USDT</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="idrToUsdt"
-                    value={buyForm.idrToUsdtStr}
-                    onChange={(e) => setBuyForm({ ...buyForm, idrToUsdtStr: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Pure Gram</label>
-                  <input
-                    type="text"
-                    value={buyCalculations.pureGram.toFixed(3)}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-slate-500 outline-none"
-                    readOnly
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">IDR Rate</label>
-                  <input
-                    type="text"
-                    value={buyCalculations.idrRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-slate-500 outline-none"
-                    readOnly
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Buy Value</label>
-                  <input
-                    type="text"
-                    value={buyCalculations.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    className="w-full rounded-xl border border-slate-200 bg-emerald-50 px-3.5 py-2 text-emerald-700 font-bold outline-none"
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsBuyModalOpen(false)} className={btnSecondary}>Cancel</button>
-                <button type="submit" className={btnPrimary}>Create Buy</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {isSellModalOpen && branchSlug && (
+        <PhysicalStockSellModal
+          open={isSellModalOpen}
+          slug={branchSlug}
+          availableBuys={availableStock}
+          onClose={() => setIsSellModalOpen(false)}
+          onSuccess={handleCreateBuySuccess}
+        />
       )}
 
       {isExportModalOpen && (
