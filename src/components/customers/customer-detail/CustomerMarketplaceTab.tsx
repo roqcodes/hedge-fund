@@ -15,6 +15,21 @@ function invoiceTradeType(inv: any): 'buy' | 'sell' {
   return inv.trade_type === 'buy' ? 'buy' : 'sell';
 }
 
+function fmtInvoiceAmount(inv: { net_amt_dc?: string | number; currency?: string }) {
+  const amount = parseFloat(String(inv.net_amt_dc ?? 0)) || 0;
+  const currency = inv.currency || 'USD';
+  if (currency === 'AED') {
+    return `${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED`;
+  }
+  return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function amountColumnLabel(subTab: string, rows: { currency?: string }[]) {
+  const currencies = new Set(rows.map(inv => inv.currency || 'USD'));
+  const currency = currencies.size === 1 ? [...currencies][0] : 'USD';
+  return subTab === 'sold' ? `${currency} Received` : `${currency} Paid`;
+}
+
 export default function CustomerMarketplaceTab({ slug, invoices, loading = false }: Props) {
   const router = useRouter();
 
@@ -34,7 +49,7 @@ export default function CustomerMarketplaceTab({ slug, invoices, loading = false
   const subTab = tabs.some(t => t.id === activeSubTab) ? activeSubTab : defaultTab;
 
   const visible = subTab === 'sold' ? soldToBranch : boughtFromBranch;
-  const amountLabel = subTab === 'sold' ? 'AED Received' : 'AED Paid';
+  const amountLabel = amountColumnLabel(subTab, visible);
 
   if (loading) {
     return (
@@ -82,7 +97,7 @@ export default function CustomerMarketplaceTab({ slug, invoices, loading = false
                     <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase">{inv.order_type || '—'}</span>
                   </td>
                   <td className="border-y border-r border-black/5 bg-white px-3 py-3 text-right font-mono text-sm font-bold last:rounded-r-2xl">
-                    ${(parseFloat(inv.net_amt_dc) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {fmtInvoiceAmount(inv)}
                   </td>
                 </tr>
               ))}
