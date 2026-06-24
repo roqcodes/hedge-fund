@@ -4,15 +4,17 @@ import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UsdtBuy, UsdtSell } from '@/types';
 import { useApp } from '@/context/AppContext';
-import { formatMoneyValue } from '@/data/mockData';
+import { formatDateTime, formatMoneyValue } from '@/data/mockData';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import PhysicalSplitKPICard, { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
 import UsdtEnteredBy from './UsdtEnteredBy';
+import CustomerLink from '@/components/customers/CustomerLink';
 import USDTBuyModal from './USDTBuyModal';
 import USDTSellModal from './USDTSellModal';
 import USDTSettingsModal from './USDTSettingsModal';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 import { txnTh, txnThSortable } from '@/lib/transactionTableStyles';
 import {
   btnPrimary,
@@ -59,8 +61,42 @@ function usdtBuyValue(sell: UsdtSell) {
   return sell.usdtAmount * sell.cost;
 }
 
+function DateTimeCell({ date, transparent }: { date: string; transparent?: boolean }) {
+  return (
+    <td className={cellClass(!!transparent, 'w-[108px] whitespace-normal border-l text-[11px] leading-tight text-slate-600 first:rounded-l-2xl')}>
+      {formatDateTime(date).split(',').map((part, i) => (
+        <div key={i} className={i === 0 ? 'font-semibold text-slate-900' : 'mt-0.5'}>
+          {part.trim()}
+        </div>
+      ))}
+    </td>
+  );
+}
+
+function TextCell({
+  children,
+  transparent,
+  mono,
+  bold,
+  align = 'left',
+}: {
+  children: React.ReactNode;
+  transparent?: boolean;
+  mono?: boolean;
+  bold?: boolean;
+  align?: 'left' | 'center' | 'right';
+}) {
+  const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : '';
+  return (
+    <td className={cellClass(!!transparent, `${alignClass} text-sm ${mono ? 'font-mono' : ''} ${bold ? 'font-bold text-slate-900' : 'text-slate-700'}`)}>
+      {children}
+    </td>
+  );
+}
+
 export default function USDTPage() {
   const router = useRouter();
+  const { canWrite, buttonProps: wp } = useWriteAccess();
   const { currentSlug, branches, usdtBuys, usdtSells, usdtSettings, refetchData, activeCurrency } = useApp();
   const branchId = branches.find(b => b.slug === currentSlug)?.id;
   const branchSlug = currentSlug;
@@ -186,13 +222,28 @@ export default function USDTPage() {
             <p className={pageSubtitle}>Buy and sell USDT with customer ledger integration</p>
           </div>
           <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
-            <button type="button" onClick={() => setIsSettingsOpen(true)} className={`${btnSecondary} w-full sm:w-auto`}>
+            <button
+              type="button"
+              {...wp()}
+              onClick={() => canWrite && setIsSettingsOpen(true)}
+              className={`${btnSecondary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+            >
               Settings
             </button>
-            <button type="button" onClick={() => setIsBuyModalOpen(true)} className={`${btnPrimary} w-full sm:w-auto`}>
+            <button
+              type="button"
+              {...wp()}
+              onClick={() => canWrite && setIsBuyModalOpen(true)}
+              className={`${btnPrimary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+            >
               Buy USDT
             </button>
-            <button type="button" onClick={() => setIsSellModalOpen(true)} className={`${btnSecondary} w-full sm:w-auto`}>
+            <button
+              type="button"
+              {...wp()}
+              onClick={() => canWrite && setIsSellModalOpen(true)}
+              className={`${btnSecondary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+            >
               Sell USDT
             </button>
           </div>
@@ -285,9 +336,14 @@ export default function USDTPage() {
 
           <div className={`${tableWrap} hidden md:block`}>
             {activeTab === 'buys' ? (
-              <table className={`${dataTable} w-full min-w-[640px]`}>
+              <table className={`${dataTable} w-full min-w-[1100px]`}>
                 <thead>
                   <tr>
+                    {thSort('date', 'Date & Time')}
+                    {thSort('txnId', 'Txn ID')}
+                    {thSort('customerName', 'Customer')}
+                    <th className={txnTh}>Wallet ID</th>
+                    <th className={`${txnTh} text-center`}>Opening Bal.</th>
                     {thSort('usdtAmount', 'USDT', 'center')}
                     {thSort('aedRate', 'AED Rate', 'center')}
                     {thSort('aedTotal', 'AED Total', 'center')}
@@ -298,7 +354,7 @@ export default function USDTPage() {
                 <tbody>
                   {sortedBuys.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-10 text-center text-sm text-slate-400">No buy transactions yet</td>
+                      <td colSpan={10} className="py-10 text-center text-sm text-slate-400">No buy transactions yet</td>
                     </tr>
                   ) : (
                     sortedBuys.map((buy: UsdtBuy) => (
@@ -308,15 +364,18 @@ export default function USDTPage() {
                         className="cursor-pointer transition-colors hover:bg-slate-50/80"
                         onClick={() => goToDeal(buy.id)}
                       >
-                        <td className={cellClass(false, 'border-l text-center font-mono text-sm font-bold first:rounded-l-2xl')}>
-                          {fmtUsdt(buy.usdtAmount)}
+                        <DateTimeCell date={buy.date} />
+                        <TextCell mono>{buy.txnId || '—'}</TextCell>
+                        <td className={cellClass(false, 'text-sm font-bold text-slate-900')}>
+                          <CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} />
                         </td>
-                        <td className={cellClass(false, 'text-center font-mono text-sm text-slate-700')}>
-                          {fmtRate(buy.aedRate)}
-                        </td>
-                        <td className={cellClass(false, 'text-center font-mono text-sm font-bold')}>
-                          {fmtAed(buy.aedTotal)}
-                        </td>
+                        <TextCell mono>{buy.walletId || '—'}</TextCell>
+                        <TextCell align="center" mono>
+                          {buy.openingBalance != null ? fmtAed(buy.openingBalance) : '—'}
+                        </TextCell>
+                        <TextCell align="center" mono bold>{fmtUsdt(buy.usdtAmount)}</TextCell>
+                        <TextCell align="center" mono>{fmtRate(buy.aedRate)}</TextCell>
+                        <TextCell align="center" mono bold>{fmtAed(buy.aedTotal)}</TextCell>
                         <td className={`${byTd} bg-white`}>
                           <UsdtEnteredBy deal={buy} />
                         </td>
@@ -327,9 +386,14 @@ export default function USDTPage() {
                 </tbody>
               </table>
             ) : (
-              <table className={`${dataTable} w-full min-w-[720px]`}>
+              <table className={`${dataTable} w-full min-w-[1280px]`}>
                 <thead>
                   <tr>
+                    {thSort('date', 'Date & Time')}
+                    {thSort('txnId', 'Txn ID')}
+                    {thSort('customerName', 'Customer')}
+                    <th className={txnTh}>Wallet ID</th>
+                    <th className={`${txnTh} text-center`}>Opening Bal.</th>
                     {thSort('usdtAmount', 'USDT', 'center')}
                     {thSort('buyValue', 'Buy Value', 'center')}
                     {thSort('sellValue', 'Sell Value', 'center')}
@@ -341,7 +405,7 @@ export default function USDTPage() {
                 <tbody>
                   {sortedSells.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-10 text-center text-sm text-slate-400">No sell transactions yet</td>
+                      <td colSpan={11} className="py-10 text-center text-sm text-slate-400">No sell transactions yet</td>
                     </tr>
                   ) : (
                     sortedSells.map((sell: UsdtSell) => {
@@ -354,18 +418,28 @@ export default function USDTPage() {
                           className={`cursor-pointer transition-colors hover:bg-slate-50/80 ${rowGradient}`}
                           onClick={() => goToDeal(sell.id)}
                         >
-                          <td className={cellClass(hasProfit, 'border-l text-center font-mono text-sm font-bold first:rounded-l-2xl')}>
-                            {fmtUsdt(sell.usdtAmount)}
+                          <DateTimeCell date={sell.date} transparent={hasProfit} />
+                          <TextCell mono transparent={hasProfit}>{sell.txnId || '—'}</TextCell>
+                          <td className={cellClass(!!hasProfit, 'text-sm font-bold text-slate-900')}>
+                            <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName} />
                           </td>
-                          <td className={cellClass(hasProfit, 'text-center font-mono text-sm text-slate-700')}>
-                            {fmtAed(usdtBuyValue(sell))}
-                          </td>
-                          <td className={cellClass(hasProfit, 'text-center font-mono text-sm font-bold')}>
-                            {fmtAed(sell.aedTotal)}
-                          </td>
-                          <td className={`${cellClass(hasProfit, 'text-center font-mono text-sm font-bold')} ${sell.profit >= 0 ? 'text-emerald-700' : sell.profit < 0 ? 'text-red-600' : ''}`}>
-                            {sell.profit > 0 ? '+' : ''}{fmtAed(sell.profit)}
-                          </td>
+                          <TextCell mono transparent={hasProfit}>{sell.walletId || '—'}</TextCell>
+                          <TextCell align="center" mono transparent={hasProfit}>
+                            {sell.openingBalance != null ? fmtAed(sell.openingBalance) : '—'}
+                          </TextCell>
+                          <TextCell align="center" mono bold transparent={hasProfit}>{fmtUsdt(sell.usdtAmount)}</TextCell>
+                          <TextCell align="center" mono transparent={hasProfit}>{fmtAed(usdtBuyValue(sell))}</TextCell>
+                          <TextCell align="center" mono bold transparent={hasProfit}>{fmtAed(sell.aedTotal)}</TextCell>
+                          <TextCell
+                            align="center"
+                            mono
+                            bold
+                            transparent={hasProfit}
+                          >
+                            <span className={sell.profit >= 0 ? 'text-emerald-700' : sell.profit < 0 ? 'text-red-600' : ''}>
+                              {sell.profit > 0 ? '+' : ''}{fmtAed(sell.profit)}
+                            </span>
+                          </TextCell>
                           <td className={`${byTd} ${hasProfit ? 'bg-transparent' : 'bg-white'}`}>
                             <UsdtEnteredBy deal={sell} />
                           </td>
@@ -389,14 +463,20 @@ export default function USDTPage() {
                   onClick={() => goToDeal(buy.id)}
                   className="flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] active:scale-[0.98]"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-sm font-bold">{fmtUsdt(buy.usdtAmount)} USDT</span>
-                    <span className="font-mono text-sm font-bold">{fmtAed(buy.aedTotal)}</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} className="text-sm" />
+                      <p className="text-[11px] text-slate-400">{formatDateTime(buy.date)}</p>
+                      {buy.txnId ? <p className="font-mono text-[10px] text-slate-400">{buy.txnId}</p> : null}
+                    </div>
+                    <p className="font-mono text-sm font-bold text-slate-900">{fmtAed(buy.aedTotal)}</p>
                   </div>
-                  <div className="flex items-center justify-between border-t border-slate-50 pt-2 text-xs text-slate-500">
-                    <span>Rate {fmtRate(buy.aedRate)}</span>
-                    <UsdtEnteredBy deal={buy} />
+                  <div className="grid grid-cols-3 gap-2 border-t border-slate-50 pt-2 text-xs">
+                    <div><span className="text-slate-400">USDT</span><p className="font-bold">{fmtUsdt(buy.usdtAmount)}</p></div>
+                    <div><span className="text-slate-400">Rate</span><p className="font-bold">{fmtRate(buy.aedRate)}</p></div>
+                    <div className="text-right"><span className="text-slate-400">Wallet</span><p className="truncate font-mono">{buy.walletId || '—'}</p></div>
                   </div>
+                  <UsdtEnteredBy deal={buy} />
                 </div>
               ))
             ) : (
@@ -408,15 +488,21 @@ export default function USDTPage() {
                     sell.profit > 0 ? 'bg-gradient-to-br from-emerald-50/80 to-white' : 'bg-white'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-sm font-bold">{fmtUsdt(sell.usdtAmount)} USDT</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName} className="text-sm" />
+                      <p className="text-[11px] text-slate-400">{formatDateTime(sell.date)}</p>
+                      {sell.txnId ? <p className="font-mono text-[10px] text-slate-400">{sell.txnId}</p> : null}
+                    </div>
                     <span className={`font-mono text-sm font-bold ${sell.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                       {sell.profit > 0 ? '+' : ''}{fmtAed(sell.profit)}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 border-t border-slate-50 pt-2 text-xs">
-                    <div><span className="text-slate-400">Buy</span><p className="font-bold">{fmtAed(usdtBuyValue(sell))}</p></div>
+                    <div><span className="text-slate-400">USDT</span><p className="font-bold">{fmtUsdt(sell.usdtAmount)}</p></div>
                     <div className="text-right"><span className="text-slate-400">Sell</span><p className="font-bold">{fmtAed(sell.aedTotal)}</p></div>
+                    <div><span className="text-slate-400">Buy value</span><p className="font-bold">{fmtAed(usdtBuyValue(sell))}</p></div>
+                    <div className="text-right"><span className="text-slate-400">Wallet</span><p className="truncate font-mono">{sell.walletId || '—'}</p></div>
                   </div>
                   <UsdtEnteredBy deal={sell} />
                 </div>

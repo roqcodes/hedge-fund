@@ -115,6 +115,17 @@ export interface DailyReport {
 
 export type InvoiceStatus = 'paid' | 'pending' | 'overdue';
 
+export interface Customer {
+  id: string;
+  branchId: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  balance: number;
+  status: 'active' | 'inactive' | string;
+  createdAt?: string;
+}
+
 export interface Invoice {
   id: string;
   clientName: string;

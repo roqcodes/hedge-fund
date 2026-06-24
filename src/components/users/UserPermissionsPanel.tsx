@@ -9,6 +9,7 @@ import {
   updateStaffPermissionsAction,
 } from '@/app/actions/permissionActions';
 import { btnPrimary, btnSecondary, dataTable, tableWrap } from '@/lib/ui';
+import PageAccessRadioGroup from './PageAccessRadioGroup';
 
 type Props = {
   open: boolean;
@@ -17,12 +18,6 @@ type Props = {
   user: { email: string; name: string; userId?: string };
   onSaved?: () => void;
 };
-
-const ACCESS_OPTIONS: { value: PageAccessLevel; label: string }[] = [
-  { value: 'none', label: 'No access' },
-  { value: 'read', label: 'Read only' },
-  { value: 'write', label: 'Read & write' },
-];
 
 export default function UserPermissionsPanel({ open, onClose, branchSlug, user, onSaved }: Props) {
   const [permissions, setPermissions] = useState<PagePermissionMap>({});
@@ -78,7 +73,7 @@ export default function UserPermissionsPanel({ open, onClose, branchSlug, user, 
       open={open}
       onClose={onClose}
       title="Page Access"
-      maxWidth="max-w-2xl"
+      maxWidth="max-w-3xl"
       footer={
         <>
           <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose} disabled={saving}>
@@ -113,26 +108,34 @@ export default function UserPermissionsPanel({ open, onClose, branchSlug, user, 
           <table className={dataTable}>
             <thead>
               <tr>
-                <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Page</th>
+                <th className="w-[28%] px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Page</th>
                 <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Access</th>
               </tr>
             </thead>
             <tbody>
-              {pageIds.map(pageId => (
+              <tr>
+                <td className="border-y border-l border-black/5 bg-white px-3 py-3 text-sm font-medium text-slate-900 first:rounded-l-2xl">
+                  Dashboard
+                </td>
+                <td className="border-y border-r border-black/5 bg-white px-3 py-3 last:rounded-r-2xl">
+                  <PageAccessRadioGroup
+                    name="dashboard"
+                    value={permissions.dashboard ?? 'read'}
+                    onChange={level => setPageAccess('dashboard', level)}
+                  />
+                </td>
+              </tr>
+              {pageIds.map((pageId, idx) => (
                 <tr key={pageId}>
-                  <td className="border-y border-l border-black/5 bg-white px-3 py-3 text-sm font-medium text-slate-900 first:rounded-l-2xl">
+                  <td className={`border-y border-l border-black/5 bg-white px-3 py-3 text-sm font-medium text-slate-900 ${idx === pageIds.length - 1 ? 'first:rounded-bl-2xl' : ''}`}>
                     {pageLabel(pageId)}
                   </td>
-                  <td className="border-y border-r border-black/5 bg-white px-3 py-3 last:rounded-r-2xl">
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                      value={permissions[pageId] ?? 'none'}
-                      onChange={e => setPageAccess(pageId, e.target.value as PageAccessLevel)}
-                    >
-                      {ACCESS_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+                  <td className={`border-y border-r border-black/5 bg-white px-3 py-3 ${idx === pageIds.length - 1 ? 'last:rounded-br-2xl' : ''}`}>
+                    <PageAccessRadioGroup
+                      name={pageId}
+                      value={permissions[pageId] ?? 'read'}
+                      onChange={level => setPageAccess(pageId, level)}
+                    />
                   </td>
                 </tr>
               ))}

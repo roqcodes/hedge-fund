@@ -15,6 +15,8 @@ import PhysicalExportModal from './PhysicalExportModal';
 import PhysicalBuyModal from './PhysicalBuyModal';
 import PhysicalStockSellModal from './PhysicalStockSellModal';
 import PhysicalSplitKPICard, { PhysicalSingleKPICard } from './PhysicalSplitKPICard';
+import CustomerLink from '@/components/customers/CustomerLink';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 import {
   btnPrimary, btnSecondary,
   kpiGrid,
@@ -36,6 +38,7 @@ function isFixedDeal(buy: PhysicalBuy) {
 
 export default function PhysicalPage() {
   const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, refetchData, activeCurrency } = useApp();
+  const { canWrite, buttonProps: wp } = useWriteAccess();
   const router = useRouter();
   const branchSlug = currentSlug;
   const branchId = branches.find(b => b.slug === currentSlug)?.id;
@@ -275,8 +278,9 @@ export default function PhysicalPage() {
             </button>
             <button
               type="button"
-              onClick={() => setIsBuyModalOpen(true)}
-              className={`${btnPrimary} w-full sm:w-auto`}
+              onClick={() => canWrite && setIsBuyModalOpen(true)}
+              {...wp()}
+              className={`${btnPrimary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
@@ -285,9 +289,10 @@ export default function PhysicalPage() {
             </button>
             <button
               type="button"
-              onClick={() => setIsSellModalOpen(true)}
-              disabled={availableStock.length === 0}
-              className={`${btnSecondary} w-full sm:w-auto disabled:pointer-events-none disabled:opacity-50`}
+              onClick={() => canWrite && setIsSellModalOpen(true)}
+              disabled={!canWrite || availableStock.length === 0}
+              {...wp({ disabled: availableStock.length === 0, title: availableStock.length === 0 ? 'No stock available to sell' : undefined })}
+              className={`${btnSecondary} w-full sm:w-auto disabled:pointer-events-none disabled:opacity-50${!canWrite ? ' cursor-not-allowed' : ''}`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M5 12h14" />
@@ -439,7 +444,7 @@ export default function PhysicalPage() {
                         {new Date(buy.date).toLocaleDateString()}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-xs text-slate-600 sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        {buy.customerName || '—'}
+                        <CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} className="text-xs sm:text-sm font-medium" />
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.item || buy.particulars || '-'}
@@ -612,7 +617,7 @@ export default function PhysicalPage() {
                           {sell.txnId || '—'}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-700 sm:px-5 sm:py-4 ${cellBg}`}>
-                          {sell.customerName || '—'}
+                          <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName} />
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-5 sm:py-4 ${cellBg}`}>
                           {buy?.item || buy?.particulars || '—'}
@@ -678,7 +683,7 @@ export default function PhysicalPage() {
                     >
                       <div className="flex items-start justify-between border-b border-slate-50 pb-3">
                         <div>
-                          <span className="text-sm font-bold text-slate-900">{sell.customerName || 'Sale'}</span>
+                          <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName || 'Sale'} className="text-sm" />
                           <p className="text-[10px] text-slate-400">{new Date(sell.date).toLocaleDateString()} · {sell.txnId || sell.id.slice(0, 8)}</p>
                         </div>
                         <span className={`font-mono text-sm font-bold ${sell.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>

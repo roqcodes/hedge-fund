@@ -1,5 +1,6 @@
 import 'server-only';
 import { query } from '@/lib/db';
+import { defaultStaffPermissions } from '@/lib/rbac';
 import type { PageAccessLevel, PagePermissionMap } from '@/types';
 
 export async function fetchUserPermissionsFromDb(
@@ -52,12 +53,9 @@ export async function seedDefaultStaffPermissions(
   branchId: string,
   updatedBy: string,
 ): Promise<void> {
-  await query(
-    `INSERT INTO user_page_permissions (user_id, branch_id, page_id, access_level, updated_by)
-     VALUES ($1, $2, 'dashboard', 'read', $3)
-     ON CONFLICT (user_id, branch_id, page_id) DO NOTHING`,
-    [userId, branchId, updatedBy],
-  );
+  const hiddenPages = await fetchBranchHiddenPages(branchId);
+  const defaults = defaultStaffPermissions(hiddenPages);
+  await upsertUserPermissions(userId, branchId, defaults, updatedBy);
 }
 
 export async function deleteUserPermissions(userId: string): Promise<void> {

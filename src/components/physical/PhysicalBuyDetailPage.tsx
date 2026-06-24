@@ -14,6 +14,7 @@ import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import PhysicalSellModal from './PhysicalSellModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
+import CustomerLink from '@/components/customers/CustomerLink';
 
 type SortField = 'date' | 'id' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'sellValue' | 'profit';
 type SortDirection = 'asc' | 'desc';
@@ -243,7 +244,9 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Customer</p>
-              <p className="font-semibold text-slate-800">{buy.customerName || '—'}</p>
+              <p className="font-semibold text-slate-800">
+                <CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} />
+              </p>
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy ID</p>
@@ -394,7 +397,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         {new Date(sell.date).toLocaleDateString()}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-600 sm:px-5 sm:py-4 sm:text-sm">
-                        {sell.customerName || '—'}
+                        <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName} className="text-xs sm:text-sm font-medium" />
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
                         {sell.narration || sell.particulars || '-'}

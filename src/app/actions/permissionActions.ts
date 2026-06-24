@@ -48,6 +48,44 @@ async function resolveBranchManagerContext(
   return { user, branchId: user.branchId };
 }
 
+export async function fetchBranchStaffPermissionsBatchAction(
+  branchSlug: string,
+): Promise<
+  | { success: true; permissionsByUser: Record<string, PagePermissionMap>; pages: BranchPageId[] }
+  | { success: false; error: string }
+> {
+  try {
+    const ctx = await resolveBranchManagerContext(branchSlug);
+    if ('error' in ctx) return { success: false, error: ctx.error };
+
+    const hiddenPages = await fetchBranchHiddenPages(ctx.branchId);
+    const pages = getManageableBranchPages(hiddenPages);
+
+    const res = await query(
+      `SELECT user_id, page_id, access_level FROM user_page_permissions WHERE branch_id = $1`,
+      [ctx.branchId],
+    );
+
+    const permissionsByUser: Record<string, PagePermissionMap> = {};
+    for (const row of res.rows) {
+      const userId = row.user_id as string;
+      if (!permissionsByUser[userId]) permissionsByUser[userId] = {};
+      const level = row.access_level as PagePermissionMap[string];
+      if (level === 'read' || level === 'write' || level === 'none') {
+        permissionsByUser[userId][row.page_id] = level;
+      }
+    }
+
+    for (const userId of Object.keys(permissionsByUser)) {
+      permissionsByUser[userId] = normalizePermissionMap(permissionsByUser[userId], hiddenPages);
+    }
+
+    return { success: true, permissionsByUser, pages };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to load permissions.' };
+  }
+}
+
 export async function fetchStaffPermissionsAction(
   branchSlug: string,
   targetUserId: string,

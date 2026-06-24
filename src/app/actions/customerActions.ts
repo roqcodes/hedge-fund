@@ -23,6 +23,43 @@ export async function getCustomersBySlug(slug: string) {
   }
 }
 
+export async function getCustomerById(customerId: string, slug?: string) {
+  try {
+    const res = await query(
+      `
+      SELECT c.*
+      FROM customers c
+      LEFT JOIN branches b ON c.branch_id = b.id
+      WHERE c.id = $1
+        AND ($2::text IS NULL OR b.slug = $2)
+      LIMIT 1
+    `,
+      [customerId, slug ?? null],
+    );
+    if (res.rows.length === 0) {
+      return { success: false, error: 'Customer not found' };
+    }
+    const r = res.rows[0];
+    return {
+      success: true,
+      customer: {
+        id: String(r.id),
+        branchId: String(r.branch_id),
+        name: String(r.name),
+        phone: r.phone ? String(r.phone) : undefined,
+        email: r.email ? String(r.email) : undefined,
+        balance: parseFloat(String(r.balance ?? 0)),
+        status: String(r.status ?? 'active'),
+        createdAt: r.created_at ? new Date(String(r.created_at)).toISOString() : undefined,
+      },
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('getCustomerById error:', err);
+    return { success: false, error: message };
+  }
+}
+
 export async function saveCustomer(
   slug: string,
   data: {

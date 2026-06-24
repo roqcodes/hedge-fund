@@ -8,6 +8,7 @@ import KPICard from '@/components/ui/KPICard';
 
 import ProductModal from './ProductModal';
 import CategoryModal from './CategoryModal';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 
 type SortField = 'sku' | 'name' | 'category_name' | 'metal_type' | 'purity' | 'weight' | 'status';
 type SortDirection = 'asc' | 'desc';
@@ -16,6 +17,7 @@ export default function ProductsPage() {
   const params = useParams();
   const slug = params.slug as string;
   const router = useRouter();
+  const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
 
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -54,12 +56,14 @@ export default function ProductsPage() {
 
   const handleEditProduct = (product: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (!canWrite) return;
     setEditingProduct(product);
     setIsProductModalOpen(true);
   };
 
   const handleDeleteProduct = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (!canWrite) return;
     if (confirm('Are you sure you want to delete this product?')) {
       const res = await deleteProduct(id);
       if (res.success) {
@@ -187,9 +191,10 @@ export default function ProductsPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsCategoryModalOpen(true)}
-              className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg gap-2 font-semibold text-sm"
-              title="Manage Categories"
+              onClick={() => canWrite && setIsCategoryModalOpen(true)}
+              {...wp()}
+              className={`flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg gap-2 font-semibold text-sm${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+              title={!canWrite ? writeBlockedReason : 'Manage Categories'}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
                 <path d="M4 6h16M4 12h16M4 18h7" />
@@ -197,9 +202,10 @@ export default function ProductsPage() {
               <span className="hidden sm:inline">Manage Categories</span>
             </button>
             <button
-              onClick={() => setIsProductModalOpen(true)}
-              className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-accent sm:text-white sm:hover:bg-accent/90 gap-2 font-semibold text-sm"
-              title="New Product"
+              onClick={() => canWrite && setIsProductModalOpen(true)}
+              {...wp()}
+              className={`flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-accent sm:text-white sm:hover:bg-accent/90 gap-2 font-semibold text-sm${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+              title={!canWrite ? writeBlockedReason : 'New Product'}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -405,8 +411,9 @@ export default function ProductsPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={(e) => handleEditProduct(product, e)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-[var(--primary)] transition-colors"
-                              title="Edit"
+                              disabled={!canWrite}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-[var(--primary)] transition-colors${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                              title={!canWrite ? writeBlockedReason : 'Edit'}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -414,8 +421,9 @@ export default function ProductsPage() {
                             </button>
                             <button
                               onClick={(e) => handleDeleteProduct(product.id, e)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Delete"
+                              disabled={!canWrite}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                              title={!canWrite ? writeBlockedReason : 'Delete'}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />

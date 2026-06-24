@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Modal from '@/components/ui/Modal';
 import { btnSecondary, dataTable, tableWrap } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
+import CustomerLink from '@/components/customers/CustomerLink';
 
 interface ViewInvoiceModalProps {
   open: boolean;
@@ -121,12 +122,26 @@ export default function ViewInvoiceModal({ open, onClose, invoice }: ViewInvoice
             <div className="text-slate-900 font-medium">{invoice.doc_no}</div>
           </div>
           <div>
+            <div className="text-slate-400 font-bold uppercase tracking-wider mb-1">Trade Type</div>
+            <div className="text-slate-900 font-medium capitalize">{invoice.trade_type === 'buy' ? 'Buy' : 'Sell'}</div>
+          </div>
+          <div>
             <div className="text-slate-400 font-bold uppercase tracking-wider mb-1">Order Type</div>
             <div className="text-slate-900 font-medium">{invoice.order_type}</div>
           </div>
           <div>
             <div className="text-slate-400 font-bold uppercase tracking-wider mb-1">Bill To</div>
-            <div className="text-slate-900 font-medium whitespace-pre-line">{invoice.customer_details || 'Cash Customer'}</div>
+            <div className="text-slate-900 font-medium whitespace-pre-line">
+              {invoice.customer_id ? (
+                <CustomerLink
+                  slug={rawSlug}
+                  customerId={invoice.customer_id}
+                  customerName={invoice.customer_details?.split('\n')[0] || 'Customer'}
+                />
+              ) : (
+                invoice.customer_details || 'Cash Customer'
+              )}
+            </div>
           </div>
           <div>
             <div className="text-slate-400 font-bold uppercase tracking-wider mb-1">Currency</div>

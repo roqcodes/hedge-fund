@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import PhysicalSplitKPICard, { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
+import CustomerLink from '@/components/customers/CustomerLink';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import {
@@ -25,6 +26,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function MarketplacePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
 
   const [isTaxInvoiceOpen, setIsTaxInvoiceOpen] = useState(false);
@@ -58,6 +60,13 @@ export default function MarketplacePage() {
   useEffect(() => {
     fetchInvoices();
   }, [slug]);
+
+  useEffect(() => {
+    const invoiceId = searchParams.get('invoice');
+    if (!invoiceId || invoices.length === 0) return;
+    const inv = invoices.find(i => i.id === invoiceId);
+    if (inv) setViewingInvoice(inv);
+  }, [searchParams, invoices]);
 
   const handleSaveInvoice = () => {
     fetchInvoices();
@@ -308,6 +317,7 @@ export default function MarketplacePage() {
                         <div className="flex items-center gap-2">Date <SortIcon field="doc_date" /></div>
                       </th>
                       <th className={getThClass('left')}>Customer</th>
+                      <th className={getThClass('center')}>Trade</th>
                       <th className={getThClass('center')} onClick={() => handleSort('order_type')}>
                         <div className="flex items-center justify-center gap-2">Type <SortIcon field="order_type" /></div>
                       </th>
@@ -332,7 +342,23 @@ export default function MarketplacePage() {
                           {inv.doc_date ? new Date(inv.doc_date).toLocaleDateString() : '-'}
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm text-slate-700 font-medium sm:px-5 sm:py-4">
-                          {inv.customer_details || 'Cash Customer'}
+                          {inv.customer_id ? (
+                            <CustomerLink
+                              slug={slug}
+                              customerId={inv.customer_id}
+                              customerName={inv.customer_details?.split('\n')[0] || 'Customer'}
+                              className="text-sm font-medium"
+                            />
+                          ) : (
+                            inv.customer_details || 'Cash Customer'
+                          )}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center sm:px-5 sm:py-4">
+                          <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                            inv.trade_type === 'buy' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
+                          }`}>
+                            {inv.trade_type === 'buy' ? 'Buy' : 'Sell'}
+                          </span>
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center sm:px-5 sm:py-4">
                           <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${inv.order_type === 'Fixed' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>

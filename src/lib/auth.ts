@@ -4,8 +4,8 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { User, UserRole, PagePermissionMap } from '@/types';
 import { env } from '@/lib/env';
-import { fetchUserPermissionsFromDb } from '@/lib/userPermissions';
-import { defaultStaffPermissions } from '@/lib/rbac';
+import { fetchBranchHiddenPages, fetchUserPermissionsFromDb } from '@/lib/userPermissions';
+import { defaultStaffPermissions, normalizePermissionMap } from '@/lib/rbac';
 
 const encodedKey = new TextEncoder().encode(env.SESSION_SECRET);
 
@@ -149,11 +149,11 @@ async function loadStaffPermissions(user: User): Promise<User> {
   if (user.role !== 'staff' || !user.id || !user.branchId) return user;
 
   try {
+    const hiddenPages = await fetchBranchHiddenPages(user.branchId);
     const permissions = await fetchUserPermissionsFromDb(user.id, user.branchId);
-    const hasAny = Object.keys(permissions).length > 0;
     return {
       ...user,
-      permissions: hasAny ? permissions : defaultStaffPermissions(),
+      permissions: normalizePermissionMap(permissions, hiddenPages),
     };
   } catch {
     return { ...user, permissions: defaultStaffPermissions() };

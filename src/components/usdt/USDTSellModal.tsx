@@ -6,7 +6,7 @@ import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbAddUsdtSellAction } from '@/app/actions/usdtActions';
-import { computeUsdtSell, generateUsdtTxnId } from '@/lib/usdtCalculations';
+import { computeUsdtSell, generateUsdtTxnId, computeAverageUsdtBuyAedRate, formatUsdtRateInput } from '@/lib/usdtCalculations';
 import { useApp } from '@/context/AppContext';
 import { formatMoneyValue } from '@/data/mockData';
 
@@ -39,6 +39,7 @@ interface USDTSellModalProps {
   presetMargin: number;
   onClose: () => void;
   onSuccess: () => void;
+  initialCustomer?: { id: string; name: string; balance?: string | number };
 }
 
 export default function USDTSellModal({
@@ -48,19 +49,43 @@ export default function USDTSellModal({
   presetMargin,
   onClose,
   onSuccess,
+  initialCustomer,
 }: USDTSellModalProps) {
-  const { activeCurrency } = useApp();
+  const { activeCurrency, usdtBuys } = useApp();
   const [form, setForm] = useState(defaultForm(presetMargin));
   const [customers, setCustomers] = useState<{ id: string; name: string; balance: string | number }[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  const branchBuys = useMemo(
+    () => usdtBuys.filter(b => b.branchId === branchId),
+    [usdtBuys, branchId],
+  );
+  const averageBuyRate = useMemo(
+    () => computeAverageUsdtBuyAedRate(branchBuys),
+    [branchBuys],
+  );
+
   useEffect(() => {
     if (!open) return;
-    setForm({ ...defaultForm(presetMargin), txnId: generateUsdtTxnId(slug, 'SELL') });
+    const avg = computeAverageUsdtBuyAedRate(usdtBuys.filter(b => b.branchId === branchId));
+    const costStr = avg != null ? formatUsdtRateInput(avg) : '';
+    const base = {
+      ...defaultForm(presetMargin),
+      txnId: generateUsdtTxnId(slug, 'SELL'),
+      costStr,
+      ...(initialCustomer
+        ? {
+            customerId: initialCustomer.id,
+            customerName: initialCustomer.name,
+            openingBalance: String(initialCustomer.balance ?? ''),
+          }
+        : {}),
+    };
+    setForm(base);
     getCustomersBySlug(slug).then(res => {
       if (res.success && res.customers) setCustomers(res.customers);
     });
-  }, [open, slug, presetMargin]);
+  }, [open, slug, presetMargin, initialCustomer, branchId, usdtBuys]);
 
   const set = (patch: Partial<ReturnType<typeof defaultForm>>) => setForm(prev => ({ ...prev, ...patch }));
 
@@ -173,6 +198,11 @@ export default function USDTSellModal({
           </InputField>
           <InputField label="Cost">
             <input type="number" step="any" className={formInput} value={form.costStr} onChange={e => set({ costStr: e.target.value })} placeholder="3.6789" />
+            {averageBuyRate != null && (
+              <p className="text-[10px] text-slate-400">
+                Avg AED rate from {branchBuys.length} purchase{branchBuys.length === 1 ? '' : 's'} — editable
+              </p>
+            )}
           </InputField>
           <InputField label="Margin">
             <input type="number" step="any" className={formInput} value={form.marginStr} onChange={e => set({ marginStr: e.target.value })} placeholder="0.002" />

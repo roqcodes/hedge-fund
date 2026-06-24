@@ -37,9 +37,10 @@ interface USDTBuyModalProps {
   branchId: string;
   onClose: () => void;
   onSuccess: () => void;
+  initialCustomer?: { id: string; name: string; balance?: string | number };
 }
 
-export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess }: USDTBuyModalProps) {
+export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess, initialCustomer }: USDTBuyModalProps) {
   const { activeCurrency } = useApp();
   const [form, setForm] = useState(defaultForm());
   const [customers, setCustomers] = useState<{ id: string; name: string; balance: string | number }[]>([]);
@@ -47,11 +48,22 @@ export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess 
 
   useEffect(() => {
     if (!open) return;
-    setForm(f => ({ ...defaultForm(), txnId: generateUsdtTxnId(slug, 'BUY') }));
+    const base = {
+      ...defaultForm(),
+      txnId: generateUsdtTxnId(slug, 'BUY'),
+      ...(initialCustomer
+        ? {
+            customerId: initialCustomer.id,
+            customerName: initialCustomer.name,
+            openingBalance: String(initialCustomer.balance ?? ''),
+          }
+        : {}),
+    };
+    setForm(base);
     getCustomersBySlug(slug).then(res => {
       if (res.success && res.customers) setCustomers(res.customers);
     });
-  }, [open, slug]);
+  }, [open, slug, initialCustomer]);
 
   const set = (patch: Partial<typeof form>) => setForm(prev => ({ ...prev, ...patch }));
 

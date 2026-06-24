@@ -13,6 +13,10 @@ import { badgeClass } from '@/lib/badgeClass';
 import { btnPrimary, btnGhost, btnSm, pageHeader, pageTitle, pageSubtitle, tableWrap, dataTable, formInput } from '@/lib/ui';
 import { CreateUserModal, EditUserModal } from './UserModals';
 import UserPermissionsPanel from './UserPermissionsPanel';
+import StaffAccessSummary from './StaffAccessSummary';
+import { fetchBranchStaffPermissionsBatchAction } from '@/app/actions/permissionActions';
+import type { BranchPageId } from '@/lib/branchPages';
+import type { PagePermissionMap } from '@/types';
 
 interface UsersManagementProps {
   initialUsers: CognitoUser[];
@@ -35,6 +39,24 @@ export default function UsersManagement({
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<CognitoUser | null>(null);
   const [permissionsUser, setPermissionsUser] = useState<CognitoUser | null>(null);
+  const [staffPermissions, setStaffPermissions] = useState<Record<string, PagePermissionMap>>({});
+  const [manageablePages, setManageablePages] = useState<BranchPageId[]>([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+
+  const loadStaffPermissions = React.useCallback(async () => {
+    if (!isBranchManager || !branchSlug) return;
+    setPermissionsLoading(true);
+    const res = await fetchBranchStaffPermissionsBatchAction(branchSlug);
+    if (res.success) {
+      setStaffPermissions(res.permissionsByUser);
+      setManageablePages(res.pages);
+    }
+    setPermissionsLoading(false);
+  }, [isBranchManager, branchSlug]);
+
+  React.useEffect(() => {
+    loadStaffPermissions();
+  }, [loadStaffPermissions]);
 
   const visibleUsers = isBranchManager
     ? users.filter(u => u.role === 'staff')
@@ -61,6 +83,9 @@ export default function UsersManagement({
         status: 'CONFIRMED',
         created: new Date().toISOString(),
       }, ...users]);
+      if (effectiveRole === 'staff') {
+        await loadStaffPermissions();
+      }
     } else {
       showToast(res.error || 'Failed to create user', 'error');
     }
@@ -124,6 +149,7 @@ export default function UsersManagement({
   }, [visibleUsers, searchTerm, sortField, sortDirection, branches]);
 
   const canManagePermissions = isBranchManager && !!branchSlug;
+  const tableColCount = fixedBranchId ? 5 : 6;
 
   return (
     <>
@@ -193,48 +219,69 @@ export default function UsersManagement({
                       </td>
                     </tr>
                   ) : filteredAndSortedUsers.map(u => (
-                    <tr key={u.username} data-interactive-row>
-                      <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 first:rounded-l-2xl sm:px-5 sm:py-4">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-900">{u.name}</span>
-                          <span className="text-xs text-slate-500">{u.email}</span>
-                        </div>
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <span className={badgeClass(u.role === 'admin' ? 'active' : 'pending')}>{u.role.replace('_', ' ')}</span>
-                      </td>
-                      {!fixedBranchId && (
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">
-                          {getBranchName(u.branchId)}
+                    <React.Fragment key={u.username}>
+                      <tr data-interactive-row>
+                        <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 first:rounded-l-2xl sm:px-5 sm:py-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-900">{u.name}</span>
+                            <span className="text-xs text-slate-500">{u.email}</span>
+                          </div>
                         </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                          <span className={badgeClass(u.role === 'admin' ? 'active' : 'pending')}>{u.role.replace('_', ' ')}</span>
+                        </td>
+                        {!fixedBranchId && (
+                          <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm sm:px-5 sm:py-4">
+                            {getBranchName(u.branchId)}
+                          </td>
+                        )}
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                          <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
+                          {formatDateTime(u.created)}
+                        </td>
+                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {canManagePermissions && u.role === 'staff' && (
+                              <button
+                                onClick={() => setPermissionsUser(u)}
+                                className={`${btnGhost} ${btnSm} text-accent`}
+                              >
+                                Access
+                              </button>
+                            )}
+                            <button onClick={() => setEditingUser(u)} className={`${btnGhost} ${btnSm} text-slate-600`}>
+                              Edit
+                            </button>
+                            {u.email !== currentUser?.email && (
+                              <button onClick={() => handleDelete(u.email)} className={`${btnGhost} ${btnSm} text-red-600 hover:bg-red-50 hover:text-red-700`}>
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {canManagePermissions && u.role === 'staff' && (
+                        <tr>
+                          <td
+                            colSpan={tableColCount}
+                            className="border-x border-b border-black/5 bg-slate-50/80 px-3 py-3 last:rounded-b-2xl sm:px-5"
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-0.5">
+                                Page access
+                              </span>
+                              <StaffAccessSummary
+                                permissions={u.userId ? staffPermissions[u.userId] : undefined}
+                                pages={manageablePages}
+                                loading={permissionsLoading}
+                              />
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
-                      </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs text-slate-500 sm:px-5 sm:py-4 sm:text-sm">
-                        {formatDateTime(u.created)}
-                      </td>
-                      <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 last:rounded-r-2xl sm:px-5 sm:py-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {canManagePermissions && u.role === 'staff' && (
-                            <button
-                              onClick={() => setPermissionsUser(u)}
-                              className={`${btnGhost} ${btnSm} text-accent`}
-                            >
-                              Access
-                            </button>
-                          )}
-                          <button onClick={() => setEditingUser(u)} className={`${btnGhost} ${btnSm} text-slate-600`}>
-                            Edit
-                          </button>
-                          {u.email !== currentUser?.email && (
-                            <button onClick={() => handleDelete(u.email)} className={`${btnGhost} ${btnSm} text-red-600 hover:bg-red-50 hover:text-red-700`}>
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -247,6 +294,16 @@ export default function UsersManagement({
                       <span className={badgeClass(u.role === 'admin' ? 'active' : 'pending')}>{u.role.replace('_', ' ')}</span>
                     </div>
                     <p className="text-xs text-slate-500">{u.email}</p>
+                    {canManagePermissions && u.role === 'staff' && (
+                      <div className="border-t border-slate-50 pt-3">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Page access</p>
+                        <StaffAccessSummary
+                          permissions={u.userId ? staffPermissions[u.userId] : undefined}
+                          pages={manageablePages}
+                          loading={permissionsLoading}
+                        />
+                      </div>
+                    )}
                     <div className="flex items-center justify-end gap-3">
                       {canManagePermissions && u.role === 'staff' && (
                         <button onClick={() => setPermissionsUser(u)} className="text-xs font-bold text-accent">Access</button>
@@ -290,7 +347,10 @@ export default function UsersManagement({
             name: permissionsUser.name,
             userId: permissionsUser.userId,
           }}
-          onSaved={() => showToast('Permissions updated.')}
+          onSaved={() => {
+            showToast('Permissions updated.');
+            loadStaffPermissions();
+          }}
         />
       )}
     </>

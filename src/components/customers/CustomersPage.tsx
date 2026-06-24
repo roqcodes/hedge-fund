@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { pageTitle, pageSubtitle, kpiGrid, tableWrap, dataTable, formInput } from '@/lib/ui';
 import { getCustomersBySlug, deleteCustomer } from '@/app/actions/customerActions';
 import { useApp } from '@/context/AppContext';
 import { formatMoneyLabel, formatMoneyValue } from '@/data/mockData';
 import KPICard from '@/components/ui/KPICard';
 import CustomerModal from './CustomerModal';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 
 type SortField = 'name' | 'phone' | 'email' | 'balance' | 'status' | 'created_at';
 type SortDirection = 'asc' | 'desc';
@@ -24,8 +25,10 @@ type CustomerRow = {
 
 export default function CustomersPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.slug as string;
   const { activeCurrency } = useApp();
+  const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
   const fmtBalance = (value: string | number) => formatMoneyLabel(Number(value || 0), activeCurrency);
 
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -49,14 +52,20 @@ export default function CustomersPage() {
     fetchData();
   }, [slug]);
 
+  const handleRowClick = (customer: CustomerRow) => {
+    router.push(`/${slug}/customers/${customer.id}`);
+  };
+
   const handleEdit = (customer: CustomerRow, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (!canWrite) return;
     setEditingCustomer(customer);
     setIsModalOpen(true);
   };
 
   const handleDelete = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (!canWrite) return;
     if (confirm('Are you sure you want to delete this customer?')) {
       const res = await deleteCustomer(id);
       if (res.success) {
@@ -169,9 +178,10 @@ export default function CustomersPage() {
             <p className={pageSubtitle}>Manage customer records, contact details, and balances</p>
           </div>
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex size-10 items-center justify-center gap-2 rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:h-auto sm:w-auto sm:rounded-lg sm:bg-accent sm:px-4 sm:py-2 sm:text-sm sm:font-semibold sm:text-white sm:hover:bg-accent/90"
-            title="New Customer"
+            onClick={() => canWrite && setIsModalOpen(true)}
+            {...wp()}
+            className={`flex size-10 items-center justify-center gap-2 rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:h-auto sm:w-auto sm:rounded-lg sm:bg-accent sm:px-4 sm:py-2 sm:text-sm sm:font-semibold sm:text-white sm:hover:bg-accent/90${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+            title={!canWrite ? writeBlockedReason : 'New Customer'}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" />
@@ -297,7 +307,7 @@ export default function CustomersPage() {
                       <tr
                         key={customer.id}
                         data-interactive-row
-                        onClick={() => handleEdit(customer)}
+                        onClick={() => handleRowClick(customer)}
                         className="cursor-pointer"
                       >
                         <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm font-bold text-slate-900 first:rounded-l-2xl sm:px-5 sm:py-4">
@@ -321,8 +331,9 @@ export default function CustomersPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={e => handleEdit(customer, e)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[var(--primary)]"
-                              title="Edit"
+                              disabled={!canWrite}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[var(--primary)]${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                              title={!canWrite ? writeBlockedReason : 'Edit'}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -330,8 +341,9 @@ export default function CustomersPage() {
                             </button>
                             <button
                               onClick={e => handleDelete(customer.id, e)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                              title="Delete"
+                              disabled={!canWrite}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                              title={!canWrite ? writeBlockedReason : 'Delete'}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -355,7 +367,7 @@ export default function CustomersPage() {
                   {filteredAndSorted.map(customer => (
                     <div
                       key={customer.id}
-                      onClick={() => handleEdit(customer)}
+                      onClick={() => handleRowClick(customer)}
                       className="flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md active:scale-[0.98]"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -378,7 +390,7 @@ export default function CustomersPage() {
                           <p className="font-mono text-sm font-bold text-slate-900">{fmtBalance(customer.balance)}</p>
                         </div>
                       </div>
-                      <span className="text-xs font-bold text-accent">Edit Details →</span>
+                      <span className="text-xs font-bold text-accent">View Details →</span>
                     </div>
                   ))}
                   {filteredAndSorted.length === 0 && (

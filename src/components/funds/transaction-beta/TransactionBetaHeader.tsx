@@ -12,6 +12,8 @@ type Props = {
   branchName?: string;
   branchTimezone: string;
   canPostEntries: boolean;
+  canWrite?: boolean;
+  writeBlockedReason?: string;
   onPostEntry: () => void;
   onEditCapital: () => void;
   onBackup: () => void;
@@ -22,12 +24,22 @@ export default function TransactionBetaHeader({
   branchName,
   branchTimezone,
   canPostEntries,
+  canWrite = true,
+  writeBlockedReason,
   onPostEntry,
   onEditCapital,
   onBackup,
   onManageLedgers,
 }: Props) {
   const tz = resolveBranchTimeZone(branchTimezone);
+  const writeBlocked = !canWrite;
+  const postBlocked = writeBlocked || !canPostEntries;
+  const postTitle = writeBlocked
+    ? writeBlockedReason
+    : !canPostEntries
+      ? 'Select the active open business day to post entries'
+      : 'Post a journal entry';
+  const actionTitle = writeBlocked ? writeBlockedReason : undefined;
 
   return (
     <header className="mb-6 flex flex-col gap-4 border-b border-slate-200/90 pb-6 lg:flex-row lg:items-end lg:justify-between">
@@ -51,22 +63,40 @@ export default function TransactionBetaHeader({
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onEditCapital}>
+          <button
+            type="button"
+            className={`${btnSecondary} w-full sm:w-auto${writeBlocked ? ' cursor-not-allowed opacity-50' : ''}`}
+            onClick={writeBlocked ? undefined : onEditCapital}
+            disabled={writeBlocked}
+            title={actionTitle}
+          >
             Edit capital
           </button>
-          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onBackup}>
+          <button
+            type="button"
+            className={`${btnSecondary} w-full sm:w-auto${writeBlocked ? ' cursor-not-allowed opacity-50' : ''}`}
+            onClick={writeBlocked ? undefined : onBackup}
+            disabled={writeBlocked}
+            title={actionTitle}
+          >
             Backup
           </button>
-          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onManageLedgers}>
+          <button
+            type="button"
+            className={`${btnSecondary} w-full sm:w-auto${writeBlocked ? ' cursor-not-allowed opacity-50' : ''}`}
+            onClick={writeBlocked ? undefined : onManageLedgers}
+            disabled={writeBlocked}
+            title={actionTitle}
+          >
             Ledgers
           </button>
         </div>
         <button
           type="button"
-          className={`${btnPrimary} w-full sm:w-auto ${!canPostEntries ? 'pointer-events-none opacity-50' : ''}`}
-          onClick={() => canPostEntries && onPostEntry()}
-          disabled={!canPostEntries}
-          title={!canPostEntries ? 'Select the active open business day to post entries' : 'Post a journal entry'}
+          className={`${btnPrimary} w-full sm:w-auto${postBlocked ? ' pointer-events-none opacity-50' : ''}`}
+          onClick={() => !postBlocked && onPostEntry()}
+          disabled={postBlocked}
+          title={postTitle}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M12 5v14M5 12h14" />

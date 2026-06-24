@@ -7,7 +7,9 @@ import { UsdtBuy, UsdtSell } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { formatDateTime, formatMoneyValue } from '@/data/mockData';
 import { dbDeleteUsdtBuyAction, dbDeleteUsdtSellAction } from '@/app/actions/usdtActions';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 import UsdtEnteredBy from './UsdtEnteredBy';
+import CustomerLink from '@/components/customers/CustomerLink';
 import { pageHeader, pageTitle, pageSubtitle, btnSecondary } from '@/lib/ui';
 
 interface Props {
@@ -30,6 +32,7 @@ function isUsdtSell(deal: UsdtBuy | UsdtSell | null): deal is UsdtSell {
 
 export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
   const router = useRouter();
+  const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
   const { usdtBuys, usdtSells, refetchData, activeCurrency } = useApp();
   const basePath = `/${branchSlug}/usdt`;
 
@@ -43,6 +46,7 @@ export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
   const fmtRate = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 
   const handleDelete = async () => {
+    if (!canWrite) return;
     if (!deal || !type) return;
     const label = type === 'buy' ? 'purchase' : 'sale';
     if (!confirm(`Delete this USDT ${label}?`)) return;
@@ -89,7 +93,8 @@ export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
           <button
             type="button"
             onClick={handleDelete}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition-all hover:bg-red-100 sm:w-auto"
+            {...wp()}
+            className={`inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition-all hover:bg-red-100 sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50 hover:bg-red-50' : ''}`}
           >
             Delete Deal
           </button>
@@ -124,7 +129,16 @@ export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
         <div className="grid grid-cols-2 gap-y-4 gap-x-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           <DetailField label="Txn ID" value={deal.txnId || '—'} />
           <DetailField label="Date & Time" value={formatDateTime(deal.date)} />
-          <DetailField label="Customer" value={deal.customerName || '—'} />
+          <DetailField
+            label="Customer"
+            value={
+              <CustomerLink
+                slug={branchSlug}
+                customerId={deal.customerId}
+                customerName={deal.customerName}
+              />
+            }
+          />
           <DetailField label="Wallet ID" value={deal.walletId ? <span className="font-mono">{deal.walletId}</span> : '—'} />
           <DetailField
             label="Opening Balance"

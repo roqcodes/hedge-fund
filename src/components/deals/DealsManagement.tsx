@@ -7,6 +7,7 @@ import { formatAED, formatDateTime } from '@/data/mockData';
 import { Deal } from '@/types';
 import { badgeClass } from '@/lib/badgeClass';
 import CreateDealModal from './CreateDealModal';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import {
@@ -27,6 +28,7 @@ export default function DealsManagement() {
   const { deals, dealTransactions, isBranchView, branches, currentSlug } = useApp();
   const basePath = currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '';
   const router = useRouter();
+  const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
   const [showCreate, setShowCreate] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('groupName');
@@ -168,8 +170,9 @@ export default function DealsManagement() {
           <div className="flex items-center">
             <button 
               type="button" 
-              className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-transparent sm:text-slate-500 sm:hover:bg-slate-100 sm:hover:text-slate-900 gap-2 font-semibold text-sm" 
-              onClick={() => setShowCreate(true)}
+              className={`flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-transparent sm:text-slate-500 sm:hover:bg-slate-100 sm:hover:text-slate-900 gap-2 font-semibold text-sm${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+              {...wp()}
+              onClick={() => canWrite && setShowCreate(true)}
               aria-label="Create New Group"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden className="sm:w-[18px] sm:h-[18px] sm:stroke-2">

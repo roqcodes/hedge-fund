@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import { btnPrimary, btnSecondary, formInput, dataTable, tableWrap } from '@/lib/ui';
+import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import AddStockModal from './AddStockModal';
 
-import { saveTaxInvoice } from '@/app/actions/marketplaceActions';
+import { saveTaxInvoice, getNextTaxInvoiceDocNo } from '@/app/actions/marketplaceActions';
+import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { useApp } from '@/context/AppContext';
 
 interface TaxInvoiceModalProps {
@@ -14,6 +16,16 @@ interface TaxInvoiceModalProps {
   onClose: () => void;
   onSave?: (invoice: any) => void;
   availableStocks?: any[];
+  initialCustomer?: {
+    id: string;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+  };
+}
+
+function buildCustomerDetails(c: { name: string; phone?: string | null; email?: string | null }) {
+  return [c.name, c.phone, c.email].filter(Boolean).join('\n');
 }
 
 const InputField = ({ label, children }: { label: string, children: React.ReactNode }) => (
@@ -23,24 +35,27 @@ const InputField = ({ label, children }: { label: string, children: React.ReactN
   </div>
 );
 
-export default function TaxInvoiceModal({ slug, open, onClose, onSave, availableStocks = [] }: TaxInvoiceModalProps) {
+export default function TaxInvoiceModal({ slug, open, onClose, onSave, availableStocks = [], initialCustomer }: TaxInvoiceModalProps) {
   const { user } = useApp();
   const [activeTab, setActiveTab] = useState<'stock' | 'other' | 'doc'>('stock');
   const [isAddStockOpen, setIsAddStockOpen] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
 
   // Form State
-  const [docNo, setDocNo] = useState('TIS/2026/005942');
+  const [docNo, setDocNo] = useState('');
   const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
   const [currency, setCurrency] = useState('USD');
   const [salesMan, setSalesMan] = useState('');
   const [department, setDepartment] = useState('Consumable Department');
   const [vatType, setVatType] = useState('Unregistered');
   const [orderType, setOrderType] = useState('Fixed');
+  const [tradeType, setTradeType] = useState<'buy' | 'sell'>('sell');
   const [refNo, setRefNo] = useState('');
   const [refDate, setRefDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [customerSearch, setCustomerSearch] = useState('');
+  const [customerId, setCustomerId] = useState('');
   const [customerDetails, setCustomerDetails] = useState('');
   
   const [terms, setTerms] = useState('0');
@@ -58,6 +73,26 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
       setSalesMan(user.name);
     }
   }, [open, user?.name]);
+
+  useEffect(() => {
+    if (!open) return;
+    getCustomersBySlug(slug).then(res => {
+      if (res.success && res.customers) setCustomers(res.customers);
+    });
+    getNextTaxInvoiceDocNo(slug).then(res => {
+      if (res.success && res.docNo) setDocNo(res.docNo);
+    });
+    if (initialCustomer) {
+      setCustomerId(initialCustomer.id);
+      setCustomerSearch(initialCustomer.name);
+      setCustomerDetails(buildCustomerDetails(initialCustomer));
+    }
+  }, [open, slug, initialCustomer]);
+
+  const customerOptions = useMemo(
+    () => customers.map(c => ({ value: String(c.id), label: String(c.name) })),
+    [customers],
+  );
 
   // Auto-calculate Hedge Details when items change
   useEffect(() => {
@@ -198,7 +233,9 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
     setIsSaving(true);
     const invoiceData = {
       doc_no: docNo.trim(), doc_date: docDate, currency, sales_man: salesMan, 
-      department, vat_type: vatType, order_type: orderType, ref_no: refNo, ref_date: refDate,
+      department, vat_type: vatType, order_type: orderType, trade_type: tradeType,
+      customer_id: customerId || null,
+      ref_no: refNo, ref_date: refDate,
       customer_details: customerDetails, fixing_type: 'Standard',
       terms, due_date: dueDate, decl_no: declNo, remarks,
       postFixingHedge, hedgeRate, hedgePremium, fheDocNo,
@@ -255,21 +292,26 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
             <div className="lg:col-span-4 flex flex-col gap-4">
               <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Customer Info</h3>
               <div className="flex flex-col gap-3 flex-1">
-                <div className="relative">
-                  <input 
-                    type="text" 
+                <InputField label="Customer">
+                  <ComboSearchInput
                     value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    placeholder="Search customer..."
-                    className={`${formInput} w-full pr-10`}
+                    onChange={v => {
+                      setCustomerSearch(v);
+                      setCustomerId('');
+                    }}
+                    onSelectOption={opt => {
+                      const c = customers.find(x => String(x.id) === opt.value);
+                      if (c) {
+                        setCustomerId(String(c.id));
+                        setCustomerSearch(String(c.name));
+                        setCustomerDetails(buildCustomerDetails(c));
+                        setIsDirty(true);
+                      }
+                    }}
+                    options={customerOptions}
+                    placeholder="Search customer or type name..."
                   />
-                  <div className="absolute right-0 top-0 h-full w-10 flex items-center justify-center text-slate-400">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="11" cy="11" r="8" />
-                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
-                  </div>
-                </div>
+                </InputField>
                 <textarea 
                   value={customerDetails}
                   onChange={(e) => setCustomerDetails(e.target.value)}
@@ -283,6 +325,28 @@ export default function TaxInvoiceModal({ slug, open, onClose, onSave, available
             <div className="lg:col-span-8 space-y-4">
               <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Document Details</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <InputField label="Trade Type">
+                  <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => { setTradeType('sell'); setIsDirty(true); }}
+                      className={`flex-1 rounded-md px-3 py-2 text-xs font-bold transition-colors sm:text-sm ${
+                        tradeType === 'sell' ? 'bg-accent text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Sell
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setTradeType('buy'); setIsDirty(true); }}
+                      className={`flex-1 rounded-md px-3 py-2 text-xs font-bold transition-colors sm:text-sm ${
+                        tradeType === 'buy' ? 'bg-accent text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Buy
+                    </button>
+                  </div>
+                </InputField>
                 <InputField label="Doc No">
                   <input type="text" value={docNo} readOnly className={`${formInput} w-full bg-slate-50 font-mono text-slate-500`} />
                 </InputField>

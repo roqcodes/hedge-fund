@@ -27,6 +27,20 @@ export function computeUsdtSell(values: {
   return { aedRate, profit, aedTotal };
 }
 
+/** Simple average AED rate across branch USDT purchases. */
+export function computeAverageUsdtBuyAedRate(
+  buys: { aedRate: number }[],
+): number | null {
+  if (buys.length === 0) return null;
+  const sum = buys.reduce((s, b) => s + b.aedRate, 0);
+  return sum / buys.length;
+}
+
+export function formatUsdtRateInput(rate: number): string {
+  const rounded = Math.round(rate * 1e6) / 1e6;
+  return String(rounded);
+}
+
 export function formatUsdtDateTime(iso: string): string {
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, '0');

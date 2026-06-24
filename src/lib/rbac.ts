@@ -8,6 +8,10 @@ import type { PageAccessLevel, PagePermissionMap, User, UserRole } from '@/types
 
 export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff'];
 
+/** Shown on disabled write controls for read-only staff. */
+export const READ_ONLY_ACCESS_MESSAGE =
+  'Read-only access: you can view this section but cannot make changes. Ask your branch manager for write access.';
+
 /** Pages managers configure for staff — excludes always-on dashboard & account settings. */
 export const PERMISSION_MANAGED_PAGE_IDS: BranchPageId[] = BRANCH_NAV_PAGES.filter(
   p => p.hideable,
@@ -48,7 +52,7 @@ export function getEffectivePageAccess(
   }
 
   const level = user.permissions?.[pageId];
-  return level ?? 'none';
+  return level ?? 'read';
 }
 
 export function canReadPage(
@@ -76,8 +80,12 @@ export function filterNavPagesForUser(
   return pageIds.filter(id => canReadPage(user, id, hiddenPages));
 }
 
-export function defaultStaffPermissions(): PagePermissionMap {
-  return { dashboard: 'read' };
+export function defaultStaffPermissions(hiddenPages?: string[] | null): PagePermissionMap {
+  const result: PagePermissionMap = { dashboard: 'read' };
+  for (const pageId of getManageableBranchPages(hiddenPages)) {
+    result[pageId] = 'read';
+  }
+  return result;
 }
 
 export function normalizePermissionMap(
@@ -89,10 +97,10 @@ export function normalizePermissionMap(
 
   for (const pageId of manageable) {
     const level = input?.[pageId];
-    if (level === 'read' || level === 'write') {
+    if (level === 'read' || level === 'write' || level === 'none') {
       result[pageId] = level;
     } else {
-      result[pageId] = 'none';
+      result[pageId] = 'read';
     }
   }
 

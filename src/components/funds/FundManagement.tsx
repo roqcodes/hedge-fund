@@ -28,6 +28,7 @@ import {
 } from '@/lib/ui';
 import { BranchTransferModal } from './BranchTransferModal';
 import EditTransactionModal from './EditTransactionModal';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import TagMultiSelect from '@/components/ui/TagMultiSelect';
 import { useDateFilter } from '@/hooks/useDateFilter';
@@ -62,6 +63,7 @@ import {
 export default function FundManagement({ variant = 'default' }: { variant?: 'default' | 'beta' }) {
   const isBeta = variant === 'beta';
   const { branches, transactions, transferFunds, hqBalance, isBranchView, currentSlug, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, showToast, refetchData, entities, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, ledgers, addLedger, updateLedger, deleteLedger, transactionTags, addTransactionTag } = useApp();
+  const { canWrite: rbacCanWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
   const [showTransfer, setShowTransfer] = useState(false);
   const [showEditInitialFund, setShowEditInitialFund] = useState(false);
   const [showEditHqBalance, setShowEditHqBalance] = useState(false);
@@ -274,12 +276,13 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
   }, [displayTransactions, tagFilterNames, branchFilter, entityFilter, searchTerm, sortField, sortDirection, activeTab, branchId]);
 
   const canEditTxn = (t: Transaction) => {
+    if (!rbacCanWrite) return false;
     if (!isBranchView || branches.length !== 1) return false;
     if (isBeta) return betaPage.permissions.canEditEntry(t);
     return true;
   };
 
-  const canPostTransactions = isBeta ? betaPage.permissions.canPostEntries : true;
+  const canPostTransactions = (isBeta ? betaPage.permissions.canPostEntries : true) && rbacCanWrite;
 
   const formatTxnDateTime = (date: string) =>
     isBeta ? formatBranchDateTime(date, betaPage.branchTimezone) : formatDateTime(date);
@@ -345,6 +348,8 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
             branchName={branchName}
             branchTimezone={betaPage.branchTimezone}
             canPostEntries={canPostTransactions}
+            canWrite={rbacCanWrite}
+            writeBlockedReason={writeBlockedReason}
             onPostEntry={() => setShowTransfer(true)}
             onEditCapital={() => {
               const b = branches[0];
@@ -367,8 +372,10 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
             {isBranchView && branches.length === 1 && (
               <button 
                 type="button" 
-                className={`${btnSecondary} w-full sm:w-auto`} 
+                className={`${btnSecondary} w-full sm:w-auto${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                {...wp()}
                 onClick={() => {
+                  if (!rbacCanWrite) return;
                   const b = branches[0];
                   setEditFundAmount(b.openingBalance?.toString() || '0');
                   setEditCurrentBalanceAmount(b.currentBalance?.toString() || '0');
@@ -402,8 +409,9 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
             )}
             <button
               type="button"
-              className={`${btnSecondary} w-full sm:w-auto`}
-              onClick={() => setShowBackupModal(true)}
+              className={`${btnSecondary} w-full sm:w-auto${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+              {...wp()}
+              onClick={() => rbacCanWrite && setShowBackupModal(true)}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -412,7 +420,12 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
               </svg>
               Backup
             </button>
-            <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={() => setShowManageLedgers(true)}>
+            <button
+              type="button"
+              className={`${btnSecondary} w-full sm:w-auto${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+              {...wp()}
+              onClick={() => rbacCanWrite && setShowManageLedgers(true)}
+            >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                 <line x1="16" y1="2" x2="16" y2="6" />
@@ -424,8 +437,9 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
             </button>
             <button
               type="button"
-              className={`${btnPrimary} w-full sm:w-auto`}
-              onClick={() => setShowTransfer(true)}
+              className={`${btnPrimary} w-full sm:w-auto${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+              {...wp()}
+              onClick={() => rbacCanWrite && setShowTransfer(true)}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -655,8 +669,9 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
               {activeTab === 'entities' ? (
                 <button
                   type="button"
-                  className={`${btnPrimary} w-full sm:w-auto`}
-                  onClick={() => setShowAddEntity(!showAddEntity)}
+                  className={`${btnPrimary} w-full sm:w-auto${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                  {...wp()}
+                  onClick={() => rbacCanWrite && setShowAddEntity(!showAddEntity)}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="mr-1 inline-block">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -809,10 +824,12 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              title="Edit Entity"
-                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95 lg:gap-1 lg:px-2.5"
+                              title={!rbacCanWrite ? writeBlockedReason : 'Edit Entity'}
+                              disabled={!rbacCanWrite}
+                              className={`inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95 lg:gap-1 lg:px-2.5${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (!rbacCanWrite) return;
                                 setEditingEntity(ent);
                               }}
                             >
@@ -824,10 +841,12 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                             </button>
                             <button
                               type="button"
-                              title="Delete Entity"
-                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95 lg:gap-1 lg:px-2.5"
+                              title={!rbacCanWrite ? writeBlockedReason : 'Delete Entity'}
+                              disabled={!rbacCanWrite}
+                              className={`inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-red-400 hover:bg-red-50 hover:text-red-600 active:scale-95 lg:gap-1 lg:px-2.5${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (!rbacCanWrite) return;
                                 setDeletingEntity(ent);
                               }}
                             >
@@ -986,7 +1005,9 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                               </button>
                             </div>
                             ) : (
-                              <span className="block text-right text-[10px] font-semibold text-slate-400">Locked</span>
+                              <span className="block text-right text-[10px] font-semibold text-slate-400" title={!rbacCanWrite ? writeBlockedReason : undefined}>
+                                {!rbacCanWrite ? 'Read only' : 'Locked'}
+                              </span>
                             )}
                           </td>
                         )}
@@ -1028,9 +1049,12 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                       <div className="flex justify-between items-center pt-2 border-t border-slate-50">
                         <button
                           type="button"
-                          className="text-xs font-bold text-slate-500 hover:text-slate-700"
+                          className={`text-xs font-bold text-slate-500 hover:text-slate-700${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                          disabled={!rbacCanWrite}
+                          title={!rbacCanWrite ? writeBlockedReason : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (!rbacCanWrite) return;
                             setEditingEntity(ent);
                           }}
                         >
@@ -1038,9 +1062,12 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                         </button>
                         <button
                           type="button"
-                          className="text-xs font-bold text-red-500 hover:text-red-700"
+                          className={`text-xs font-bold text-red-500 hover:text-red-700${!rbacCanWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+                          disabled={!rbacCanWrite}
+                          title={!rbacCanWrite ? writeBlockedReason : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (!rbacCanWrite) return;
                             setDeletingEntity(ent);
                           }}
                         >
