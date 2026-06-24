@@ -8,7 +8,7 @@ import { btnPrimary, formInput } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
 
 export default function BranchDetailsSettings({ branch }: { branch: any }) {
-  const { refetchData } = useApp();
+  const { refetchData, currentSlug } = useApp();
   const [name, setName] = useState(branch.name);
   const [logoPreview, setLogoPreview] = useState<string | null>(branch.logo_url || null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -72,9 +72,10 @@ export default function BranchDetailsSettings({ branch }: { branch: any }) {
       }
 
       // Call Server Action
+      const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
       const res = await updateBranchSettingsAction(branch.id, name, finalLogoUrl, {
         address, city, country, trn, phone, email, website, enabledCurrencies,
-      });
+      }, branchSlug);
       
       if (res.success) {
         if (refetchData) await refetchData();

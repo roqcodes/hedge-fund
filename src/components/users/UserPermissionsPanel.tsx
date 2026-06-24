@@ -1,0 +1,145 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import Modal from '@/components/ui/Modal';
+import { BRANCH_NAV_PAGES } from '@/lib/branchPages';
+import type { PageAccessLevel, PagePermissionMap } from '@/types';
+import {
+  fetchStaffPermissionsAction,
+  updateStaffPermissionsAction,
+} from '@/app/actions/permissionActions';
+import { btnPrimary, btnSecondary, dataTable, tableWrap } from '@/lib/ui';
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  branchSlug: string;
+  user: { email: string; name: string; userId?: string };
+  onSaved?: () => void;
+};
+
+const ACCESS_OPTIONS: { value: PageAccessLevel; label: string }[] = [
+  { value: 'none', label: 'No access' },
+  { value: 'read', label: 'Read only' },
+  { value: 'write', label: 'Read & write' },
+];
+
+export default function UserPermissionsPanel({ open, onClose, branchSlug, user, onSaved }: Props) {
+  const [permissions, setPermissions] = useState<PagePermissionMap>({});
+  const [pageIds, setPageIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !user.userId) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    fetchStaffPermissionsAction(branchSlug, user.userId).then(res => {
+      if (cancelled) return;
+      if (res.success) {
+        setPermissions(res.data);
+        setPageIds(res.pages);
+      } else {
+        setError(res.error);
+      }
+      setLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [open, branchSlug, user.userId]);
+
+  const handleSave = async () => {
+    if (!user.userId) return;
+    setSaving(true);
+    setError(null);
+    const res = await updateStaffPermissionsAction(branchSlug, user.userId, permissions);
+    setSaving(false);
+    if (res.success) {
+      onSaved?.();
+      onClose();
+    } else {
+      setError(res.error);
+    }
+  };
+
+  const setPageAccess = (pageId: string, level: PageAccessLevel) => {
+    setPermissions(prev => ({ ...prev, [pageId]: level }));
+  };
+
+  const pageLabel = (pageId: string) =>
+    BRANCH_NAV_PAGES.find(p => p.id === pageId)?.label ?? pageId;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Page Access"
+      maxWidth="max-w-2xl"
+      footer={
+        <>
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={`${btnPrimary} w-full sm:w-auto`}
+            onClick={handleSave}
+            disabled={saving || loading || !user.userId}
+          >
+            {saving ? 'Saving…' : 'Save permissions'}
+          </button>
+        </>
+      }
+    >
+      <p className="mb-4 text-sm text-slate-600">
+        Configure what <strong>{user.name}</strong> can access within this branch.
+        Dashboard is always visible; account settings are always available for password changes.
+      </p>
+
+      {error && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {!user.userId ? (
+        <p className="text-sm text-amber-700">User ID unavailable — try refreshing the user list.</p>
+      ) : loading ? (
+        <p className="text-sm text-slate-500">Loading permissions…</p>
+      ) : (
+        <div className={tableWrap}>
+          <table className={dataTable}>
+            <thead>
+              <tr>
+                <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Page</th>
+                <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Access</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageIds.map(pageId => (
+                <tr key={pageId}>
+                  <td className="border-y border-l border-black/5 bg-white px-3 py-3 text-sm font-medium text-slate-900 first:rounded-l-2xl">
+                    {pageLabel(pageId)}
+                  </td>
+                  <td className="border-y border-r border-black/5 bg-white px-3 py-3 last:rounded-r-2xl">
+                    <select
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      value={permissions[pageId] ?? 'none'}
+                      onChange={e => setPageAccess(pageId, e.target.value as PageAccessLevel)}
+                    >
+                      {ACCESS_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  );
+}

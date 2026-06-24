@@ -1,14 +1,19 @@
 'use server';
 
 import { getCurrentUserAction } from '@/app/actions/auth';
+import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
+import type { BranchPageId } from '@/lib/branchPages';
+import { isBranchScopedUser } from '@/lib/rbac';
 import { query, pool } from '@/lib/db';
 import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate } from '@/lib/businessTime';
 import {
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES,
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN,
 } from '@/lib/sql/businessDateSql';
+import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
 import { mapPhysicalBuyRow, mapPhysicalSellRow } from '@/lib/physicalMappers';
+import { mapUsdtBuyRow, mapUsdtSellRow, mapUsdtSettingsRow } from '@/lib/usdtMappers';
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
 import { validateJournalEntry } from '@/lib/journalEntry';
 import {
@@ -25,6 +30,9 @@ import {
   PhysicalBalance,
   PhysicalBuy,
   PhysicalSell,
+  UsdtBranchSettings,
+  UsdtBuy,
+  UsdtSell,
 } from '@/types';
 import {
   addBranchSchema,
@@ -86,6 +94,29 @@ export interface InitialDataPayload {
   physicalBalances: PhysicalBalance[];
   physicalBuys: PhysicalBuy[];
   physicalSells: PhysicalSell[];
+  usdtBuys: UsdtBuy[];
+  usdtSells: UsdtSell[];
+  usdtSettings: UsdtBranchSettings[];
+}
+
+type DbGuardFail = { success: false; error: string };
+
+async function resolveBranchSlug(branchId?: string): Promise<string | undefined> {
+  if (!branchId) return undefined;
+  const res = await query('SELECT slug FROM branches WHERE id = $1 LIMIT 1', [branchId]);
+  return res.rows[0]?.slug as string | undefined;
+}
+
+async function guardStaffWrite(
+  pageId: BranchPageId,
+  branchSlug?: string,
+  branchId?: string,
+): Promise<DbGuardFail | null> {
+  const slug = branchSlug ?? (await resolveBranchSlug(branchId));
+  let user = slug ? (await getCurrentUserAction(slug)).data : null;
+  if (!user) user = (await getCurrentUserAction()).data ?? null;
+  const err = await assertStaffWriteAccess(user, pageId, branchId ?? user?.branchId);
+  return err ? { success: false, error: err } : null;
 }
 
 /**
@@ -95,6 +126,19 @@ export interface InitialDataPayload {
  */
 export async function fetchInitialDataAction(branchSlug?: string): Promise<DbActionResult<InitialDataPayload>> {
   try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_page_permissions (
+        user_id VARCHAR(128) NOT NULL,
+        branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        page_id VARCHAR(50) NOT NULL,
+        access_level VARCHAR(10) NOT NULL DEFAULT 'none' CHECK (access_level IN ('none', 'read', 'write')),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_by VARCHAR(255),
+        PRIMARY KEY (user_id, branch_id, page_id)
+      );
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_user_page_permissions_branch ON user_page_permissions(branch_id);`);
+
     // ── AUTO-MIGRATION: Fix branch ID length (Max 10 chars for Cognito) ──
     await query(`
       DO $$
@@ -122,6 +166,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);`);
     await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES);
     await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN);
+    await query(SQL_ENSURE_USDT_SCHEMA);
 
     // 1. Fetch HQ Balance
     const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
@@ -468,6 +513,13 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const physicalSellsRes = await query('SELECT * FROM physical_sells ORDER BY date DESC');
     const physicalSells = physicalSellsRes.rows.map(r => mapPhysicalSellRow(r));
 
+    const usdtBuysRes = await query('SELECT * FROM usdt_buys ORDER BY date DESC');
+    const usdtBuys = usdtBuysRes.rows.map(r => mapUsdtBuyRow(r));
+    const usdtSellsRes = await query('SELECT * FROM usdt_sells ORDER BY date DESC');
+    const usdtSells = usdtSellsRes.rows.map(r => mapUsdtSellRow(r));
+    const usdtSettingsRes = await query('SELECT * FROM usdt_branch_settings');
+    const usdtSettings = usdtSettingsRes.rows.map(r => mapUsdtSettingsRow(r));
+
     let finalBranches = branches;
     let finalTransactions = transactions;
     let finalExpenses = expenses;
@@ -481,8 +533,11 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     let finalPhysicalBalances = physicalBalances;
     let finalPhysicalBuys = physicalBuys;
     let finalPhysicalSells = physicalSells;
+    let finalUsdtBuys = usdtBuys;
+    let finalUsdtSells = usdtSells;
+    let finalUsdtSettings = usdtSettings;
 
-    if (currentUser?.role === 'branch_manager' && currentUser.branchId) {
+    if (currentUser && isBranchScopedUser(currentUser) && currentUser.branchId) {
       const bId = currentUser.branchId;
       const branchName = branches.find(b => b.id === bId)?.name || bId;
       
@@ -502,6 +557,9 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       finalPhysicalBuys = physicalBuys.filter(b => b.branchId === bId);
       const buyIds = new Set(finalPhysicalBuys.map(b => b.id));
       finalPhysicalSells = physicalSells.filter(s => buyIds.has(s.buyId));
+      finalUsdtBuys = usdtBuys.filter(b => b.branchId === bId);
+      finalUsdtSells = usdtSells.filter(s => s.branchId === bId);
+      finalUsdtSettings = usdtSettings.filter(s => s.branchId === bId);
     }
 
     return {
@@ -522,6 +580,9 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         physicalBalances: finalPhysicalBalances,
         physicalBuys: finalPhysicalBuys,
         physicalSells: finalPhysicalSells,
+        usdtBuys: finalUsdtBuys,
+        usdtSells: finalUsdtSells,
+        usdtSettings: finalUsdtSettings,
       },
     };
   } catch (error: unknown) {
@@ -817,8 +878,11 @@ export async function dbAddExpenseAction(
  * Creates an investor profile and logs their initial deposits.
  */
 export async function dbAddInvestorAction(
-  investor: Investor
+  investor: Investor,
 ): Promise<DbActionResult<Investor>> {
+  const denied = await guardStaffWrite('investors', undefined, investor.assignedBranchId);
+  if (denied) return denied;
+
   // Validate
   const validation = addInvestorSchema.safeParse({
     name: investor.name,
@@ -906,6 +970,9 @@ export async function dbAddInvestorAction(
 export async function dbUpdateInvestorAction(
   investor: Investor
 ): Promise<DbActionResult<Investor>> {
+  const denied = await guardStaffWrite('investors', undefined, investor.assignedBranchId);
+  if (denied) return denied;
+
   try {
     await query(
       `UPDATE investors SET
@@ -999,6 +1066,9 @@ export async function dbDeleteInvestorAction(
  * Creates a deal and inserts associated participant investors.
  */
 export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>> {
+  const denied = await guardStaffWrite('deals', undefined, deal.managingBranchId);
+  if (denied) return denied;
+
   // Validate
   const validation = addDealSchema.safeParse({
     name: deal.name,
@@ -1519,6 +1589,9 @@ export async function dbProcessLedgerTransactionAction(
   tagIds: string[] = [],
   branchSlug?: string,
 ): Promise<DbActionResult<Transaction>> {
+  const denied = await guardStaffWrite('funds', branchSlug, branchId);
+  if (denied) return denied;
+
   if (!pool) return { success: false, error: 'Database not connected.' };
 
   let user = branchSlug ? (await getCurrentUserAction(branchSlug)).data : null;

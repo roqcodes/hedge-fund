@@ -70,8 +70,8 @@ export async function proxy(request: NextRequest) {
 
     // ── Context enforcement ─────────────────────────────────────────────
     if (slug) {
-      // Branch context: the session MUST belong to a branch_manager
-      if (payload.role !== 'branch_manager') {
+      // Branch context: admin sessions are not valid here
+      if (payload.role === 'admin') {
         throw new Error('Role mismatch: admin session used on branch path');
       }
     } else {

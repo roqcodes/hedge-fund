@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { isBranchPortalRole } from '@/lib/rbac';
 import {
   buildContextSearchResults,
   mergeSearchSections,
@@ -145,7 +146,7 @@ export default function GlobalSearch({ query, open, onClose, onQueryChange }: Pr
 
   const basePath = resolveBasePath(currentSlug);
   const isSuperadmin = user?.role === 'admin';
-  const isBranchUser = user?.role === 'branch_manager';
+  const isBranchUser = user ? isBranchPortalRole(user.role) : false;
   const branchId = user?.branchId;
   const catalogSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
   const hiddenPages = useMemo(() => {

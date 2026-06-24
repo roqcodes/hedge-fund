@@ -1,5 +1,6 @@
 import { getSessionUser } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import StaffAccountSettings from '@/components/users/StaffAccountSettings';
 import UsersManagement from '@/components/users/UsersManagement';
 import { fetchCognitoUsersAction } from '@/app/actions/cognitoActions';
 import { pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
@@ -21,8 +22,9 @@ export default async function SettingsPage() {
         </div>
       </div>
 
-      <div className="w-full">
+      <div className="w-full space-y-8">
         <UsersManagement initialUsers={success && initialUsers ? initialUsers : []} error={error} />
+        <StaffAccountSettings />
       </div>
     </div>
   );

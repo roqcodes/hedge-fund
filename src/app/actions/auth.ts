@@ -27,11 +27,10 @@ export async function loginAction(email: string, securityKey: string, branchSlug
 
     // ── Authorization gate ──────────────────────────────────────────────
     if (branchSlug) {
-      // Branch portal: only branch_managers assigned to THIS branch may enter
-      if (user.role !== 'branch_manager') {
-        return { success: false, error: 'Access denied. Only branch managers can sign in through a branch portal.' };
+      // Branch portal: branch managers and staff assigned to THIS branch may enter
+      if (user.role !== 'branch_manager' && user.role !== 'staff') {
+        return { success: false, error: 'Access denied. Only branch users can sign in through a branch portal.' };
       }
-      // Resolve slug → branch id from the database
       const branchRes = await query(
         `SELECT id FROM branches WHERE slug = $1 LIMIT 1`,
         [branchSlug]
@@ -45,7 +44,7 @@ export async function loginAction(email: string, securityKey: string, branchSlug
     } else {
       // Superadmin portal: only admins may enter
       if (user.role !== 'admin') {
-        return { success: false, error: 'Access denied. Branch managers should sign in through their branch portal URL.' };
+        return { success: false, error: 'Access denied. Branch users should sign in through their branch portal URL.' };
       }
     }
 

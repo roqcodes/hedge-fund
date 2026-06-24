@@ -52,14 +52,14 @@ export function CreateUserModal({
   const { branches } = useApp();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState(fixedBranchId ? 'branch_manager' : 'admin');
+  const [role, setRole] = useState(fixedBranchId ? 'staff' : 'admin');
   const [branchId, setBranchId] = useState(fixedBranchId || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!email || !name || !validatePassword(password).isValid) return;
-    if (role === 'branch_manager' && !branchId) return;
+    if ((role === 'branch_manager' || role === 'staff') && !branchId) return;
     
     setLoading(true);
     await onAdd(email, name, role, branchId, password);
@@ -68,7 +68,7 @@ export function CreateUserModal({
     // reset
     setEmail('');
     setName('');
-    setRole(fixedBranchId ? 'branch_manager' : 'admin');
+    setRole(fixedBranchId ? 'staff' : 'admin');
     setBranchId(fixedBranchId || '');
     setPassword('');
     onClose();
@@ -112,6 +112,13 @@ export function CreateUserModal({
           </select>
         </div>
       )}
+      {fixedBranchId && (
+        <div className={formGroup}>
+          <label className={formLabel}>Role</label>
+          <input className={formInput} value="Staff" disabled readOnly />
+          <p className={formHint}>Branch managers can create staff accounts only.</p>
+        </div>
+      )}
       {role === 'branch_manager' && !fixedBranchId && (
         <div className={formGroup}>
           <label className={formLabel}>Assign to Branch</label>
@@ -123,6 +130,83 @@ export function CreateUserModal({
           </select>
         </div>
       )}
+    </Modal>
+  );
+}
+
+export function ChangePasswordModal({
+  open,
+  onClose,
+  onChange,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onChange: (currentPassword: string, newPassword: string) => Promise<void>;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!validatePassword(password).isValid || !currentPassword) return;
+    setLoading(true);
+    try {
+      await onChange(currentPassword, password);
+      setCurrentPassword('');
+      setPassword('');
+      onClose();
+    } catch {
+      // toast handled by caller
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Change Password"
+      footer={
+        <>
+          <button type="button" className={`${btnSecondary} w-full sm:w-auto`} onClick={onClose} disabled={loading}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={`${btnPrimary} w-full sm:w-auto`}
+            onClick={handleSubmit}
+            disabled={loading || !validatePassword(password).isValid || !currentPassword}
+          >
+            {loading ? 'Updating…' : 'Update password'}
+          </button>
+        </>
+      }
+    >
+      <div className={formGroup}>
+        <label className={formLabel}>Current password</label>
+        <input
+          type="password"
+          className={formInput}
+          value={currentPassword}
+          onChange={e => setCurrentPassword(e.target.value)}
+          disabled={loading}
+          autoComplete="current-password"
+        />
+      </div>
+      <div className={formGroup}>
+        <label className={formLabel}>New password</label>
+        <input
+          type="password"
+          className={formInput}
+          placeholder="Enter secure password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          disabled={loading}
+          autoComplete="new-password"
+        />
+        <PasswordRequirements pw={password} />
+      </div>
     </Modal>
   );
 }

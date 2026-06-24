@@ -159,8 +159,12 @@
   }
 
   @media (hover: hover) {
-    tbody tr[data-interactive-row]:hover td {
+    tbody tr[data-interactive-row]:hover td:not([data-txn-by-cell]) {
       background-color: rgb(248 250 252);
+    }
+
+    tbody tr[data-interactive-row]:hover td[data-txn-by-cell] {
+      background-image: linear-gradient(to left, rgb(236 253 245 / 0.95), rgb(255 255 255));
     }
   }
 

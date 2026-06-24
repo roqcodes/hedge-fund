@@ -2,7 +2,12 @@
 // HEDGE Capital Management — Type Definitions
 // ═══════════════════════════════════════════════════════════
 
-export type UserRole = 'admin' | 'branch_manager';
+export type UserRole = 'admin' | 'branch_manager' | 'staff';
+
+/** Per-page access for branch staff (none = hidden, read = view-only, write = full). */
+export type PageAccessLevel = 'none' | 'read' | 'write';
+
+export type PagePermissionMap = Partial<Record<string, PageAccessLevel>>;
 
 export interface User {
   /** Cognito `sub` — stable user identifier. Present after sign-in; may be absent on legacy sessions. */
@@ -10,7 +15,9 @@ export interface User {
   email: string;
   role: UserRole;
   name: string;
-  branchId?: string; // only for branch managers
+  branchId?: string;
+  /** Loaded for staff — page-level permissions within their branch. */
+  permissions?: PagePermissionMap;
 }
 
 export interface Branch {
@@ -344,6 +351,55 @@ export interface PhysicalSell {
   totalUsdt?: number;
   costValue?: number;
   margin?: number;
+}
+
+export interface UsdtBranchSettings {
+  branchId: string;
+  presetMargin: number;
+  updatedAt?: string;
+}
+
+export interface UsdtBuy {
+  id: string;
+  branchId: string;
+  date: string;
+  txnId?: string;
+  customerId?: string;
+  customerName?: string;
+  walletId?: string;
+  openingBalance?: number;
+  usdtAmount: number;
+  aedRate: number;
+  serviceCharge: number;
+  aedTotal: number;
+  notes?: string;
+  enteredByUsername?: string;
+  enteredByName?: string;
+  enteredByUserId?: string;
+  createdAt?: string;
+}
+
+export interface UsdtSell {
+  id: string;
+  branchId: string;
+  date: string;
+  txnId?: string;
+  customerId?: string;
+  customerName?: string;
+  walletId?: string;
+  openingBalance?: number;
+  usdtAmount: number;
+  cost: number;
+  margin: number;
+  aedRate: number;
+  serviceCharge: number;
+  aedTotal: number;
+  profit: number;
+  notes?: string;
+  enteredByUsername?: string;
+  enteredByName?: string;
+  enteredByUserId?: string;
+  createdAt?: string;
 }
 
 export interface Ledger {

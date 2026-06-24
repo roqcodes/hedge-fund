@@ -2,8 +2,10 @@ import 'server-only';
 import { CognitoIdentityProviderClient, InitiateAuthCommand, GetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
-import { User, UserRole } from '@/types';
+import { User, UserRole, PagePermissionMap } from '@/types';
 import { env } from '@/lib/env';
+import { fetchUserPermissionsFromDb } from '@/lib/userPermissions';
+import { defaultStaffPermissions } from '@/lib/rbac';
 
 const encodedKey = new TextEncoder().encode(env.SESSION_SECRET);
 
@@ -18,6 +20,7 @@ export interface SessionPayload {
   role: UserRole;
   name: string;
   branchId?: string;
+  permissions?: PagePermissionMap;
   idToken?: string;
   expiresAt: string;
 }
@@ -102,8 +105,11 @@ export async function authenticateWithCognito(email: string, securityKey: string
     const nameAttr = getAttr('name') || email.split('@')[0];
     const userId = getAttr('sub');
 
-    if (!roleAttr || (roleAttr !== 'admin' && roleAttr !== 'branch_manager')) {
+    if (!roleAttr || (roleAttr !== 'admin' && roleAttr !== 'branch_manager' && roleAttr !== 'staff')) {
       throw new Error('Access Denied: Your account has not been assigned a valid role by an Administrator.');
+    }
+    if (roleAttr !== 'admin' && !branchIdAttr) {
+      throw new Error('Access Denied: Branch users must be assigned to a branch.');
     }
     if (!userId) {
       throw new Error('Authentication succeeded but no user id was returned by Cognito.');
@@ -137,12 +143,31 @@ export async function authenticateWithCognito(email: string, securityKey: string
 }
 
 /**
+ * Loads staff permissions from the database (always fresh on session read).
+ */
+async function loadStaffPermissions(user: User): Promise<User> {
+  if (user.role !== 'staff' || !user.id || !user.branchId) return user;
+
+  try {
+    const permissions = await fetchUserPermissionsFromDb(user.id, user.branchId);
+    const hasAny = Object.keys(permissions).length > 0;
+    return {
+      ...user,
+      permissions: hasAny ? permissions : defaultStaffPermissions(),
+    };
+  } catch {
+    return { ...user, permissions: defaultStaffPermissions() };
+  }
+}
+
+/**
  * Creates a session cookie with the authenticated user data.
  */
 export async function createSession(user: User, branchSlug?: string) {
+  const enriched = user.role === 'staff' ? await loadStaffPermissions(user) : user;
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
   const session = await encrypt({
-    ...user,
+    ...enriched,
     expiresAt: expiresAt.toISOString(),
   });
 
@@ -186,14 +211,21 @@ export async function getSessionUser(branchSlug?: string): Promise<User | null> 
   }
 
   // Defence-in-depth: verify the session role matches the expected context
-  if (branchSlug && payload.role !== 'branch_manager') return null;
+  if (branchSlug && payload.role === 'admin') return null;
   if (!branchSlug && payload.role !== 'admin') return null;
 
-  return {
+  const baseUser: User = {
     id: payload.id,
     email: payload.email,
     name: payload.name,
     role: payload.role,
     branchId: payload.branchId,
+    permissions: payload.permissions,
   };
+
+  if (baseUser.role === 'staff') {
+    return loadStaffPermissions(baseUser);
+  }
+
+  return baseUser;
 }

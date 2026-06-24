@@ -881,7 +881,7 @@ export default function SuperadminBranchFunds({ branchSlug }: { branchSlug: stri
                             )}
                           </div>
                         </td>
-                        <td className={`${txnTdBy}${!(isBranchView && branches.length === 1) ? ' last:rounded-r-2xl border-r' : ''}`}>
+                        <td className={`${txnTdBy}${!(isBranchView && branches.length === 1) ? ' last:rounded-r-2xl border-r' : ''}`} data-txn-by-cell>
                           <TransactionEnteredByAvatar transaction={t} />
                         </td>
                         {isBranchView && branches.length === 1 && (

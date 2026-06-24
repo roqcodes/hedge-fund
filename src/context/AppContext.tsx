@@ -18,6 +18,9 @@ import {
   PhysicalBalance,
   PhysicalBuy,
   PhysicalSell,
+  UsdtBranchSettings,
+  UsdtBuy,
+  UsdtSell,
 } from '@/types';
 import * as mock from '@/data/mockData';
 import { DEFAULT_BRANCH_TIMEZONE } from '@/lib/businessTime';
@@ -61,6 +64,7 @@ import {
   setLiveCurrencyRates,
   type CurrencyCode,
 } from '@/lib/currency';
+import { isBranchScopedUser } from '@/lib/rbac';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
 
@@ -96,6 +100,9 @@ interface AppState {
   physicalBalances: PhysicalBalance[];
   physicalBuys: PhysicalBuy[];
   physicalSells: PhysicalSell[];
+  usdtBuys: UsdtBuy[];
+  usdtSells: UsdtSell[];
+  usdtSettings: UsdtBranchSettings[];
 }
 
 export type AddInvestorInput = {
@@ -188,7 +195,7 @@ const getSlugFromPath = (path: string): string => {
 
 const resolveViewBranchSlug = (pathname: string, currentSlug: string): string | null => {
   const parts = pathname.split('/').filter(Boolean);
-  const drillPrefixes = new Set(['group', 'funds', 'physical-sales']);
+  const drillPrefixes = new Set(['group', 'funds', 'physical-sales', 'usdt']);
   if (parts[0] && drillPrefixes.has(parts[0]) && parts[1]) {
     return parts[1];
   }
@@ -244,6 +251,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     physicalBalances: [],
     physicalBuys: [],
     physicalSells: [],
+    usdtBuys: [],
+    usdtSells: [],
+    usdtSettings: [],
   });
 
   const refetchCurrencyRates = useCallback(async () => {
@@ -282,6 +292,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             physicalBalances: data.physicalBalances || [],
             physicalBuys: data.physicalBuys || [],
             physicalSells: data.physicalSells || [],
+            usdtBuys: data.usdtBuys || [],
+            usdtSells: data.usdtSells || [],
+            usdtSettings: data.usdtSettings || [],
           };
         });
       }
@@ -345,6 +358,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             physicalBalances: data.physicalBalances || [],
             physicalBuys: data.physicalBuys || [],
             physicalSells: data.physicalSells || [],
+            usdtBuys: data.usdtBuys || [],
+            usdtSells: data.usdtSells || [],
+            usdtSettings: data.usdtSettings || [],
             currencyRates: rateRes.rates,
             currencyRatesFetchedAt: rateRes.fetchedAt,
             currencyRatesLive: rateRes.success,
@@ -1306,9 +1322,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let filterBranchId: string | undefined = undefined;
 
     if (!state.isInitialLoading && state.user) {
-      if (state.user.role === 'branch_manager' && state.user.branchId) {
-        filterBranchId = state.user.branchId;
-      } else if (state.user.role !== 'branch_manager' && activeSlug) {
+    if (isBranchScopedUser(state.user) && state.user.branchId) {
+      filterBranchId = state.user.branchId;
+    } else if (state.user.role === 'admin' && activeSlug) {
         const matchingBranch = state.branches.find(b => 
           b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === activeSlug
         );
@@ -1343,7 +1359,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     const getTotalCapital = () => {
-      if (filteredState.user?.role === 'branch_manager') {
+      if (isBranchScopedUser(filteredState.user)) {
         return filteredState.deals.reduce((sum, d) => sum + d.totalInvestment, 0);
       }
       if (filterBranchId) {
@@ -1353,13 +1369,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const getNetPL = () => {
-      if (filteredState.user?.role === 'branch_manager') {
+      if (isBranchScopedUser(filteredState.user)) {
         return filteredState.dealTransactions.reduce((sum, dt) => sum + dt.grossProfit, 0);
       }
       return filteredState.branches.reduce((sum, b) => sum + b.dailyPL, 0);
     };
 
-    const isBranchView = !!filterBranchId || filteredState.user?.role === 'branch_manager';
+    const isBranchView = !!filterBranchId || isBranchScopedUser(filteredState.user);
     const isICTransferRoute = pathname.includes('/ic-transfer');
     const showICTransferSecondarySidebar = isICTransferRoute && !icTransferMainMenuOpen;
 

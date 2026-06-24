@@ -19,9 +19,16 @@ export async function updateBranchSettingsAction(
     email: string;
     website: string;
     enabledCurrencies: string[];
-  }
+  },
+  branchSlug?: string,
 ) {
   try {
+    const userRes = branchSlug ? await getCurrentUserAction(branchSlug) : await getCurrentUserAction();
+    const user = userRes.success ? userRes.data : null;
+    if (!user || user.role !== 'branch_manager' || user.branchId !== branchId) {
+      return { success: false, error: 'Only the branch manager can update branch settings.' };
+    }
+
     const enabledCurrencies = sanitizeEnabledCurrencies(identityDetails.enabledCurrencies);
     if (logoUrl) {
       await query(

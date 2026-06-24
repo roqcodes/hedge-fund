@@ -1,0 +1,100 @@
+import type { BranchPageId } from '@/lib/branchPages';
+import {
+  BRANCH_NAV_PAGES,
+  filterBranchNavPages,
+  isBranchPageEnabled,
+} from '@/lib/branchPages';
+import type { PageAccessLevel, PagePermissionMap, User, UserRole } from '@/types';
+
+export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff'];
+
+/** Pages managers configure for staff — excludes always-on dashboard & account settings. */
+export const PERMISSION_MANAGED_PAGE_IDS: BranchPageId[] = BRANCH_NAV_PAGES.filter(
+  p => p.hideable,
+).map(p => p.id);
+
+export function isBranchPortalRole(role: UserRole): boolean {
+  return role === 'branch_manager' || role === 'staff';
+}
+
+export function isBranchScopedUser(user: Pick<User, 'role' | 'branchId'> | null | undefined): boolean {
+  return !!user && isBranchPortalRole(user.role) && !!user.branchId;
+}
+
+export function hasFullBranchAccess(user: Pick<User, 'role'> | null | undefined): boolean {
+  return user?.role === 'branch_manager' || user?.role === 'admin';
+}
+
+export function getManageableBranchPages(hiddenPages?: string[] | null): BranchPageId[] {
+  return filterBranchNavPages(PERMISSION_MANAGED_PAGE_IDS, hiddenPages) as BranchPageId[];
+}
+
+export function getEffectivePageAccess(
+  user: Pick<User, 'role' | 'permissions'> | null | undefined,
+  pageId: BranchPageId,
+  hiddenPages?: string[] | null,
+): PageAccessLevel {
+  if (!user) return 'none';
+  if (!isBranchPageEnabled(pageId, hiddenPages)) return 'none';
+
+  if (user.role === 'admin' || user.role === 'branch_manager') return 'write';
+
+  if (pageId === 'dashboard') {
+    return user.permissions?.dashboard ?? 'read';
+  }
+
+  if (pageId === 'settings') {
+    return 'write';
+  }
+
+  const level = user.permissions?.[pageId];
+  return level ?? 'none';
+}
+
+export function canReadPage(
+  user: Pick<User, 'role' | 'permissions'> | null | undefined,
+  pageId: BranchPageId,
+  hiddenPages?: string[] | null,
+): boolean {
+  const access = getEffectivePageAccess(user, pageId, hiddenPages);
+  return access === 'read' || access === 'write';
+}
+
+export function canWritePage(
+  user: Pick<User, 'role' | 'permissions'> | null | undefined,
+  pageId: BranchPageId,
+  hiddenPages?: string[] | null,
+): boolean {
+  return getEffectivePageAccess(user, pageId, hiddenPages) === 'write';
+}
+
+export function filterNavPagesForUser(
+  pageIds: BranchPageId[],
+  user: Pick<User, 'role' | 'permissions'> | null | undefined,
+  hiddenPages?: string[] | null,
+): BranchPageId[] {
+  return pageIds.filter(id => canReadPage(user, id, hiddenPages));
+}
+
+export function defaultStaffPermissions(): PagePermissionMap {
+  return { dashboard: 'read' };
+}
+
+export function normalizePermissionMap(
+  input: PagePermissionMap | undefined,
+  hiddenPages?: string[] | null,
+): PagePermissionMap {
+  const manageable = new Set(getManageableBranchPages(hiddenPages));
+  const result: PagePermissionMap = { dashboard: input?.dashboard ?? 'read' };
+
+  for (const pageId of manageable) {
+    const level = input?.[pageId];
+    if (level === 'read' || level === 'write') {
+      result[pageId] = level;
+    } else {
+      result[pageId] = 'none';
+    }
+  }
+
+  return result;
+}
