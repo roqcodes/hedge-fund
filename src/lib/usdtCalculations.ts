@@ -41,6 +41,36 @@ export function formatUsdtRateInput(rate: number): string {
   return String(rounded);
 }
 
+export function formatUsdtRateDisplay(rate: number): string {
+  return rate.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
+}
+
+export function computeUsdtBranchStats(
+  buys: { usdtAmount: number; aedRate: number; aedTotal: number }[],
+  sells: { usdtAmount: number; profit: number; aedTotal: number; margin?: number }[],
+) {
+  const totalBuyUsdt = buys.reduce((s, b) => s + b.usdtAmount, 0);
+  const totalBuyAed = buys.reduce((s, b) => s + b.aedTotal, 0);
+  const totalSellUsdt = sells.reduce((s, b) => s + b.usdtAmount, 0);
+  const totalSellAed = sells.reduce((s, b) => s + b.aedTotal, 0);
+  const totalProfit = sells.reduce((s, b) => s + b.profit, 0);
+  const stockUsdt = totalBuyUsdt - totalSellUsdt;
+  const avgCost = computeAverageUsdtBuyAedRate(buys);
+  const avgSellMargin =
+    sells.length > 0 ? sells.reduce((s, x) => s + (x.margin ?? 0), 0) / sells.length : null;
+
+  return {
+    stockUsdt,
+    avgCost,
+    totalBuyUsdt,
+    totalBuyAed,
+    totalSellUsdt,
+    totalSellAed,
+    totalProfit,
+    avgSellMargin,
+  };
+}
+
 export function formatUsdtDateTime(iso: string): string {
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, '0');

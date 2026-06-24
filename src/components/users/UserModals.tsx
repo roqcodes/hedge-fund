@@ -109,6 +109,7 @@ export function CreateUserModal({
           <select className={formInput} value={role} onChange={e => setRole(e.target.value)} disabled={loading}>
             <option value="admin">Superadmin</option>
             <option value="branch_manager">Branch Manager</option>
+            <option value="staff">Staff</option>
           </select>
         </div>
       )}
@@ -119,7 +120,7 @@ export function CreateUserModal({
           <p className={formHint}>Branch managers can create staff accounts only.</p>
         </div>
       )}
-      {role === 'branch_manager' && !fixedBranchId && (
+      {(role === 'branch_manager' || role === 'staff') && !fixedBranchId && (
         <div className={formGroup}>
           <label className={formLabel}>Assign to Branch</label>
           <select className={formInput} value={branchId} onChange={e => setBranchId(e.target.value)} disabled={loading}>
@@ -266,22 +267,36 @@ export function EditUserModal({
   open,
   onClose,
   onSave,
-  user
+  user,
+  isSuperAdmin = false,
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (email: string, newName: string) => Promise<void>;
-  user: { email: string; name: string };
+  onSave: (email: string, newName: string, role?: string, branchId?: string) => Promise<void>;
+  user: { email: string; name: string; role?: string; branchId?: string };
+  isSuperAdmin?: boolean;
 }) {
+  const { branches } = useApp();
   const [name, setName] = useState(user.name);
+  const [role, setRole] = useState(user.role || 'admin');
+  const [branchId, setBranchId] = useState(user.branchId || '');
   const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    setName(user.name);
+    setRole(user.role || 'admin');
+    setBranchId(user.branchId || '');
+  }, [user]);
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
+    if (isSuperAdmin && (role === 'branch_manager' || role === 'staff') && !branchId) return;
     setLoading(true);
-    await onSave(user.email, name);
+    await onSave(user.email, name, isSuperAdmin ? role : undefined, isSuperAdmin ? branchId : undefined);
     setLoading(false);
   };
+
+  const showBranchSelect = isSuperAdmin && (role === 'branch_manager' || role === 'staff');
 
   return (
     <Modal
@@ -308,6 +323,27 @@ export function EditUserModal({
         <label className={formLabel}>Full Name</label>
         <input className={formInput} value={name} onChange={e => setName(e.target.value)} disabled={loading} />
       </div>
+      {isSuperAdmin && (
+        <div className={formGroup}>
+          <label className={formLabel}>Role</label>
+          <select className={formInput} value={role} onChange={e => setRole(e.target.value)} disabled={loading}>
+            <option value="admin">Superadmin</option>
+            <option value="branch_manager">Branch Manager</option>
+            <option value="staff">Staff</option>
+          </select>
+        </div>
+      )}
+      {showBranchSelect && (
+        <div className={formGroup}>
+          <label className={formLabel}>Branch Assignment</label>
+          <select className={formInput} value={branchId} onChange={e => setBranchId(e.target.value)} disabled={loading}>
+            <option value="">-- Select a branch --</option>
+            {branches.map(b => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </Modal>
   );
 }

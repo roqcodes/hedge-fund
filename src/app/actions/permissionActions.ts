@@ -26,26 +26,56 @@ const cognitoClient = env.COGNITO_REGION
   ? new CognitoIdentityProviderClient({ region: env.COGNITO_REGION })
   : null;
 
-async function resolveBranchManagerContext(
-  branchSlug: string,
-): Promise<{ user: User; branchId: string } | { error: string }> {
-  const user = await getSessionUser(branchSlug);
-  if (!user || user.role !== 'branch_manager') {
-    return { error: 'Only branch managers can manage staff permissions.' };
-  }
-  if (!user.branchId) {
-    return { error: 'Branch manager is not assigned to a branch.' };
+type PermissionEditorContext =
+  | { user: User; branchId: string }
+  | { error: string };
+
+async function resolvePermissionEditorContext(options: {
+  branchSlug?: string;
+  branchId?: string;
+}): Promise<PermissionEditorContext> {
+  const { branchSlug, branchId } = options;
+
+  if (branchSlug) {
+    const user = await getSessionUser(branchSlug);
+    if (user?.role === 'branch_manager') {
+      if (!user.branchId) {
+        return { error: 'Branch manager is not assigned to a branch.' };
+      }
+      const branchRes = await query(`SELECT id FROM branches WHERE slug = $1 LIMIT 1`, [branchSlug]);
+      if (branchRes.rows.length === 0) {
+        return { error: 'Branch not found.' };
+      }
+      if (branchRes.rows[0].id !== user.branchId) {
+        return { error: 'Access denied for this branch.' };
+      }
+      return { user, branchId: user.branchId };
+    }
+
+    if (user?.role === 'admin') {
+      const branchRes = await query(`SELECT id FROM branches WHERE slug = $1 LIMIT 1`, [branchSlug]);
+      if (branchRes.rows.length === 0) {
+        return { error: 'Branch not found.' };
+      }
+      return { user, branchId: branchRes.rows[0].id as string };
+    }
+
+    return { error: 'Only branch managers or superadmin can manage permissions.' };
   }
 
-  const branchRes = await query(`SELECT id FROM branches WHERE slug = $1 LIMIT 1`, [branchSlug]);
-  if (branchRes.rows.length === 0) {
-    return { error: 'Branch not found.' };
-  }
-  if (branchRes.rows[0].id !== user.branchId) {
-    return { error: 'Access denied for this branch.' };
+  if (branchId) {
+    const user = await getSessionUser();
+    if (!user || user.role !== 'admin') {
+      return { error: 'Only superadmin can manage permissions by branch ID.' };
+    }
+    const branchRes = await query(`SELECT id FROM branches WHERE id = $1 LIMIT 1`, [branchId]);
+    if (branchRes.rows.length === 0) {
+      return { error: 'Branch not found.' };
+    }
+    return { user, branchId };
   }
 
-  return { user, branchId: user.branchId };
+  return { error: 'Branch context is required.' };
 }
 
 export async function fetchBranchStaffPermissionsBatchAction(
@@ -55,7 +85,7 @@ export async function fetchBranchStaffPermissionsBatchAction(
   | { success: false; error: string }
 > {
   try {
-    const ctx = await resolveBranchManagerContext(branchSlug);
+    const ctx = await resolvePermissionEditorContext({ branchSlug });
     if ('error' in ctx) return { success: false, error: ctx.error };
 
     const hiddenPages = await fetchBranchHiddenPages(ctx.branchId);
@@ -86,12 +116,64 @@ export async function fetchBranchStaffPermissionsBatchAction(
   }
 }
 
+/** Superadmin: load staff permissions for all branches at once. */
+export async function fetchAdminStaffPermissionsBatchAction(): Promise<
+  | {
+      success: true;
+      permissionsByUser: Record<string, PagePermissionMap>;
+      pagesByBranchId: Record<string, BranchPageId[]>;
+    }
+  | { success: false; error: string }
+> {
+  try {
+    const user = await getSessionUser();
+    if (!user || user.role !== 'admin') {
+      return { success: false, error: 'Only superadmin can load all staff permissions.' };
+    }
+
+    const branchesRes = await query(`SELECT id, hidden_pages FROM branches`);
+    const pagesByBranchId: Record<string, BranchPageId[]> = {};
+    for (const row of branchesRes.rows) {
+      pagesByBranchId[row.id as string] = getManageableBranchPages(row.hidden_pages as string[]);
+    }
+
+    const res = await query(
+      `SELECT user_id, branch_id, page_id, access_level FROM user_page_permissions`,
+    );
+
+    const permissionsByUser: Record<string, PagePermissionMap> = {};
+    const branchIdByUser: Record<string, string> = {};
+
+    for (const row of res.rows) {
+      const userId = row.user_id as string;
+      const branchId = row.branch_id as string;
+      branchIdByUser[userId] = branchId;
+      if (!permissionsByUser[userId]) permissionsByUser[userId] = {};
+      const level = row.access_level as PagePermissionMap[string];
+      if (level === 'read' || level === 'write' || level === 'none') {
+        permissionsByUser[userId][row.page_id] = level;
+      }
+    }
+
+    for (const userId of Object.keys(permissionsByUser)) {
+      const branchId = branchIdByUser[userId];
+      const hiddenPages = branchesRes.rows.find(r => r.id === branchId)?.hidden_pages as string[] | undefined;
+      permissionsByUser[userId] = normalizePermissionMap(permissionsByUser[userId], hiddenPages);
+    }
+
+    return { success: true, permissionsByUser, pagesByBranchId };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to load permissions.' };
+  }
+}
+
 export async function fetchStaffPermissionsAction(
-  branchSlug: string,
   targetUserId: string,
+  branchSlug?: string,
+  branchId?: string,
 ): Promise<{ success: true; data: PagePermissionMap; pages: BranchPageId[] } | { success: false; error: string }> {
   try {
-    const ctx = await resolveBranchManagerContext(branchSlug);
+    const ctx = await resolvePermissionEditorContext({ branchSlug, branchId });
     if ('error' in ctx) return { success: false, error: ctx.error };
 
     const hiddenPages = await fetchBranchHiddenPages(ctx.branchId);
@@ -108,15 +190,16 @@ export async function fetchStaffPermissionsAction(
 }
 
 export async function updateStaffPermissionsAction(
-  branchSlug: string,
   targetUserId: string,
   permissions: PagePermissionMap,
+  branchSlug?: string,
+  branchId?: string,
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
-    const ctx = await resolveBranchManagerContext(branchSlug);
+    const ctx = await resolvePermissionEditorContext({ branchSlug, branchId });
     if ('error' in ctx) return { success: false, error: ctx.error };
 
-    if (targetUserId === ctx.user.id) {
+    if (ctx.user.role === 'branch_manager' && targetUserId === ctx.user.id) {
       return { success: false, error: 'You cannot change your own permissions.' };
     }
 

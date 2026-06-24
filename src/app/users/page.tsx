@@ -13,7 +13,11 @@ export default async function UsersPage() {
 
   return (
     <div className="w-full max-w-7xl mx-auto">
-      <UsersManagement initialUsers={success && initialUsers ? initialUsers : []} error={error} />
+      <UsersManagement
+        initialUsers={success && initialUsers ? initialUsers : []}
+        error={error}
+        isSuperAdmin
+      />
     </div>
   );
 }

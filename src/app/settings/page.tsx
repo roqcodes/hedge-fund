@@ -23,7 +23,11 @@ export default async function SettingsPage() {
       </div>
 
       <div className="w-full space-y-8">
-        <UsersManagement initialUsers={success && initialUsers ? initialUsers : []} error={error} />
+        <UsersManagement
+          initialUsers={success && initialUsers ? initialUsers : []}
+          error={error}
+          isSuperAdmin
+        />
         <StaffAccountSettings />
       </div>
     </div>

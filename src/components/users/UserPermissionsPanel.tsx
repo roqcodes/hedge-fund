@@ -14,12 +14,13 @@ import PageAccessRadioGroup from './PageAccessRadioGroup';
 type Props = {
   open: boolean;
   onClose: () => void;
-  branchSlug: string;
+  branchSlug?: string;
+  branchId?: string;
   user: { email: string; name: string; userId?: string };
   onSaved?: () => void;
 };
 
-export default function UserPermissionsPanel({ open, onClose, branchSlug, user, onSaved }: Props) {
+export default function UserPermissionsPanel({ open, onClose, branchSlug, branchId, user, onSaved }: Props) {
   const [permissions, setPermissions] = useState<PagePermissionMap>({});
   const [pageIds, setPageIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,13 +28,13 @@ export default function UserPermissionsPanel({ open, onClose, branchSlug, user, 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || !user.userId) return;
+    if (!open || !user.userId || (!branchSlug && !branchId)) return;
 
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    fetchStaffPermissionsAction(branchSlug, user.userId).then(res => {
+    fetchStaffPermissionsAction(user.userId, branchSlug, branchId).then(res => {
       if (cancelled) return;
       if (res.success) {
         setPermissions(res.data);
@@ -45,13 +46,13 @@ export default function UserPermissionsPanel({ open, onClose, branchSlug, user, 
     });
 
     return () => { cancelled = true; };
-  }, [open, branchSlug, user.userId]);
+  }, [open, branchSlug, branchId, user.userId]);
 
   const handleSave = async () => {
-    if (!user.userId) return;
+    if (!user.userId || (!branchSlug && !branchId)) return;
     setSaving(true);
     setError(null);
-    const res = await updateStaffPermissionsAction(branchSlug, user.userId, permissions);
+    const res = await updateStaffPermissionsAction(user.userId, permissions, branchSlug, branchId);
     setSaving(false);
     if (res.success) {
       onSaved?.();

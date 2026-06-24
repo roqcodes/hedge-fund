@@ -14,7 +14,7 @@ import { btnPrimary, btnGhost, btnSm, pageHeader, pageTitle, pageSubtitle, table
 import { CreateUserModal, EditUserModal } from './UserModals';
 import UserPermissionsPanel from './UserPermissionsPanel';
 import StaffAccessSummary from './StaffAccessSummary';
-import { fetchBranchStaffPermissionsBatchAction } from '@/app/actions/permissionActions';
+import { fetchBranchStaffPermissionsBatchAction, fetchAdminStaffPermissionsBatchAction } from '@/app/actions/permissionActions';
 import type { BranchPageId } from '@/lib/branchPages';
 import type { PagePermissionMap } from '@/types';
 
@@ -24,6 +24,7 @@ interface UsersManagementProps {
   fixedBranchId?: string;
   branchSlug?: string;
   isBranchManager?: boolean;
+  isSuperAdmin?: boolean;
 }
 
 export default function UsersManagement({
@@ -32,6 +33,7 @@ export default function UsersManagement({
   fixedBranchId,
   branchSlug,
   isBranchManager = false,
+  isSuperAdmin = false,
 }: UsersManagementProps) {
   const { showToast, branches, user: currentUser } = useApp();
   const [users, setUsers] = useState<CognitoUser[]>(initialUsers);
@@ -41,18 +43,31 @@ export default function UsersManagement({
   const [permissionsUser, setPermissionsUser] = useState<CognitoUser | null>(null);
   const [staffPermissions, setStaffPermissions] = useState<Record<string, PagePermissionMap>>({});
   const [manageablePages, setManageablePages] = useState<BranchPageId[]>([]);
+  const [pagesByBranchId, setPagesByBranchId] = useState<Record<string, BranchPageId[]>>({});
   const [permissionsLoading, setPermissionsLoading] = useState(false);
 
   const loadStaffPermissions = React.useCallback(async () => {
-    if (!isBranchManager || !branchSlug) return;
-    setPermissionsLoading(true);
-    const res = await fetchBranchStaffPermissionsBatchAction(branchSlug);
-    if (res.success) {
-      setStaffPermissions(res.permissionsByUser);
-      setManageablePages(res.pages);
+    if (isBranchManager && branchSlug) {
+      setPermissionsLoading(true);
+      const res = await fetchBranchStaffPermissionsBatchAction(branchSlug);
+      if (res.success) {
+        setStaffPermissions(res.permissionsByUser);
+        setManageablePages(res.pages);
+      }
+      setPermissionsLoading(false);
+      return;
     }
-    setPermissionsLoading(false);
-  }, [isBranchManager, branchSlug]);
+
+    if (isSuperAdmin) {
+      setPermissionsLoading(true);
+      const res = await fetchAdminStaffPermissionsBatchAction();
+      if (res.success) {
+        setStaffPermissions(res.permissionsByUser);
+        setPagesByBranchId(res.pagesByBranchId);
+      }
+      setPermissionsLoading(false);
+    }
+  }, [isBranchManager, isSuperAdmin, branchSlug]);
 
   React.useEffect(() => {
     loadStaffPermissions();
@@ -91,12 +106,18 @@ export default function UsersManagement({
     }
   };
 
-  const handleEditUser = async (email: string, newName: string) => {
-    const res = await updateCognitoUserAttributesAction(email, newName, branchSlug);
+  const handleEditUser = async (email: string, newName: string, role?: string, branchId?: string) => {
+    const res = await updateCognitoUserAttributesAction(email, newName, branchSlug, role, branchId);
     if (res.success) {
-      setUsers(prev => prev.map(u => u.email === email ? { ...u, name: newName } : u));
+      setUsers(prev => prev.map(u => u.email === email ? {
+        ...u,
+        name: newName,
+        ...(role !== undefined ? { role } : {}),
+        ...(branchId !== undefined ? { branchId: branchId || undefined } : {}),
+      } : u));
       showToast('User updated successfully.');
       setEditingUser(null);
+      await loadStaffPermissions();
     } else {
       showToast(res.error || 'Failed to update user', 'error');
     }
@@ -148,8 +169,15 @@ export default function UsersManagement({
     return result;
   }, [visibleUsers, searchTerm, sortField, sortDirection, branches]);
 
-  const canManagePermissions = isBranchManager && !!branchSlug;
+  const canManagePermissions = (isBranchManager && !!branchSlug) || isSuperAdmin;
   const tableColCount = fixedBranchId ? 5 : 6;
+
+  const getPagesForUser = (u: CognitoUser): BranchPageId[] => {
+    if (isSuperAdmin && u.branchId) {
+      return pagesByBranchId[u.branchId] ?? [];
+    }
+    return manageablePages;
+  };
 
   return (
     <>
@@ -167,7 +195,9 @@ export default function UsersManagement({
             <p className={pageSubtitle}>
               {isBranchManager
                 ? 'Create staff accounts and control page-level access for your branch.'
-                : 'Manage platform users, roles, and branch assignments.'}
+                : isSuperAdmin
+                  ? 'Manage all users, roles, branch assignments, and staff page access across the platform.'
+                  : 'Manage platform users, roles, and branch assignments.'}
             </p>
           </div>
           <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowCreate(true)}>
@@ -243,7 +273,7 @@ export default function UsersManagement({
                         </td>
                         <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
                           <div className="flex flex-wrap items-center gap-2">
-                            {canManagePermissions && u.role === 'staff' && (
+                            {canManagePermissions && u.role === 'staff' && u.branchId && (
                               <button
                                 onClick={() => setPermissionsUser(u)}
                                 className={`${btnGhost} ${btnSm} text-accent`}
@@ -262,7 +292,7 @@ export default function UsersManagement({
                           </div>
                         </td>
                       </tr>
-                      {canManagePermissions && u.role === 'staff' && (
+                      {canManagePermissions && u.role === 'staff' && u.branchId && (
                         <tr>
                           <td
                             colSpan={tableColCount}
@@ -270,11 +300,11 @@ export default function UsersManagement({
                           >
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
                               <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-0.5">
-                                Page access
+                                Page access · {getBranchName(u.branchId)}
                               </span>
                               <StaffAccessSummary
                                 permissions={u.userId ? staffPermissions[u.userId] : undefined}
-                                pages={manageablePages}
+                                pages={getPagesForUser(u)}
                                 loading={permissionsLoading}
                               />
                             </div>
@@ -294,18 +324,20 @@ export default function UsersManagement({
                       <span className={badgeClass(u.role === 'admin' ? 'active' : 'pending')}>{u.role.replace('_', ' ')}</span>
                     </div>
                     <p className="text-xs text-slate-500">{u.email}</p>
-                    {canManagePermissions && u.role === 'staff' && (
+                    {canManagePermissions && u.role === 'staff' && u.branchId && (
                       <div className="border-t border-slate-50 pt-3">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Page access</p>
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Page access · {getBranchName(u.branchId)}
+                        </p>
                         <StaffAccessSummary
                           permissions={u.userId ? staffPermissions[u.userId] : undefined}
-                          pages={manageablePages}
+                          pages={getPagesForUser(u)}
                           loading={permissionsLoading}
                         />
                       </div>
                     )}
                     <div className="flex items-center justify-end gap-3">
-                      {canManagePermissions && u.role === 'staff' && (
+                      {canManagePermissions && u.role === 'staff' && u.branchId && (
                         <button onClick={() => setPermissionsUser(u)} className="text-xs font-bold text-accent">Access</button>
                       )}
                       <button onClick={() => setEditingUser(u)} className="text-xs font-bold text-slate-600">Edit</button>
@@ -334,14 +366,16 @@ export default function UsersManagement({
           onClose={() => setEditingUser(null)}
           onSave={handleEditUser}
           user={editingUser}
+          isSuperAdmin={isSuperAdmin}
         />
       )}
 
-      {permissionsUser && branchSlug && (
+      {permissionsUser && permissionsUser.branchId && (
         <UserPermissionsPanel
           open={!!permissionsUser}
           onClose={() => setPermissionsUser(null)}
           branchSlug={branchSlug}
+          branchId={permissionsUser.branchId}
           user={{
             email: permissionsUser.email,
             name: permissionsUser.name,

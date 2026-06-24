@@ -8,13 +8,14 @@ import { formatDateTime, formatMoneyValue } from '@/data/mockData';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
 import DateFilterBar from '@/components/ui/DateFilterBar';
-import PhysicalSplitKPICard, { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
+import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
 import UsdtEnteredBy from './UsdtEnteredBy';
 import CustomerLink from '@/components/customers/CustomerLink';
 import USDTBuyModal from './USDTBuyModal';
 import USDTSellModal from './USDTSellModal';
 import USDTSettingsModal from './USDTSettingsModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
+import { computeUsdtBranchStats, formatUsdtRateDisplay } from '@/lib/usdtCalculations';
 import { txnTh, txnThSortable } from '@/lib/transactionTableStyles';
 import {
   btnPrimary,
@@ -165,15 +166,14 @@ export default function USDTPage() {
   const sortedBuys = useMemo(() => sortRows(filterRows(filteredBuys)), [filteredBuys, searchTerm, sortField, sortDir]);
   const sortedSells = useMemo(() => sortRows(filterRows(filteredSells)), [filteredSells, searchTerm, sortField, sortDir]);
 
+  const stats = useMemo(
+    () => computeUsdtBranchStats(filteredBuys, filteredSells),
+    [filteredBuys, filteredSells],
+  );
+
   const fmtAed = (n: number) => formatMoneyValue(n, activeCurrency);
   const fmtUsdt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 });
   const fmtRate = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
-
-  const totalBuyUsdt = filteredBuys.reduce((s, b) => s + b.usdtAmount, 0);
-  const totalBuyAed = filteredBuys.reduce((s, b) => s + b.aedTotal, 0);
-  const totalSellUsdt = filteredSells.reduce((s, b) => s + b.usdtAmount, 0);
-  const totalSellAed = filteredSells.reduce((s, b) => s + b.aedTotal, 0);
-  const totalProfit = filteredSells.reduce((s, b) => s + b.profit, 0);
 
   if (!branchId) return <div className="p-8 text-center text-red-500">Branch not found.</div>;
 
@@ -258,35 +258,57 @@ export default function USDTPage() {
           setCustomEndDate={setCustomEndDate}
         />
 
-        <div className={`${kpiGrid} mb-6`}>
+        <div className={`${kpiGrid} mb-6 grid-cols-2 md:grid-cols-4`}>
           <PhysicalSplitKPICard
-            top={{ label: 'Total Bought USDT', value: fmtUsdt(totalBuyUsdt) }}
-            bottom={{ label: 'Total Buy AED', value: fmtAed(totalBuyAed) }}
-            icon={<span aria-hidden>💵</span>}
-            color="#059669"
-            bgColor="rgba(5,150,105,0.1)"
+            top={{ label: 'Stock USDT', value: fmtUsdt(stats.stockUsdt) }}
+            bottom={{
+              label: 'Avg Cost',
+              value: stats.avgCost != null ? formatUsdtRateDisplay(stats.avgCost) : '—',
+            }}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7h-9M14 17H5M17 17V7M7 7v10" />
+              </svg>
+            }
+            color="#f59e0b"
+            bgColor="#fef3c7"
           />
           <PhysicalSplitKPICard
-            top={{ label: 'Total Sold USDT', value: fmtUsdt(totalSellUsdt) }}
-            bottom={{ label: 'Total Sell AED', value: fmtAed(totalSellAed) }}
-            icon={<span aria-hidden>📤</span>}
-            color="#2563eb"
-            bgColor="rgba(37,99,235,0.1)"
+            top={{ label: 'Total Buy', value: fmtUsdt(stats.totalBuyUsdt) }}
+            bottom={{ label: 'Buy AED', value: fmtAed(stats.totalBuyAed) }}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+              </svg>
+            }
+            color="var(--accent)"
+            bgColor="var(--accent-light)"
           />
-          <PhysicalSingleKPICard
-            label="Total Profit"
-            value={fmtAed(totalProfit)}
-            icon={<span aria-hidden>📈</span>}
-            color="#059669"
-            bgColor="rgba(5,150,105,0.1)"
-            valueClassName={totalProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}
+          <PhysicalSplitKPICard
+            top={{ label: 'Total Sell', value: fmtUsdt(stats.totalSellUsdt) }}
+            bottom={{ label: 'Sell AED', value: fmtAed(stats.totalSellAed) }}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+              </svg>
+            }
+            color="#6366f1"
+            bgColor="#eef2ff"
           />
-          <PhysicalSingleKPICard
-            label="Preset Margin"
-            value={presetMargin.toFixed(4)}
-            icon={<span aria-hidden>⚙️</span>}
-            color="#64748b"
-            bgColor="rgba(100,116,139,0.1)"
+          <PhysicalSplitKPICard
+            top={{ label: 'Profit Margin', value: fmtAed(stats.totalProfit) }}
+            bottom={{
+              label: 'Avg Margin',
+              value: stats.avgSellMargin != null ? formatUsdtRateDisplay(stats.avgSellMargin) : '—',
+            }}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            color="var(--profit)"
+            bgColor="var(--profit-light)"
+            bottomValueClassName={stats.totalProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}
           />
         </div>
 

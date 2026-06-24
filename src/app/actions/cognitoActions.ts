@@ -186,6 +186,8 @@ export async function updateCognitoUserAttributesAction(
   email: string,
   name: string,
   branchSlug?: string,
+  role?: string,
+  branchId?: string,
 ) {
   const access = await requireUserManagementAccess(branchSlug);
   if ('error' in access && access.error) {
@@ -196,15 +198,49 @@ export async function updateCognitoUserAttributesAction(
     return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
   }
 
+  const isAdmin = access.user?.role === 'admin';
+
+  if (!isAdmin && (role !== undefined || branchId !== undefined)) {
+    return { success: false, error: 'Only superadmin can change role or branch assignment.' };
+  }
+
+  if (isAdmin && role === 'admin' && branchId) {
+    return { success: false, error: 'Superadmin accounts cannot be assigned to a branch.' };
+  }
+
+  if (isAdmin && (role === 'branch_manager' || role === 'staff') && !branchId) {
+    return { success: false, error: 'Branch managers and staff must be assigned to a branch.' };
+  }
+
   try {
+    const attributes: { Name: string; Value: string }[] = [{ Name: 'name', Value: name }];
+
+    if (isAdmin && role) {
+      attributes.push({ Name: 'custom:role', Value: role });
+    }
+
+    if (isAdmin) {
+      if (role === 'admin') {
+        attributes.push({ Name: 'custom:branchId', Value: '' });
+      } else if (branchId) {
+        attributes.push({ Name: 'custom:branchId', Value: branchId });
+      }
+    }
+
     const updateCommand = new AdminUpdateUserAttributesCommand({
       UserPoolId: env.COGNITO_USER_POOL_ID,
       Username: email,
-      UserAttributes: [
-        { Name: 'name', Value: name }
-      ],
+      UserAttributes: attributes,
     });
     await cognitoClient.send(updateCommand);
+
+    if (isAdmin && role === 'staff' && branchId) {
+      const userId = await lookupCognitoUserIdByEmail(email);
+      if (userId) {
+        await seedDefaultStaffPermissions(userId, branchId, access.user!.email);
+      }
+    }
+
     return { success: true };
   } catch (error: unknown) {
     console.error('Error updating Cognito user attributes:', error);
