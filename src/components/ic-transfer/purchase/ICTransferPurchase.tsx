@@ -6,15 +6,16 @@ import { IC_TRANSFER_CITIES } from '@/lib/icTransfer/nav';
 import { useApp } from '@/context/AppContext';
 import {
   AddButton,
-  CityMatrix,
   DataTableSection,
   ExportButtons,
   FilterChips,
   PageHeader,
   PageShell,
-  SummaryPanel,
+  SectionCard,
   useICTransferFilters,
 } from '../ui';
+import { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
+import { kpiGrid } from '@/lib/ui';
 import AddPurchaseModal from './AddPurchaseModal';
 import ViewPurchaseModal from './ViewPurchaseModal';
 import { ICPurchase } from '@/types';
@@ -64,31 +65,22 @@ export default function ICTransferPurchase() {
   };
 
   const { purchaseColumns, matrixRows } = React.useMemo(() => {
-    const supplierCols = icSuppliers.length > 0 ? icSuppliers : [];
-    const colLabels = supplierCols.length > 0 ? supplierCols.map(s => s.name) : ['Total'];
-    const numCols = Math.max(supplierCols.length, 1);
-
-    const initArray = () => new Array(numCols).fill(0);
-
-    const purchaseVol = initArray();
-    const purchaseRates = initArray();
-    const dueVol = initArray();
-    const dueRates = initArray();
-
-    icPurchases.forEach(p => {
-      const idx = supplierCols.findIndex(s => s.id === p.supplierId);
-      const colIdx = idx >= 0 ? idx : 0;
-      purchaseVol[colIdx] += p.units;
-      purchaseRates[colIdx] = p.unitRate; // simplify to latest rate
-      dueVol[colIdx] += 0; // proxy
-      dueRates[colIdx] = 0; // proxy
+    const columns = ['Purchase Vol', 'Purchase Rate', 'Due Vol', 'Due Rate'];
+    const mRows = icSuppliers.map(s => {
+       const supplierPurchases = icPurchases.filter(p => p.supplierId === s.id);
+       const vol = supplierPurchases.reduce((acc, p) => acc + p.units, 0);
+       const rate = supplierPurchases.length > 0 ? supplierPurchases[0].unitRate : 0;
+       return {
+         label: s.name,
+         metrics: [
+           { label: 'Purchase Vol', value: vol },
+           { label: 'Purchase Rate', value: rate.toLocaleString() },
+           { label: 'Due Vol', value: 0 },
+           { label: 'Due Rate', value: 0 },
+         ]
+       };
     });
-
-    const mRows = [
-      { label: 'Purchase', vol: purchaseVol, rates: purchaseRates },
-      { label: 'Due', vol: dueVol, rates: dueRates },
-    ];
-    return { purchaseColumns: colLabels, matrixRows: mRows };
+    return { purchaseColumns: columns, matrixRows: mRows };
   }, [icSuppliers, icPurchases]);
 
   return (
@@ -97,20 +89,6 @@ export default function ICTransferPurchase() {
         title="Purchase"
         subtitle="Track purchase orders across suppliers"
         actions={<AddButton label="Add Purchase" onClick={() => setModalOpen(true)} />}
-      />
-
-      <SummaryPanel
-        matrix={
-          <CityMatrix
-            columns={purchaseColumns}
-            rows={matrixRows}
-          />
-        }
-        balances={[
-          { label: 'Opening', value: fmt(0), tone: 'blue' },
-          { label: 'Paid', value: fmt(0), tone: 'green' },
-          { label: 'Closing', value: fmt(0), tone: 'orange' },
-        ]}
       />
 
       <DateFilterBar
@@ -127,6 +105,23 @@ export default function ICTransferPurchase() {
         value={cityFilter}
         onChange={setCityFilter}
       />
+
+      <div className={kpiGrid}>
+        <PhysicalSingleKPICard label="Opening Balance" value={fmt(0)} color="var(--info)" bgColor="var(--info-light)" icon={<></>} />
+        <PhysicalSingleKPICard label="Paid" value={fmt(0)} color="var(--success)" bgColor="var(--success-light)" icon={<></>} />
+        <PhysicalSingleKPICard label="Closing Balance" value={fmt(0)} color="var(--warning)" bgColor="var(--warning-light)" icon={<></>} />
+      </div>
+
+      <div className="mb-5">
+        <DataTableSection
+          title="Purchase Matrix"
+          columns={['Supplier', ...purchaseColumns]}
+          data={matrixRows.map(r => [
+            r.label,
+            ...r.metrics.map(m => typeof m.value === 'number' ? m.value.toLocaleString() : m.value)
+          ])}
+        />
+      </div>
 
       <DataTableSection
         title="All Purchases"

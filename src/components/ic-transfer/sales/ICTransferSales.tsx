@@ -4,19 +4,20 @@ import React, { useState } from 'react';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { useApp } from '@/context/AppContext';
 import {
-  CityMatrix,
   DataTableSection,
   ExportButtons,
   FilterChips,
   PageHeader,
   PageShell,
-  SummaryPanel,
   useICTransferFilters,
   AddButton,
+  SectionCard,
 } from '../ui';
 import AddSaleModal from './AddSaleModal';
 import ViewSaleModal from './ViewSaleModal';
 import { ICSale } from '@/types';
+import { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
+import { kpiGrid } from '@/lib/ui';
 
 const icCompactTd = (align: 'left'|'center'|'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
@@ -61,32 +62,21 @@ export default function ICTransferSales() {
   };
 
   const { salesColumns, matrixRows } = React.useMemo(() => {
-    const regionCols = icRegions.length > 0 ? icRegions : [];
-    const colLabels = regionCols.length > 0 ? regionCols.map(r => r.name) : ['Total'];
-    const numCols = Math.max(regionCols.length, 1);
-
-    const initArray = () => new Array(numCols).fill(0);
-
-    const salesVol = initArray();
-    const salesRates = initArray();
-    const statuses = new Array(numCols).fill('Processing');
-
-    icSales.forEach(s => {
-      const idx = regionCols.findIndex(r => r.id === s.locationId);
-      const colIdx = idx >= 0 ? idx : 0;
-      salesVol[colIdx] += s.units;
-      salesRates[colIdx] = s.unitRate; // simplify to latest rate
+    const columns = ['Sales Vol', 'Sales Rate', 'Status'];
+    const mRows = icRegions.map(r => {
+      const regionSales = icSales.filter(s => s.locationId === r.id);
+      const vol = regionSales.reduce((acc, s) => acc + s.units, 0);
+      const rate = regionSales.length > 0 ? regionSales[0].unitRate : 0;
+      return {
+        label: r.name,
+        metrics: [
+          { label: 'Sales Vol', value: vol },
+          { label: 'Sales Rate', value: rate.toLocaleString() },
+          { label: 'Status', value: 'Processing' },
+        ]
+      };
     });
-
-    const mRows = [
-      {
-        label: 'Sales',
-        vol: salesVol,
-        rates: salesRates,
-        statuses: statuses as readonly string[],
-      },
-    ];
-    return { salesColumns: colLabels, matrixRows: mRows };
+    return { salesColumns: columns, matrixRows: mRows };
   }, [icRegions, icSales]);
 
   return (
@@ -95,19 +85,6 @@ export default function ICTransferSales() {
         title="Sales"
         subtitle="Customer sale orders and settlement status"
         actions={<AddButton label="Add Sale" onClick={() => setModalOpen(true)} />}
-      />
-
-      <SummaryPanel
-        matrix={
-          <CityMatrix
-            columns={salesColumns}
-            rows={matrixRows}
-          />
-        }
-        balances={[
-          { label: 'Opening', value: fmt(0), tone: 'blue' },
-          { label: 'Closing', value: fmt(0), tone: 'green' },
-        ]}
       />
 
       <DateFilterBar
@@ -124,6 +101,22 @@ export default function ICTransferSales() {
         value={location}
         onChange={setLocation}
       />
+
+      <div className={kpiGrid}>
+        <PhysicalSingleKPICard label="Opening Balance" value={fmt(0)} color="var(--info)" bgColor="var(--info-light)" icon={<></>} />
+        <PhysicalSingleKPICard label="Closing Balance" value={fmt(0)} color="var(--success)" bgColor="var(--success-light)" icon={<></>} />
+      </div>
+
+      <div className="mb-5">
+        <DataTableSection
+          title="Sales Matrix"
+          columns={['Customer', ...salesColumns]}
+          data={matrixRows.map(r => [
+            r.label,
+            ...r.metrics.map(m => typeof m.value === 'number' ? m.value.toLocaleString() : m.value)
+          ])}
+        />
+      </div>
 
       <DataTableSection
         title="All Sales"
