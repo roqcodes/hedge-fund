@@ -60,18 +60,30 @@ export function resolveDailyCloseContext(
   dayCloses: BranchDayClose[],
   today: string,
 ): DailyCloseContext {
-  const yesterday = addCalendarDays(today, -1);
-  const yesterdayRecord = dayCloses.find(d => d.businessDate === yesterday);
-  const yesterdayOpen = !yesterdayRecord || yesterdayRecord.status === 'open';
-  const workingDate = yesterdayOpen ? yesterday : today;
+  const sorted = [...dayCloses].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
+  const lastClosed = [...sorted].reverse().find(d => d.status === 'closed');
+  
+  let workingDate: string;
+  if (lastClosed) {
+    workingDate = addCalendarDays(lastClosed.businessDate, 1);
+  } else if (sorted.length > 0) {
+    workingDate = sorted[0].businessDate;
+  } else {
+    workingDate = today;
+  }
+
+  if (workingDate > today) {
+    workingDate = today;
+  }
+
   const workingRecord = dayCloses.find(d => d.businessDate === workingDate);
-  const todayDue = yesterdayOpen && today !== yesterday;
+  const todayDue = workingDate < today;
 
   return {
     workingDate,
     todayDate: today,
-    yesterdayDate: yesterday,
-    yesterdayOpen,
+    yesterdayDate: workingDate,
+    yesterdayOpen: todayDue,
     todayDue,
     isWorkingDayClosed: workingRecord?.status === 'closed',
   };

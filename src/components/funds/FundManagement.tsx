@@ -892,7 +892,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                     <tr>
                       <th className={`${txnThSortable}`} onClick={() => handleSort('date')}>
                         <div className="flex items-center gap-1">
-                          Date &amp; Time <SortIcon field="date" />
+                          Business Date <SortIcon field="date" />
                         </div>
                       </th>
                       <th className={txnThSortable} onClick={() => handleSort('from')}>
@@ -933,9 +933,9 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                     {filteredAndSortedTxns.map((t: Transaction) => (
                       <tr key={t.id} data-interactive-row>
                         <td className={`w-[108px] whitespace-normal border-y border-l border-black/5 bg-white px-2 py-2.5 text-[11px] leading-tight text-slate-600 first:rounded-l-2xl`}>
-                          {formatTxnDateTime(t.date).split(',').map((part, i) => (
-                             <div key={i} className={i === 0 ? "font-semibold text-slate-900" : "mt-0.5"}>{part.trim()}</div>
-                          ))}
+                          <div className="font-semibold text-slate-900">
+                            {t.businessDate ? new Date(`${t.businessDate}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : formatTxnDateTime(t.date).split(',')[0]}
+                          </div>
                         </td>
                         <td className={txnTdFromTo}>{t.from}</td>
                         <td className={txnTdFromTo}>{t.to}</td>
@@ -974,6 +974,9 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
                         </td>
                         <td className={`${txnTdBy}${!(isBranchView && branches.length === 1) ? ' last:rounded-r-2xl border-r' : ''}`} data-txn-by-cell>
                           <TransactionEnteredByAvatar transaction={t} />
+                          <div className="mt-1 text-[9px] text-slate-400 whitespace-nowrap">
+                            {formatTxnDateTime(t.date)}
+                          </div>
                         </td>
                         {isBranchView && branches.length === 1 && (
                           <td className="border-y border-r border-black/5 bg-white px-2 py-2 last:rounded-r-2xl">
