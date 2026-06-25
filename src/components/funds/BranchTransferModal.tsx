@@ -175,7 +175,7 @@ export function BranchTransferModal({
       return;
     }
 
-    const calendarDate = activeBusinessDate ?? todayInTimeZone(branchTimezone);
+    const calendarDate = todayInTimeZone(branchTimezone);
     const txnDate = composeBranchInstant(calendarDate, time, branchTimezone);
 
     setIsSubmitting(true);

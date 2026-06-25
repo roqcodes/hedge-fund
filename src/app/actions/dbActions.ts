@@ -5,7 +5,7 @@ import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
 import type { BranchPageId } from '@/lib/branchPages';
 import { isBranchScopedUser } from '@/lib/rbac';
 import { query, pool } from '@/lib/db';
-import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate } from '@/lib/businessTime';
+import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate, parseCalendarDate } from '@/lib/businessTime';
 import {
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES,
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN,
@@ -164,8 +164,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255);`);
     await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_name VARCHAR(255);`);
     await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);`);
-    await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES);
-    await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN);
+    // Auto-backfill is removed because it was overwriting manually corrected data on every reload.
     await query(SQL_ENSURE_USDT_SCHEMA);
 
     // 1. Fetch HQ Balance
@@ -234,7 +233,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         notes: r.notes,
         category: r.category || undefined,
         branchId: r.branch_id || undefined,
-        businessDate: toBusinessDate(isoDate, branchTz),
+        businessDate: r.business_date ? parseCalendarDate(r.business_date) : toBusinessDate(isoDate, branchTz),
         enteredByUsername: r.entered_by ? String(r.entered_by) : undefined,
         enteredByName: r.entered_by_name ? String(r.entered_by_name) : undefined,
         tags: linked.map(t => t.name),

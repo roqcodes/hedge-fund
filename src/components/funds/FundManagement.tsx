@@ -1199,7 +1199,7 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
           onClose={() => setShowTransfer(false)}
           targetBranchId={branchId}
           activeBusinessDate={
-            isBeta && betaPage.permissions.canPostEntries && betaPage.session
+            isBeta && betaPage.session && !betaPage.session.isWorkingDayClosed
               ? betaPage.session.workingDate
               : undefined
           }

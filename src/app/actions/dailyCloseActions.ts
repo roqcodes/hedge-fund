@@ -9,7 +9,7 @@ import {
   parseDayCloseRow,
   resolveDailyCloseContext,
 } from '@/lib/dailyClose';
-import { resolveBranchTimeZone, todayInTimeZone, toBusinessDate } from '@/lib/businessTime';
+import { resolveBranchTimeZone, todayInTimeZone, toBusinessDate, parseCalendarDate } from '@/lib/businessTime';
 import {
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES,
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN,
@@ -54,8 +54,7 @@ async function ensureDayCloseSchema() {
 }
 
 async function backfillTransactionBusinessDates() {
-  await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES);
-  await query(SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN);
+  // Auto-backfill is removed because it was overwriting manually corrected data on every reload.
 }
 
 function mapBranchRow(r: Record<string, unknown>): Branch {
@@ -94,7 +93,7 @@ function mapTxnRow(r: Record<string, unknown>, branchTimezone?: string): Transac
     notes: String(r.notes || ''),
     category: r.category ? String(r.category) : undefined,
     branchId: r.branch_id ? String(r.branch_id) : undefined,
-    businessDate: toBusinessDate(iso, tz),
+    businessDate: r.business_date ? parseCalendarDate(r.business_date) : toBusinessDate(iso, tz),
   } as Transaction;
 }
 
