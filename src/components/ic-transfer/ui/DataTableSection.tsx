@@ -9,6 +9,7 @@ import SearchInput from './SearchInput';
 type Props = {
   title: string;
   columns: string[];
+  data?: any[][];
   searchValue?: string;
   onSearchChange?: (value: string) => void;
   searchPlaceholder?: string;
@@ -21,6 +22,7 @@ type Props = {
 export default function DataTableSection({
   title,
   columns,
+  data,
   searchValue,
   onSearchChange,
   searchPlaceholder,
@@ -61,13 +63,24 @@ export default function DataTableSection({
               </tr>
             </thead>
             <tbody>
-              {children || (
+              {children || (data && data.length > 0 ? (
+                data.map((row, i) => (
+                  <tr key={i} data-interactive-row>
+                    <td className={`${icRowLabelClass} first:rounded-l-2xl`}>{row[0]}</td>
+                    {row.slice(1).map((cell, j) => (
+                      <td key={j} className="border-y border-black/5 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 sm:px-4">
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td colSpan={columns.length} className="py-12 text-center text-sm text-slate-400 sm:py-16">
                     {emptyMessage}
                   </td>
                 </tr>
-              )}
+              ))}
             </tbody>
           </table>
         </div>

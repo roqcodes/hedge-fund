@@ -14,6 +14,16 @@ import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
 import { mapPhysicalBuyRow, mapPhysicalSellRow } from '@/lib/physicalMappers';
 import { mapUsdtBuyRow, mapUsdtSellRow, mapUsdtSettingsRow } from '@/lib/usdtMappers';
+import {
+  mapICRegionRow,
+  mapICSupplierRow,
+  mapICWarehouseRow,
+  mapICRatesRow,
+  mapICPurchaseRow,
+  mapICSaleRow,
+  mapICWarehouseTransactionRow,
+} from '@/lib/icTransferMappers';
+
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
 import { validateJournalEntry } from '@/lib/journalEntry';
 import {
@@ -33,6 +43,13 @@ import {
   UsdtBranchSettings,
   UsdtBuy,
   UsdtSell,
+  ICRegion,
+  ICSupplier,
+  ICWarehouse,
+  ICRates,
+  ICPurchase,
+  ICSale,
+  ICWarehouseTransaction,
 } from '@/types';
 import {
   addBranchSchema,
@@ -97,6 +114,13 @@ export interface InitialDataPayload {
   usdtBuys: UsdtBuy[];
   usdtSells: UsdtSell[];
   usdtSettings: UsdtBranchSettings[];
+  icRegions: ICRegion[];
+  icSuppliers: ICSupplier[];
+  icWarehouses: ICWarehouse[];
+  icRates: ICRates[];
+  icPurchases: ICPurchase[];
+  icSales: ICSale[];
+  icWarehouseTransactions: ICWarehouseTransaction[];
 }
 
 type DbGuardFail = { success: false; error: string };
@@ -519,6 +543,23 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const usdtSettingsRes = await query('SELECT * FROM usdt_branch_settings');
     const usdtSettings = usdtSettingsRes.rows.map(r => mapUsdtSettingsRow(r));
 
+    // Fetch IC Transfer Data
+    const icRegionsRes = await query('SELECT * FROM ic_regions');
+    const icRegions = icRegionsRes.rows.map(r => mapICRegionRow(r));
+    const icSuppliersRes = await query('SELECT * FROM ic_suppliers');
+    const icSuppliers = icSuppliersRes.rows.map(r => mapICSupplierRow(r));
+    const icWarehousesRes = await query('SELECT * FROM ic_warehouses');
+    const icWarehouses = icWarehousesRes.rows.map(r => mapICWarehouseRow(r));
+    const icRatesRes = await query('SELECT * FROM ic_rates');
+    const icRates = icRatesRes.rows.map(r => mapICRatesRow(r));
+    const icPurchasesRes = await query('SELECT * FROM ic_purchases ORDER BY created_at DESC');
+    const icPurchases = icPurchasesRes.rows.map(r => mapICPurchaseRow(r));
+    const icSalesRes = await query('SELECT * FROM ic_sales ORDER BY created_at DESC');
+    const icSales = icSalesRes.rows.map(r => mapICSaleRow(r));
+    const icWarehouseTxRes = await query('SELECT * FROM ic_warehouse_transactions ORDER BY created_at DESC');
+    const icWarehouseTransactions = icWarehouseTxRes.rows.map(r => mapICWarehouseTransactionRow(r));
+
+
     let finalBranches = branches;
     let finalTransactions = transactions;
     let finalExpenses = expenses;
@@ -582,6 +623,13 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         usdtBuys: finalUsdtBuys,
         usdtSells: finalUsdtSells,
         usdtSettings: finalUsdtSettings,
+        icRegions,
+        icSuppliers,
+        icWarehouses,
+        icRates,
+        icPurchases,
+        icSales,
+        icWarehouseTransactions,
       },
     };
   } catch (error: unknown) {

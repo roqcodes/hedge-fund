@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import DateFilterBar from '@/components/ui/DateFilterBar';
-import { IC_BALANCE, IC_CITY_SUMMARY, IC_PURCHASE_COLUMNS } from '@/lib/icTransfer/mockData';
 import { IC_TRANSFER_CITIES } from '@/lib/icTransfer/nav';
+import { useApp } from '@/context/AppContext';
 import {
   AddButton,
   CityMatrix,
@@ -16,12 +16,23 @@ import {
   useICTransferFilters,
 } from '../ui';
 import AddPurchaseModal from './AddPurchaseModal';
+import ViewPurchaseModal from './ViewPurchaseModal';
+import { ICPurchase } from '@/types';
+
+const icCompactTd = (align: 'left'|'center'|'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
 const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDigits: 2 })}`;
 
+const PURCHASE_COLUMNS = [
+  'Date', 'ID', 'Supplier', 'Location', 'Units', 'Total AED', 'Status', 'Actions'
+];
+
 export default function ICTransferPurchase() {
-  const [cityFilter, setCityFilter] = useState('Delhi');
+  const { icPurchases, icSuppliers, icWarehouses, icRegions, updateICPurchase } = useApp();
+  const [cityFilter, setCityFilter] = useState('All');
   const [modalOpen, setModalOpen] = useState(false);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [selectedPurchase, setSelectedPurchase] = useState<ICPurchase | null>(null);
   const [search, setSearch] = useState('');
   const {
     dateFilter,
@@ -32,27 +43,73 @@ export default function ICTransferPurchase() {
     setCustomEndDate,
   } = useICTransferFilters();
 
+  const getSupplierName = (id: string) => icSuppliers.find(s => s.id === id)?.name || id;
+  const getWarehouseName = (id: string) => icWarehouses.find(w => w.id === id)?.name || id;
+  const getLocationName = (id: string) => icRegions.find(r => r.id === id)?.name || id;
+
+  const filteredPurchases = icPurchases.filter(p => {
+    if (search && !p.id.toLowerCase().includes(search.toLowerCase()) && !getSupplierName(p.supplierId || '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (cityFilter !== 'All' && getLocationName(p.locationId || '') !== cityFilter) return false;
+    return true;
+  });
+
+  const handleEdit = (p: ICPurchase) => {
+    setSelectedPurchase(p);
+    setModalOpen(true);
+  };
+
+  const handleView = (p: ICPurchase) => {
+    setSelectedPurchase(p);
+    setViewModalOpen(true);
+  };
+
+  const { purchaseColumns, matrixRows } = React.useMemo(() => {
+    const supplierCols = icSuppliers.length > 0 ? icSuppliers : [];
+    const colLabels = supplierCols.length > 0 ? supplierCols.map(s => s.name) : ['Total'];
+    const numCols = Math.max(supplierCols.length, 1);
+
+    const initArray = () => new Array(numCols).fill(0);
+
+    const purchaseVol = initArray();
+    const purchaseRates = initArray();
+    const dueVol = initArray();
+    const dueRates = initArray();
+
+    icPurchases.forEach(p => {
+      const idx = supplierCols.findIndex(s => s.id === p.supplierId);
+      const colIdx = idx >= 0 ? idx : 0;
+      purchaseVol[colIdx] += p.units;
+      purchaseRates[colIdx] = p.unitRate; // simplify to latest rate
+      dueVol[colIdx] += 0; // proxy
+      dueRates[colIdx] = 0; // proxy
+    });
+
+    const mRows = [
+      { label: 'Purchase', vol: purchaseVol, rates: purchaseRates },
+      { label: 'Due', vol: dueVol, rates: dueRates },
+    ];
+    return { purchaseColumns: colLabels, matrixRows: mRows };
+  }, [icSuppliers, icPurchases]);
+
   return (
     <PageShell>
       <PageHeader
         title="Purchase"
-        subtitle="Track purchase orders across cities"
+        subtitle="Track purchase orders across suppliers"
         actions={<AddButton label="Add Purchase" onClick={() => setModalOpen(true)} />}
       />
 
       <SummaryPanel
         matrix={
           <CityMatrix
-            rows={[
-              { label: 'Purchase', vol: IC_CITY_SUMMARY.purchase.vol, rates: IC_CITY_SUMMARY.purchase.rates },
-              { label: 'Due', vol: IC_CITY_SUMMARY.due.vol, rates: IC_CITY_SUMMARY.due.rates },
-            ]}
+            columns={purchaseColumns}
+            rows={matrixRows}
           />
         }
         balances={[
-          { label: 'Opening', value: fmt(IC_BALANCE), tone: 'blue' },
-          { label: 'Paid', value: fmt(IC_BALANCE), tone: 'green' },
-          { label: 'Closing', value: fmt(IC_BALANCE), tone: 'orange' },
+          { label: 'Opening', value: fmt(0), tone: 'blue' },
+          { label: 'Paid', value: fmt(0), tone: 'green' },
+          { label: 'Closing', value: fmt(0), tone: 'orange' },
         ]}
       />
 
@@ -66,21 +123,73 @@ export default function ICTransferPurchase() {
       />
 
       <FilterChips
-        options={[...IC_TRANSFER_CITIES]}
+        options={['All', ...icRegions.map(r => r.name)]}
         value={cityFilter}
         onChange={setCityFilter}
-        trailing={<ExportButtons />}
       />
 
       <DataTableSection
         title="All Purchases"
-        columns={IC_PURCHASE_COLUMNS}
+        columns={PURCHASE_COLUMNS}
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search purchases..."
-      />
+      >
+        {filteredPurchases.map((p) => (
+          <tr key={p.id} onClick={() => handleView(p)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">
+            <td className={icCompactTd('left')}>{new Date(p.createdAt || '').toLocaleDateString()}</td>
+            <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{p.id.substring(0, 8)}</span></td>
+            <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{getSupplierName(p.supplierId || '')}</span></td>
+            <td className={icCompactTd('left')}>{getLocationName(p.locationId || '')}</td>
+            <td className={icCompactTd('right')}>{p.units.toLocaleString()}</td>
+            <td className={icCompactTd('right')}><span className="font-bold text-slate-900">{(p.aedTotal || 0).toLocaleString()}</span></td>
+            <td className={icCompactTd('center')}>
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                p.paymentStatus === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {p.paymentStatus || 'pending'}
+              </span>
+            </td>
+            <td className={icCompactTd('center')}>
+              <div className="flex items-center justify-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleView(p); }}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
+                  title="More Info"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
+                  title="Edit"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DataTableSection>
 
-      <AddPurchaseModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <AddPurchaseModal 
+        open={modalOpen} 
+        onClose={() => { setModalOpen(false); setSelectedPurchase(null); }} 
+        initialData={selectedPurchase || undefined} 
+      />
+      <ViewPurchaseModal
+        open={viewModalOpen}
+        onClose={() => { setViewModalOpen(false); setSelectedPurchase(null); }}
+        purchase={selectedPurchase}
+      />
     </PageShell>
   );
 }

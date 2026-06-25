@@ -6,10 +6,17 @@ type Props = {
   label: string;
   onClick: () => void;
   ariaLabel?: string;
+  icon?: React.ReactNode;
 };
 
 /** Primary add action — matches Groups & Deals header button */
-export default function AddButton({ label, onClick, ariaLabel }: Props) {
+export default function AddButton({ label, onClick, ariaLabel, icon }: Props) {
+  const defaultIcon = (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden className="sm:h-[18px] sm:w-[18px]">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+
   return (
     <button
       type="button"
@@ -17,9 +24,7 @@ export default function AddButton({ label, onClick, ariaLabel }: Props) {
       onClick={onClick}
       aria-label={ariaLabel || label}
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden className="sm:h-[18px] sm:w-[18px]">
-        <path d="M12 5v14M5 12h14" />
-      </svg>
+      {icon || defaultIcon}
       <span className="hidden sm:inline">{label}</span>
     </button>
   );

@@ -21,6 +21,13 @@ import {
   UsdtBranchSettings,
   UsdtBuy,
   UsdtSell,
+  ICRegion,
+  ICSupplier,
+  ICWarehouse,
+  ICRates,
+  ICPurchase,
+  ICSale,
+  ICWarehouseTransaction,
 } from '@/types';
 import * as mock from '@/data/mockData';
 import { DEFAULT_BRANCH_TIMEZONE } from '@/lib/businessTime';
@@ -58,6 +65,22 @@ import {
   dbCreateTransactionTagAction,
 } from '@/app/actions/dbActions';
 import { updateBranchPageSettingsAction } from '@/app/actions/branchActions';
+import {
+  dbAddICRegionAction,
+  dbAddICSupplierAction,
+  dbAddICWarehouseAction,
+  dbUpdateICRatesAction,
+  dbAddICPurchaseAction,
+  dbAddICSaleAction,
+  dbUpdateICRegionAction,
+  dbDeleteICRegionAction,
+  dbUpdateICSupplierAction,
+  dbDeleteICSupplierAction,
+  dbUpdateICWarehouseAction,
+  dbDeleteICWarehouseAction,
+  dbUpdateICPurchaseAction,
+  dbUpdateICSaleAction,
+} from '@/app/actions/icTransferActions';
 import { fetchCurrencyRatesAction } from '@/app/actions/currencyActions';
 import {
   sanitizeEnabledCurrencies,
@@ -103,6 +126,13 @@ interface AppState {
   usdtBuys: UsdtBuy[];
   usdtSells: UsdtSell[];
   usdtSettings: UsdtBranchSettings[];
+  icRegions: ICRegion[];
+  icSuppliers: ICSupplier[];
+  icWarehouses: ICWarehouse[];
+  icRates: ICRates[];
+  icPurchases: ICPurchase[];
+  icSales: ICSale[];
+  icWarehouseTransactions: ICWarehouseTransaction[];
 }
 
 export type AddInvestorInput = {
@@ -179,6 +209,20 @@ interface AppContextType extends AppState {
   updateLedger: (ledger: import('@/types').Ledger) => Promise<boolean>;
   deleteLedger: (id: string, name: string) => Promise<boolean>;
   addTransactionTag: (tag: import('@/types').TransactionTag) => Promise<import('@/types').TransactionTag | null>;
+  addICRegion: (name: string, country: string) => Promise<boolean>;
+  updateICRegion: (id: string, name: string, country: string) => Promise<boolean>;
+  deleteICRegion: (id: string) => Promise<boolean>;
+  addICSupplier: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
+  updateICSupplier: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
+  deleteICSupplier: (id: string) => Promise<boolean>;
+  addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
+  updateICWarehouse: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
+  deleteICWarehouse: (id: string) => Promise<boolean>;
+  updateICRates: (buyRate: number, saleRate: number, sarConversion: number, inrConversion: number) => Promise<boolean>;
+  addICPurchase: (purchase: Omit<ICPurchase, 'id' | 'createdAt'>) => Promise<boolean>;
+  updateICPurchase: (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => Promise<boolean>;
+  addICSale: (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => Promise<boolean>;
+  updateICSale: (id: string, updates: Partial<Omit<ICSale, 'id' | 'createdAt'>>) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -254,6 +298,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     usdtBuys: [],
     usdtSells: [],
     usdtSettings: [],
+    icRegions: [],
+    icSuppliers: [],
+    icWarehouses: [],
+    icRates: [],
+    icPurchases: [],
+    icSales: [],
+    icWarehouseTransactions: [],
   });
 
   const refetchCurrencyRates = useCallback(async () => {
@@ -295,6 +346,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             usdtBuys: data.usdtBuys || [],
             usdtSells: data.usdtSells || [],
             usdtSettings: data.usdtSettings || [],
+            icRegions: data.icRegions || [],
+            icSuppliers: data.icSuppliers || [],
+            icWarehouses: data.icWarehouses || [],
+            icRates: data.icRates || [],
+            icPurchases: data.icPurchases || [],
+            icSales: data.icSales || [],
+            icWarehouseTransactions: data.icWarehouseTransactions || [],
           };
         });
       }
@@ -361,6 +419,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             usdtBuys: data.usdtBuys || [],
             usdtSells: data.usdtSells || [],
             usdtSettings: data.usdtSettings || [],
+            icRegions: data.icRegions || [],
+            icSuppliers: data.icSuppliers || [],
+            icWarehouses: data.icWarehouses || [],
+            icRates: data.icRates || [],
+            icPurchases: data.icPurchases || [],
+            icSales: data.icSales || [],
+            icWarehouseTransactions: data.icWarehouseTransactions || [],
             currencyRates: rateRes.rates,
             currencyRatesFetchedAt: rateRes.fetchedAt,
             currencyRatesLive: rateRes.success,
@@ -1315,6 +1380,252 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, activeCurrency: currency }));
   }, []);
 
+  const addICRegion = useCallback(async (name: string, country: string) => {
+    try {
+      const res = await dbAddICRegionAction(name, country);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icRegions: [...s.icRegions, res.data!] }));
+        showToast('Region added successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to add region', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error adding region', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateICRegion = useCallback(async (id: string, name: string, country: string) => {
+    try {
+      const res = await dbUpdateICRegionAction(id, name, country);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icRegions: s.icRegions.map(r => r.id === id ? res.data! : r) }));
+        showToast('Region updated successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update region', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating region', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const deleteICRegion = useCallback(async (id: string) => {
+    try {
+      const res = await dbDeleteICRegionAction(id);
+      if (res.success) {
+        setState(s => ({ ...s, icRegions: s.icRegions.filter(r => r.id !== id) }));
+        showToast('Region deleted successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to delete region', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error deleting region', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const addICSupplier = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
+    try {
+      const res = await dbAddICSupplierAction(name, phone, commission, regionId, email, address);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icSuppliers: [...s.icSuppliers, res.data!] }));
+        showToast('Supplier added successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to add supplier', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error adding supplier', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateICSupplier = useCallback(async (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
+    try {
+      const res = await dbUpdateICSupplierAction(id, name, phone, commission, regionId, email, address);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icSuppliers: s.icSuppliers.map(sup => sup.id === id ? res.data! : sup) }));
+        showToast('Supplier updated successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update supplier', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating supplier', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const deleteICSupplier = useCallback(async (id: string) => {
+    try {
+      const res = await dbDeleteICSupplierAction(id);
+      if (res.success) {
+        setState(s => ({ ...s, icSuppliers: s.icSuppliers.filter(sup => sup.id !== id) }));
+        showToast('Supplier deleted successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to delete supplier', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error deleting supplier', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const addICWarehouse = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
+    try {
+      const res = await dbAddICWarehouseAction(name, phone, commission, regionId, email, address);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icWarehouses: [...s.icWarehouses, res.data!] }));
+        showToast('Warehouse added successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to add warehouse', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error adding warehouse', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateICWarehouse = useCallback(async (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
+    try {
+      const res = await dbUpdateICWarehouseAction(id, name, phone, commission, regionId, email, address);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icWarehouses: s.icWarehouses.map(w => w.id === id ? res.data! : w) }));
+        showToast('Warehouse updated successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update warehouse', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating warehouse', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const deleteICWarehouse = useCallback(async (id: string) => {
+    try {
+      const res = await dbDeleteICWarehouseAction(id);
+      if (res.success) {
+        setState(s => ({ ...s, icWarehouses: s.icWarehouses.filter(w => w.id !== id) }));
+        showToast('Warehouse deleted successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to delete warehouse', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error deleting warehouse', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateICRates = useCallback(async (buyRate: number, saleRate: number, sarConversion: number, inrConversion: number) => {
+    try {
+      const res = await dbUpdateICRatesAction(buyRate, saleRate, sarConversion, inrConversion);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icRates: [res.data!] }));
+        showToast('Rates updated successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update rates', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating rates', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const addICPurchase = useCallback(async (purchase: Omit<ICPurchase, 'id' | 'createdAt'>) => {
+    try {
+      const res = await dbAddICPurchaseAction(purchase);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icPurchases: [res.data!, ...s.icPurchases] }));
+        showToast('Purchase recorded successfully');
+        refetchData(); // fetch to get warehouse updates
+        return true;
+      } else {
+        showToast(res.error || 'Failed to record purchase', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error recording purchase', 'error');
+      return false;
+    }
+  }, [showToast, refetchData]);
+
+  const addICSale = useCallback(async (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => {
+    try {
+      const res = await dbAddICSaleAction(sale);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icSales: [res.data!, ...s.icSales] }));
+        showToast('Sale recorded successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to record sale', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error recording sale', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateICPurchase = useCallback(async (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => {
+    try {
+      const res = await dbUpdateICPurchaseAction(id, updates);
+      if (res.success && res.data) {
+        setState(s => ({
+          ...s,
+          icPurchases: s.icPurchases.map(p => p.id === id ? res.data! : p)
+        }));
+        showToast('Purchase updated successfully');
+        refetchData(); // fetch to get warehouse updates
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update purchase', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating purchase', 'error');
+      return false;
+    }
+  }, [showToast, refetchData]);
+
+  const updateICSale = useCallback(async (id: string, updates: Partial<Omit<ICSale, 'id' | 'createdAt'>>) => {
+    try {
+      const res = await dbUpdateICSaleAction(id, updates);
+      if (res.success && res.data) {
+        setState(s => ({
+          ...s,
+          icSales: s.icSales.map(sItem => sItem.id === id ? res.data! : sItem)
+        }));
+        showToast('Sale updated successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update sale', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating sale', 'error');
+      return false;
+    }
+  }, [showToast]);
+
   const contextValue = useMemo(() => {
     let filteredState = state;
     const activeSlug = pathname === '/' ? undefined : pathname?.split('/')[1];
@@ -1403,8 +1714,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
+      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, updateICRates, addICPurchase, updateICPurchase, addICSale, updateICSale,
     };
-  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag]);
+  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, updateICRates, addICPurchase, updateICPurchase, addICSale, updateICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;

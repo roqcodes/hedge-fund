@@ -9,16 +9,13 @@ export type ICTransferNavItem = {
 export const IC_TRANSFER_NAV: ICTransferNavItem[] = [
   { id: 'dashboard', label: 'Dashboard', path: '' },
   { id: 'purchase', label: 'Purchase', path: '/purchase' },
-  { id: 'customer-sale', label: 'Customer Sale', path: '/customer-sale' },
+  { id: 'sales', label: 'Sales', path: '/sales' },
   { id: 'warehouse', label: 'Warehouse', path: '/warehouse' },
-  { id: 'finance', label: 'Finance & Report', path: '/finance' },
-  { id: 'metal', label: 'Metal Management', path: '/metal' },
   {
     id: 'settings',
     label: 'Settings',
     path: '/settings',
     children: [
-      { id: 'agents', label: 'Agent Management', path: '/settings/agents' },
       { id: 'warehouses', label: 'Warehouse Management', path: '/settings/warehouses' },
       { id: 'suppliers', label: 'Supplier Management', path: '/settings/suppliers' },
       { id: 'rates', label: 'Rates Management', path: '/settings/rates' },

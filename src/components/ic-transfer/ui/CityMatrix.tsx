@@ -7,16 +7,17 @@ import { IC_TRANSFER_CITIES } from '@/lib/icTransfer/nav';
 
 export type CityMatrixRow = {
   label: string;
-  vol?: number;
+  vol?: number | number[];
   rates?: number[];
   statuses?: readonly string[];
 };
 
 type Props = {
+  columns?: string[];
   rows: CityMatrixRow[];
 };
 
-export default function CityMatrix({ rows }: Props) {
+export default function CityMatrix({ columns, rows }: Props) {
   return (
     <div className={`${tableWrap} px-3 py-3 sm:px-4 sm:py-3.5`}>
       <table className={icCompactTable}>
@@ -25,7 +26,7 @@ export default function CityMatrix({ rows }: Props) {
             <th className={`${icCompactTh('left')} w-20`} scope="col">
               Metric
             </th>
-            {IC_TRANSFER_CITIES.map(city => (
+            {(columns || IC_TRANSFER_CITIES).map(city => (
               <th key={city} className={icCompactTh('center')} scope="col">
                 {city}
               </th>
@@ -37,7 +38,7 @@ export default function CityMatrix({ rows }: Props) {
             <React.Fragment key={section.label}>
               <tr>
                 <td
-                  colSpan={IC_TRANSFER_CITIES.length + 1}
+                  colSpan={(columns || IC_TRANSFER_CITIES).length + 1}
                   className={`border-b border-slate-200 px-2 py-1.5 text-[11px] font-bold text-slate-900 sm:px-3 ${sectionIdx > 0 ? 'border-t border-slate-100 bg-slate-50/60' : 'bg-slate-50/40'}`}
                 >
                   {section.label}
@@ -46,9 +47,9 @@ export default function CityMatrix({ rows }: Props) {
               {section.vol !== undefined && (
                 <tr>
                   <td className={icCompactMetricLabel}>Volume</td>
-                  {IC_TRANSFER_CITIES.map(city => (
+                  {(columns || IC_TRANSFER_CITIES).map((city, i) => (
                     <td key={city} className={icCompactCell}>
-                      {section.vol}
+                      {Array.isArray(section.vol) ? section.vol[i] : section.vol}
                     </td>
                   ))}
                 </tr>

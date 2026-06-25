@@ -752,3 +752,96 @@ CREATE TABLE IF NOT EXISTS user_page_permissions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_page_permissions_branch ON user_page_permissions(branch_id);
+
+-- =========================================================================
+-- IC Transfer Module (Optimized & Relational)
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS ic_regions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    country VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ic_suppliers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50),
+    commission NUMERIC(10, 2),
+    region_id UUID REFERENCES ic_regions(id) ON DELETE SET NULL,
+    email VARCHAR(255),
+    address TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_suppliers_region ON ic_suppliers(region_id);
+
+CREATE TABLE IF NOT EXISTS ic_warehouses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50),
+    commission NUMERIC(10, 2),
+    region_id UUID REFERENCES ic_regions(id) ON DELETE SET NULL,
+    email VARCHAR(255),
+    address TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_warehouses_region ON ic_warehouses(region_id);
+
+CREATE TABLE IF NOT EXISTS ic_rates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    buy_rate NUMERIC(15, 4) NOT NULL,
+    sale_rate NUMERIC(15, 4) NOT NULL,
+    sar_conversion NUMERIC(15, 4) NOT NULL,
+    inr_conversion NUMERIC(15, 4) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ic_purchases (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID REFERENCES ic_suppliers(id) ON DELETE SET NULL,
+    location_id UUID REFERENCES ic_regions(id) ON DELETE SET NULL,
+    warehouse_id UUID REFERENCES ic_warehouses(id) ON DELETE SET NULL,
+    unit_rate NUMERIC(15, 4) NOT NULL,
+    units NUMERIC(15, 4) NOT NULL,
+    payment_method VARCHAR(50),
+    notes TEXT,
+    inr_total NUMERIC(15, 4),
+    aed_total NUMERIC(15, 4),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_purchases_supplier ON ic_purchases(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_ic_purchases_warehouse ON ic_purchases(warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_ic_purchases_location ON ic_purchases(location_id);
+CREATE INDEX IF NOT EXISTS idx_ic_purchases_created ON ic_purchases(created_at);
+
+CREATE TABLE IF NOT EXISTS ic_sales (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_name VARCHAR(255) NOT NULL,
+    entered_by VARCHAR(255), -- Signed-in user (branch user)
+    entered_by_name VARCHAR(255),
+    entered_by_user_id VARCHAR(255),
+    location_id UUID REFERENCES ic_regions(id) ON DELETE SET NULL,
+    units NUMERIC(15, 4) NOT NULL,
+    unit_rate NUMERIC(15, 4) NOT NULL,
+    address TEXT,
+    payment_mode VARCHAR(50),
+    inr_amount NUMERIC(15, 4),
+    aed_amount NUMERIC(15, 4),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_sales_user ON ic_sales(entered_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_ic_sales_location ON ic_sales(location_id);
+CREATE INDEX IF NOT EXISTS idx_ic_sales_created ON ic_sales(created_at);
+
+CREATE TABLE IF NOT EXISTS ic_warehouse_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    warehouse_id UUID REFERENCES ic_warehouses(id) ON DELETE CASCADE,
+    transaction_type VARCHAR(50) NOT NULL,
+    units NUMERIC(15, 4) NOT NULL,
+    reference_type VARCHAR(50),
+    reference_id UUID, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_warehouse_tx_warehouse ON ic_warehouse_transactions(warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_ic_warehouse_tx_created ON ic_warehouse_transactions(created_at);

@@ -134,8 +134,8 @@ export default function DateFilterBar({
       </div>
 
       {/* Desktop View */}
-      <div className="hidden sm:flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-slate-50 py-2.5 px-4 border border-slate-100">
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="hidden sm:flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {(
             [
               { id: 'all-time', label: 'All Time' },
@@ -156,10 +156,11 @@ export default function DateFilterBar({
                   setDateFilter(opt.id);
                   setShowDropdown(false);
                 }}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 ${isActive
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
-                  }`}
+                className={`rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  isActive
+                    ? 'bg-red-600 text-white shadow-md'
+                    : 'bg-transparent text-slate-500 hover:bg-red-50 hover:text-red-600'
+                }`}
               >
                 {opt.label}
               </button>
@@ -171,10 +172,11 @@ export default function DateFilterBar({
             <button
               type="button"
               onClick={() => setShowDropdown(!showDropdown)}
-              className={`flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-500 outline-none transition-all hover:text-slate-900 focus:border-accent ${dateFilter === 'custom'
-                ? 'border-accent bg-accent/5 text-accent font-black'
-                : ''
-                }`}
+              className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider outline-none transition-colors ${
+                dateFilter === 'custom'
+                  ? 'bg-red-600 text-white shadow-md'
+                  : 'bg-transparent text-slate-500 hover:bg-red-50 hover:text-red-600'
+              }`}
             >
               <span>
                 {dateFilter === 'custom' && (customStartDate || customEndDate)
