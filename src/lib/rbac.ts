@@ -41,9 +41,11 @@ export function getEffectivePageAccess(
   if (!user) return 'none';
   if (!isBranchPageEnabled(pageId, hiddenPages)) return 'none';
 
+  if (user.role === 'branch_manager' && pageId === 'warehouse') return 'none';
+
   if (user.role === 'admin' || user.role === 'branch_manager') return 'write';
 
-  if (user.role.startsWith('delivery')) {
+  if (user.role.startsWith('delivery') || user.role.startsWith('warehouse_')) {
     return pageId === 'warehouse' ? 'write' : 'none';
   }
 

@@ -37,7 +37,7 @@ export const BRANCH_NAV_PAGES: BranchNavPage[] = [
   { id: 'usdt', label: 'USDT', path: '/usdt', hideable: true },
   { id: 'customers', label: 'Customers', path: '/customers', hideable: true },
   { id: 'investors', label: 'Investors', path: '/investors', hideable: true },
-  { id: 'warehouse', label: 'Warehouse Portal', path: '/warehouse', hideable: true },
+  { id: 'warehouse', label: 'Warehouse Portal', path: '/warehouse', hideable: false },
   { id: 'ic-transfer-branch', label: 'IC Transfer (Branch)', path: '/ic-transfer-branch', hideable: true },
   { id: 'settings', label: 'Settings', path: '/settings', hideable: false },
 ];

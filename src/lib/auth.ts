@@ -195,8 +195,12 @@ export async function createSession(user: User, branchSlug?: string) {
  */
 export async function deleteSession(branchSlug?: string) {
   const cookieName = branchSlug ? `session_${branchSlug}` : 'session_superadmin';
+  const cookiePath = branchSlug ? `/${branchSlug}` : '/';
   const cookieStore = await cookies();
-  cookieStore.delete(cookieName);
+  cookieStore.delete({
+    name: cookieName,
+    path: cookiePath,
+  });
 }
 
 /**

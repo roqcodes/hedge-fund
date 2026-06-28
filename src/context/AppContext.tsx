@@ -482,8 +482,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('Failed to execute logout Server Action:', e);
     }
-    setState(s => ({ ...s, user: null, isAuthenticated: false, currentPage: 'dashboard' }));
     localStorage.removeItem('hedge_session_' + currentSlug);
+    setState(s => ({ ...s, user: null, isAuthenticated: false, currentPage: 'dashboard' }));
+    
+    // Redirect to base slug path to clear full path and query params
+    const baseHref = currentSlug === 'superadmin' ? '/' : `/${currentSlug}`;
+    window.location.href = baseHref;
   }, [currentSlug]);
 
   const setPage = useCallback((page: PageId) => {
