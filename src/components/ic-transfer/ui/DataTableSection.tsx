@@ -17,6 +17,9 @@ type Props = {
   emptyMessage?: string;
   minWidth?: string;
   children?: React.ReactNode;
+  onHeaderClick?: (column: string) => void;
+  sortField?: string;
+  sortOrder?: 'asc' | 'desc';
 };
 
 export default function DataTableSection({
@@ -30,6 +33,9 @@ export default function DataTableSection({
   emptyMessage = 'No records yet.',
   minWidth = '900px',
   children,
+  onHeaderClick,
+  sortField,
+  sortOrder,
 }: Props) {
   const showSearch = searchValue !== undefined && onSearchChange !== undefined;
 
@@ -55,11 +61,25 @@ export default function DataTableSection({
           <table className={dataTable} style={{ minWidth }}>
             <thead>
               <tr>
-                {columns.map(col => (
-                  <th key={col} className={icThClass('left')}>
-                    {col}
-                  </th>
-                ))}
+                {columns.map(col => {
+                  const isSorted = sortField && col.toLowerCase().replace(/\s/g, '') === sortField.toLowerCase().replace(/\s/g, '');
+                  return (
+                    <th 
+                      key={col} 
+                      className={`${icThClass('left')} ${onHeaderClick ? 'cursor-pointer select-none hover:text-slate-800' : ''}`}
+                      onClick={() => onHeaderClick?.(col)}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>{col}</span>
+                        {isSorted && (
+                          <span className="text-xs text-slate-400">
+                            {sortOrder === 'asc' ? '▲' : '▼'}
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>

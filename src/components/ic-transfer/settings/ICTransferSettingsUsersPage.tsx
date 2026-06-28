@@ -27,6 +27,7 @@ type Props = {
   data?: any[];
   onEditItem?: (item: any) => void;
   onDeleteItem?: (id: string) => void;
+  onRowClick?: (item: any) => void;
 };
 
 export default function ICTransferSettingsUsersPage({
@@ -42,6 +43,7 @@ export default function ICTransferSettingsUsersPage({
   data = [],
   onEditItem,
   onDeleteItem,
+  onRowClick,
 }: Props) {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -80,7 +82,12 @@ export default function ICTransferSettingsUsersPage({
               </thead>
               <tbody>
                 {filtered.map((user, i) => (
-                  <tr key={user.id} data-interactive-row>
+                  <tr 
+                    key={user.id} 
+                    data-interactive-row 
+                    onClick={onRowClick ? () => onRowClick(user) : undefined}
+                    className={onRowClick ? "cursor-pointer hover:bg-slate-50/50" : ""}
+                  >
                     <td className={`${icRowLabelClass} first:rounded-l-2xl`}>{i + 1}</td>
                     <td className="border-y border-black/5 bg-white px-3 py-2.5 sm:px-4">
                       <div className="text-sm font-bold text-sky-600 truncate max-w-[100px]" title={user.id}>
@@ -96,10 +103,18 @@ export default function ICTransferSettingsUsersPage({
                     <td className="border-y border-black/5 bg-white px-3 py-2.5 sm:px-4">
                       <span className={badgeClass('active')}>Active</span>
                     </td>
-                    <td className="border-y border-r border-black/5 bg-white px-3 py-2.5 last:rounded-r-2xl sm:px-4">
+                    <td className="border-y border-r border-black/5 bg-white px-3 py-2.5 last:rounded-r-2xl sm:px-4" onClick={e => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" className="rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-600 hover:bg-sky-100" onClick={() => onEditItem?.(user)}>Edit</button>
-                        <button type="button" className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-100" onClick={() => { if(confirm('Are you sure you want to delete this?')) onDeleteItem?.(user.id); }}>Delete</button>
+                        {onEditItem && (
+                          <button onClick={() => onEditItem(user)} className="rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-600 hover:bg-sky-100">
+                            Edit
+                          </button>
+                        )}
+                        {onDeleteItem && (
+                          <button onClick={() => { if(confirm('Are you sure you want to delete this?')) onDeleteItem(user.id); }} className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-100">
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

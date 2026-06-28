@@ -9,6 +9,7 @@ import ReadOnlyPageBanner from '@/components/rbac/ReadOnlyPageBanner';
 import { RbacWriteProvider } from '@/context/RbacWriteContext';
 import ICTransferSecondarySidebar from '@/components/ic-transfer/ICTransferSecondarySidebar';
 import ICTransferMobileNav from '@/components/ic-transfer/ICTransferMobileNav';
+import WarehouseSecondarySidebar from '@/components/warehouse/WarehouseSecondarySidebar';
 import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -20,6 +21,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     isICTransferRoute,
     showICTransferSecondarySidebar,
     icTransferMainMenuOpen,
+    isWarehouseRoute,
+    showWarehouseSecondarySidebar,
+    warehouseMainMenuOpen,
     setSidebarCollapsed,
   } = useApp();
   const pathname = usePathname();
@@ -28,7 +32,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (isICTransferRoute && !icTransferMainMenuOpen) {
       setSidebarCollapsed(true);
     }
-  }, [isICTransferRoute, icTransferMainMenuOpen, setSidebarCollapsed]);
+    if (showWarehouseSecondarySidebar) {
+      setSidebarCollapsed(true);
+    }
+  }, [isICTransferRoute, icTransferMainMenuOpen, showWarehouseSecondarySidebar, setSidebarCollapsed]);
 
   if (isInitialLoading) return null;
   if (!isAuthenticated) {
@@ -36,7 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <LoginPage branchSlug={slug} />;
   }
 
-  const contentMargin = showICTransferSecondarySidebar
+  const contentMargin = showICTransferSecondarySidebar || showWarehouseSecondarySidebar
     ? 'lg:ml-[300px] xl:ml-[320px]'
     : sidebarCollapsed
       ? 'lg:ml-[80px]'
@@ -47,6 +54,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <BranchPageGuard />
       <Sidebar />
       {showICTransferSecondarySidebar && <ICTransferSecondarySidebar />}
+      {showWarehouseSecondarySidebar && <WarehouseSecondarySidebar />}
       <div
         className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:ml-0 ${contentMargin}`}
       >

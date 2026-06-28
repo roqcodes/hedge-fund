@@ -73,7 +73,7 @@ function RankingList({ title, data, colorClass = "bg-accent" }: { title: string,
 }
 
 export default function ICTransferDashboard() {
-  const { icPurchases, icSales, icSuppliers, icRegions } = useApp();
+  const { icPurchases, icSales, icSuppliers, icRegions, icWarehouses } = useApp();
 
   const [dateFilter, setDateFilter] = useState('this-month');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -148,7 +148,8 @@ export default function ICTransferDashboard() {
       if (!trendMap[key]) trendMap[key] = { purchases: 0, sales: 0 };
       trendMap[key].sales += aed;
 
-      const locName = icRegions.find(r => r.id === s.locationId)?.name || 'Unknown Location';
+      const warehouse = icWarehouses.find(w => w.id === s.warehouseId);
+      const locName = warehouse ? icRegions.find(r => r.id === warehouse.regionId)?.name || 'Unknown Location' : 'Unknown Location';
       regionMap[locName] = (regionMap[locName] || 0) + aed;
     });
 

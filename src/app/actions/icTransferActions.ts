@@ -217,20 +217,23 @@ export async function dbAddICSaleAction(
   const { enteredBy, enteredByName, enteredByUserId } = await resolveEnteredBy();
   try {
     const res = await query(
-      `INSERT INTO ic_sales (customer_name, location_id, units, unit_rate, address, payment_mode, inr_amount, aed_amount, entered_by, entered_by_name, entered_by_user_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      `INSERT INTO ic_sales (customer_name, warehouse_id, transaction_type, units, unit_rate, inr_amount, aed_amount, entered_by, entered_by_name, entered_by_user_id, address, image_url, service_charge, sar_amount)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
       [
         sale.customerName,
-        sale.locationId || null,
+        sale.warehouseId || null,
+        sale.transactionType || null,
         sale.units,
         sale.unitRate,
-        sale.address || null,
-        sale.paymentMode || null,
         sale.inrAmount || null,
         sale.aedAmount || null,
         enteredBy,
         enteredByName,
-        enteredByUserId
+        enteredByUserId,
+        sale.address || null,
+        sale.imageUrl || null,
+        sale.serviceCharge || 0.00,
+        sale.sarAmount || null
       ]
     );
     return { success: true, data: mapICSaleRow(res.rows[0]) };
@@ -301,5 +304,39 @@ export async function dbUpdateICSaleAction(
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   } finally {
     client.release();
+  }
+}
+
+export async function dbDeleteICPurchaseAction(id: string): Promise<DbActionResult<null>> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Remove related warehouse transactions
+    await client.query(
+      `DELETE FROM ic_warehouse_transactions WHERE reference_type = 'purchase' AND reference_id = $1`,
+      [id]
+    );
+    
+    const res = await client.query('DELETE FROM ic_purchases WHERE id = $1 RETURNING id', [id]);
+    if (res.rowCount === 0) throw new Error('Purchase not found');
+    
+    await client.query('COMMIT');
+    return { success: true, data: null };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbDeleteICSaleAction(id: string): Promise<DbActionResult<null>> {
+  try {
+    const res = await query('DELETE FROM ic_sales WHERE id = $1 RETURNING id', [id]);
+    if (res.rowCount === 0) return { success: false, error: 'Sale not found' };
+    return { success: true, data: null };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   }
 }

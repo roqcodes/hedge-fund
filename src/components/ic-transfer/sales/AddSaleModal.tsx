@@ -15,31 +15,46 @@ type Props = {
 };
 
 export default function AddSaleModal({ open, onClose, initialData }: Props) {
-  const { icRegions, addICSale, updateICSale, entities } = useApp();
+  const { icWarehouses, addICSale, updateICSale, entities, icRates } = useApp();
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [customerName, setCustomerName] = useState(initialData?.customerName || '');
-  const [country, setCountry] = useState('UAE');
-  const [locationId, setLocationId] = useState(initialData?.locationId || '');
-  const [paymentMethod, setPaymentMethod] = useState(initialData?.paymentMode || 'credit');
-  const [address, setAddress] = useState(initialData?.address || '');
+  const [warehouseId, setWarehouseId] = useState(initialData?.warehouseId || '');
+  const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'by_hand');
+  const [serviceCharge, setServiceCharge] = useState(initialData?.serviceCharge?.toString() || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const activeRate = icRates.length > 0 ? icRates[0] : null;
+  const saleRate = activeRate?.saleRate || 0;
+  const inrConversion = activeRate?.inrConversion || 25;
+  const sarConversion = activeRate?.sarConversion || 1.02;
 
   React.useEffect(() => {
     if (open) {
       setUnits(initialData?.units?.toString() || '');
       setRate(initialData?.unitRate?.toString() || '');
       setCustomerName(initialData?.customerName || '');
-      setLocationId(initialData?.locationId || '');
-      setPaymentMethod(initialData?.paymentMode || 'credit');
-      setAddress(initialData?.address || '');
+      setWarehouseId(initialData?.warehouseId || '');
+      setTransactionType(initialData?.transactionType || 'by_hand');
+      setServiceCharge(initialData?.serviceCharge?.toString() || '');
     }
   }, [open, initialData]);
 
   const unitNum = parseFloat(units) || 0;
   const rateNum = parseFloat(rate) || 0;
-  const inrTotal = unitNum * rateNum * 25; // using mock multiplier for now
-  const aedTotal = unitNum * rateNum;
+  const serviceChargeNum = parseFloat(serviceCharge) || 0;
+  
+  const aedBaseTotal = unitNum * rateNum;
+  const aedNetTotal = Math.max(0, aedBaseTotal - serviceChargeNum);
+  
+  // Try to use existing conversion rate if editing, otherwise fallback to price settings
+  const inrConversionRate = initialData ? 
+    (initialData.inrAmount && initialData.aedAmount ? initialData.inrAmount / initialData.aedAmount : inrConversion) 
+    : inrConversion;
+  const sarConversionRate = sarConversion;
+
+  const inrTotal = aedNetTotal * inrConversionRate;
+  const sarTotal = aedNetTotal * sarConversionRate;
 
   const handleSubmit = async () => {
     if (!unitNum || !rateNum || !customerName) return;
@@ -47,13 +62,14 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
     
     const payload = {
       customerName,
-      locationId,
+      warehouseId,
+      transactionType,
       unitRate: rateNum,
       units: unitNum,
-      paymentMode: paymentMethod,
-      address,
       inrAmount: inrTotal,
-      aedAmount: aedTotal,
+      aedAmount: aedNetTotal,
+      serviceCharge: serviceChargeNum,
+      sarAmount: sarTotal,
     };
 
     if (initialData) {
@@ -81,6 +97,32 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
         </>
       }
     >
+      {saleRate > 0 && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-slate-500 uppercase tracking-wider">Live Sale Rates:</span>
+          </div>
+          <div className="flex gap-4">
+            <div>
+              <span className="font-semibold text-slate-400 uppercase">AED:</span>{' '}
+              <span className="font-bold text-accent">{saleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            </div>
+            {inrConversion > 0 && (
+              <div className="border-l border-slate-200 pl-4">
+                <span className="font-semibold text-slate-400 uppercase">INR:</span>{' '}
+                <span className="font-bold text-emerald-600">{(saleRate * inrConversion).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+            )}
+            {sarConversion > 0 && (
+              <div className="border-l border-slate-200 pl-4">
+                <span className="font-semibold text-slate-400 uppercase">SAR:</span>{' '}
+                <span className="font-bold text-indigo-600">{(saleRate * sarConversion).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
           <div className={formGroup}>
@@ -94,20 +136,20 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
           </div>
           <div className={formRow}>
             <div className={formGroup}>
-              <label className={formLabel}>Country</label>
-              <select className={formSelect} value={country} onChange={e => setCountry(e.target.value)}>
-                <option value="UAE">UAE</option>
-                <option value="India">India</option>
-                <option value="KSA">KSA</option>
+              <label className={formLabel}>Warehouse (Optional)</label>
+              <select className={formSelect} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
+                <option value="">None</option>
+                {icWarehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
               </select>
             </div>
             <div className={formGroup}>
-              <label className={formLabel}>Location</label>
-              <select className={formSelect} value={locationId} onChange={e => setLocationId(e.target.value)}>
-                <option value="" disabled>Select Location</option>
-                {icRegions.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
+              <label className={formLabel}>Transaction Type</label>
+              <select className={formSelect} value={transactionType} onChange={e => setTransactionType(e.target.value)}>
+                <option value="by_hand">By Hand</option>
+                <option value="transfer">Transfer</option>
+                <option value="cdm">CDM</option>
               </select>
             </div>
           </div>
@@ -117,37 +159,35 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
               <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="0.01" />
             </div>
             <div className={formGroup}>
-              <label className={formLabel}>Order (Unit)</label>
+              <label className={formLabel}>Units</label>
               <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="0.01" />
             </div>
+            <div className={formGroup}>
+              <label className={formLabel}>Service Charge</label>
+              <input className={formInput} value={serviceCharge} onChange={e => setServiceCharge(e.target.value)} type="number" step="0.01" placeholder="0.00" />
+            </div>
           </div>
-          <div className={formGroup}>
-            <label className={formLabel}>Payment Mode</label>
-            <select className={formSelect} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-              <option value="credit">Credit</option>
-              <option value="cash">Cash</option>
-            </select>
-          </div>
-          <div className={formGroup}>
-            <label className={formLabel}>Address</label>
-            <textarea className={formTextarea} rows={2} value={address} onChange={e => setAddress(e.target.value)} />
-          </div>
+
         </div>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 rounded-2xl bg-[#f5f0e8] p-4">
-            <div className="text-center">
-              <p className="text-xs font-semibold text-slate-500">Amount (INR)</p>
-              <p className="text-2xl font-bold text-slate-900">{inrTotal.toLocaleString()}</p>
+          <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f5f0e8] p-4">
+            <div className="text-center border-r border-amber-900/10">
+              <p className="text-[10px] font-semibold text-slate-500">Amount (INR)</p>
+              <p className="text-base font-bold text-slate-900 mt-1">{inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+            <div className="text-center border-r border-amber-900/10 px-1">
+              <p className="text-[10px] font-semibold text-slate-500">Amount (SAR)</p>
+              <p className="text-base font-bold text-indigo-700 mt-1">{sarTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
             <div className="text-center">
-              <p className="text-xs font-semibold text-slate-500">Amount (AED)</p>
-              <p className="text-2xl font-bold text-slate-900">{aedTotal.toLocaleString()}</p>
+              <p className="text-[10px] font-semibold text-slate-500">Amount (AED)</p>
+              <p className="text-base font-bold text-slate-900 mt-1">{aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
           </div>
           <div className="rounded-2xl bg-[#f5f0e8] p-4 text-center">
             <p className="text-xs font-semibold text-slate-500">Total Due</p>
-            <p className="text-3xl font-bold text-slate-900">{aedTotal.toLocaleString()}</p>
+            <p className="text-3xl font-extrabold text-slate-900 mt-0.5">{aedNetTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</p>
           </div>
         </div>
       </div>

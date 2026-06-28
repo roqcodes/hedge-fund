@@ -554,7 +554,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const icRates = icRatesRes.rows.map(r => mapICRatesRow(r));
     const icPurchasesRes = await query('SELECT * FROM ic_purchases ORDER BY created_at DESC');
     const icPurchases = icPurchasesRes.rows.map(r => mapICPurchaseRow(r));
-    const icSalesRes = await query('SELECT * FROM ic_sales ORDER BY created_at DESC');
+    const icSalesRes = await query('SELECT s.*, a.name as delivery_agent_name FROM ic_sales s LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id ORDER BY s.created_at DESC');
     const icSales = icSalesRes.rows.map(r => mapICSaleRow(r));
     const icWarehouseTxRes = await query('SELECT * FROM ic_warehouse_transactions ORDER BY created_at DESC');
     const icWarehouseTransactions = icWarehouseTxRes.rows.map(r => mapICWarehouseTransactionRow(r));

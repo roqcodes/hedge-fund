@@ -13,7 +13,7 @@ type Props = {
 };
 
 export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
-  const { icSuppliers, icWarehouses, icRegions, updateICPurchase } = useApp();
+  const { icSuppliers, icWarehouses, icRegions, updateICPurchase, deleteICPurchase } = useApp();
 
   if (!purchase) return null;
 
@@ -21,6 +21,13 @@ export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
     const newStatus = purchase.paymentStatus === 'paid' ? 'pending' : 'paid';
     await updateICPurchase(purchase.id, { paymentStatus: newStatus });
     onClose();
+  };
+
+  const handleDelete = async () => {
+    if (confirm('Are you sure you want to delete this purchase?')) {
+      await deleteICPurchase(purchase.id);
+      onClose();
+    }
   };
 
   const getSupplierName = (id?: string) => icSuppliers.find(s => s.id === id)?.name || id || 'Unknown';
@@ -34,8 +41,16 @@ export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
       title="Purchase Details"
       maxWidth="max-w-2xl"
       footer={
-        <>
-          <button type="button" className={btnSecondary} onClick={onClose}>Close</button>
+        <div className="flex w-full items-center justify-between">
+          <button 
+            type="button" 
+            onClick={handleDelete}
+            className="rounded-lg px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors"
+          >
+            Delete
+          </button>
+          <div className="flex gap-2">
+            <button type="button" className={btnSecondary} onClick={onClose}>Close</button>
           <button 
             type="button" 
             onClick={handleTogglePaid}
@@ -47,7 +62,8 @@ export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
           >
             {purchase.paymentStatus === 'paid' ? 'Mark as Pending' : 'Mark as Paid'}
           </button>
-        </>
+          </div>
+        </div>
       }
     >
       <div className="grid gap-6 md:grid-cols-2">

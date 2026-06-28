@@ -14,7 +14,7 @@ import {
   SectionCard,
   useICTransferFilters,
 } from '../ui';
-import { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
+import KPICard from '@/components/ui/KPICard';
 import { kpiGrid } from '@/lib/ui';
 import AddPurchaseModal from './AddPurchaseModal';
 import ViewPurchaseModal from './ViewPurchaseModal';
@@ -53,6 +53,14 @@ export default function ICTransferPurchase() {
     if (cityFilter !== 'All' && getLocationName(p.locationId || '') !== cityFilter) return false;
     return true;
   });
+
+  const stats = React.useMemo(() => {
+    const total = filteredPurchases.reduce((acc, p) => acc + (p.aedTotal || 0), 0);
+    const paid = filteredPurchases.filter(p => p.paymentStatus === 'paid').reduce((acc, p) => acc + (p.aedTotal || 0), 0);
+    const unpaid = total - paid;
+    const totalUnits = filteredPurchases.reduce((acc, p) => acc + (p.units || 0), 0);
+    return { total, paid, unpaid, totalUnits };
+  }, [filteredPurchases]);
 
   const handleEdit = (p: ICPurchase) => {
     setSelectedPurchase(p);
@@ -106,10 +114,42 @@ export default function ICTransferPurchase() {
         onChange={setCityFilter}
       />
 
-      <div className={kpiGrid}>
-        <PhysicalSingleKPICard label="Opening Balance" value={fmt(0)} color="var(--info)" bgColor="var(--info-light)" icon={<></>} />
-        <PhysicalSingleKPICard label="Paid" value={fmt(0)} color="var(--success)" bgColor="var(--success-light)" icon={<></>} />
-        <PhysicalSingleKPICard label="Closing Balance" value={fmt(0)} color="var(--warning)" bgColor="var(--warning-light)" icon={<></>} />
+      <div className={`${kpiGrid} grid-cols-1 sm:grid-cols-3 mb-6`}>
+        <KPICard 
+          label="Total Purchases" 
+          value={fmt(stats.total)} 
+          subValue={`Volume: ${stats.totalUnits.toLocaleString()} units`}
+          color="var(--info)" 
+          bgColor="var(--info-light)" 
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z" />
+            </svg>
+          } 
+        />
+        <KPICard 
+          label="Total Paid" 
+          value={fmt(stats.paid)} 
+          color="var(--profit)" 
+          bgColor="var(--profit-light)" 
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9 12l2 2 4-4" />
+            </svg>
+          } 
+        />
+        <KPICard 
+          label="Remaining Due" 
+          value={fmt(stats.unpaid)} 
+          color="var(--warning)" 
+          bgColor="var(--warning-light)" 
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" />
+            </svg>
+          } 
+        />
       </div>
 
       <div className="mb-5">

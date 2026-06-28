@@ -11,7 +11,9 @@ export type BranchPageId =
   | 'customers'
   | 'investors'
   | 'usdt'
-  | 'settings';
+  | 'settings'
+  | 'warehouse'
+  | 'ic-transfer-branch';
 
 export type BranchNavPage = {
   id: BranchPageId;
@@ -35,6 +37,8 @@ export const BRANCH_NAV_PAGES: BranchNavPage[] = [
   { id: 'usdt', label: 'USDT', path: '/usdt', hideable: true },
   { id: 'customers', label: 'Customers', path: '/customers', hideable: true },
   { id: 'investors', label: 'Investors', path: '/investors', hideable: true },
+  { id: 'warehouse', label: 'Warehouse Portal', path: '/warehouse', hideable: true },
+  { id: 'ic-transfer-branch', label: 'IC Transfer (Branch)', path: '/ic-transfer-branch', hideable: true },
   { id: 'settings', label: 'Settings', path: '/settings', hideable: false },
 ];
 
@@ -56,6 +60,8 @@ const PATH_SEGMENT_TO_PAGE_ID: Record<string, BranchPageId> = {
   customers: 'customers',
   settings: 'settings',
   reports: 'finance',
+  warehouse: 'warehouse',
+  'ic-transfer-branch': 'ic-transfer-branch',
 };
 
 export function isBranchPageEnabled(pageId: string, hiddenPages?: string[] | null): boolean {

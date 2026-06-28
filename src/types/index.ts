@@ -2,7 +2,7 @@
 // HEDGE Capital Management — Type Definitions
 // ═══════════════════════════════════════════════════════════
 
-export type UserRole = 'admin' | 'branch_manager' | 'staff';
+export type UserRole = 'admin' | 'branch_manager' | 'staff' | 'delivery';
 
 /** Per-page access for branch staff (none = hidden, read = view-only, write = full). */
 export type PageAccessLevel = 'none' | 'read' | 'write';
@@ -548,17 +548,26 @@ export interface ICPurchase {
 export interface ICSale {
   id: string;
   customerName: string;
-  locationId?: string;
+  warehouseId?: string;
+  transactionType?: string;
   units: number;
   unitRate: number;
-  address?: string;
-  paymentMode?: string;
   inrAmount?: number;
   aedAmount?: number;
   enteredBy?: string;
   enteredByName?: string;
   enteredByUserId?: string;
   paymentStatus?: 'pending' | 'paid';
+  address?: string;
+  imageUrl?: string;
+  serviceCharge?: number;
+  deliveryAgentId?: string;
+  deliveryAgentName?: string;
+  collectedAmount?: number;
+  priority?: 'High' | 'Normal' | 'Low';
+  deliveryStatus?: 'Pending' | 'Completed' | 'Cancelled' | 'Partial';
+  deliveryImageUrl?: string;
+  sarAmount?: number;
   createdAt?: string;
 }
 

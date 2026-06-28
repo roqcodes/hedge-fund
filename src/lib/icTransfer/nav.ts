@@ -11,6 +11,8 @@ export const IC_TRANSFER_NAV: ICTransferNavItem[] = [
   { id: 'purchase', label: 'Purchase', path: '/purchase' },
   { id: 'sales', label: 'Sales', path: '/sales' },
   { id: 'warehouse', label: 'Warehouse', path: '/warehouse' },
+  { id: 'transactions', label: 'Transactions', path: '/transactions' },
+  { id: 'non-stock-deals', label: 'Non Stock Deals', path: '/non-stock-deals' },
   {
     id: 'settings',
     label: 'Settings',

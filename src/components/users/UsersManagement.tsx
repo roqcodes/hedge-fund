@@ -15,6 +15,7 @@ import { CreateUserModal, EditUserModal } from './UserModals';
 import UserPermissionsPanel from './UserPermissionsPanel';
 import StaffAccessSummary from './StaffAccessSummary';
 import { fetchBranchStaffPermissionsBatchAction, fetchAdminStaffPermissionsBatchAction } from '@/app/actions/permissionActions';
+import { createDeliveryAgent } from '@/app/actions/warehouseActions';
 import type { BranchPageId } from '@/lib/branchPages';
 import type { PagePermissionMap } from '@/types';
 
@@ -35,7 +36,7 @@ export default function UsersManagement({
   isBranchManager = false,
   isSuperAdmin = false,
 }: UsersManagementProps) {
-  const { showToast, branches, user: currentUser } = useApp();
+  const { showToast, branches, user: currentUser, currentSlug } = useApp();
   const [users, setUsers] = useState<CognitoUser[]>(initialUsers);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -77,8 +78,38 @@ export default function UsersManagement({
     ? users.filter(u => u.role === 'staff')
     : users;
 
-  const handleCreate = async (email: string, name: string, role: string, branchId: string, passwordRaw: string) => {
-    const effectiveRole = fixedBranchId ? 'staff' : role;
+  const handleCreate = async (email: string, name: string, role: string, branchId: string, passwordRaw: string, warehouseId?: string) => {
+    let effectiveRole = role;
+    if (fixedBranchId) {
+      if (role === 'warehouse_manager' && warehouseId) effectiveRole = `warehouse_${warehouseId}`;
+      if (role === 'delivery' && warehouseId) effectiveRole = `delivery_${warehouseId}`;
+      if (role !== 'warehouse_manager' && role !== 'delivery') effectiveRole = 'staff';
+    }
+
+    if (role === 'delivery' && warehouseId) {
+      const res = await createDeliveryAgent({ 
+        warehouse_id: warehouseId, 
+        name, 
+        email, 
+        branchSlug: currentSlug || branchSlug || '' 
+      });
+      if (res.success) {
+        showToast('Delivery agent created successfully.');
+        setUsers([{
+          username: email,
+          email,
+          name,
+          role: effectiveRole,
+          branchId: fixedBranchId || branchId,
+          status: 'CONFIRMED',
+          created: new Date().toISOString(),
+        }, ...users]);
+      } else {
+        showToast(res.error || 'Failed to create delivery agent', 'error');
+      }
+      return;
+    }
+
     const res = await createCognitoUserAction(
       email,
       name,

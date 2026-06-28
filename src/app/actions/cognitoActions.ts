@@ -42,10 +42,10 @@ async function requireUserManagementAccess(branchSlug?: string) {
   if (!user) {
     return { error: 'You must be signed in.' as const, user: null };
   }
-  if (user.role === 'staff') {
-    return { error: 'Staff cannot manage users.' as const, user: null };
+  if (user.role === 'staff' || user.role === 'delivery') {
+    return { error: 'Staff/Delivery cannot manage users.' as const, user: null };
   }
-  if (branchSlug && user.role === 'branch_manager') {
+  if (branchSlug && (user.role === 'branch_manager' || user.role.startsWith('warehouse_'))) {
     return { user, branchSlug };
   }
   if (!branchSlug && user.role === 'admin') {
@@ -114,9 +114,9 @@ export async function createCognitoUserAction(
     return { success: false, error: access.error };
   }
 
-  if (access.user?.role === 'branch_manager') {
-    if (role !== 'staff') {
-      return { success: false, error: 'Branch managers can only create staff accounts.' };
+  if (access.user?.role === 'branch_manager' || access.user?.role?.startsWith('warehouse_')) {
+    if (role !== 'staff' && !role.startsWith('warehouse_') && !role.startsWith('delivery')) {
+      return { success: false, error: 'Managers can only create staff, warehouse, or delivery accounts.' };
     }
     if (branchId !== access.user.branchId) {
       return { success: false, error: 'You can only create users for your branch.' };
@@ -248,6 +248,32 @@ export async function updateCognitoUserAttributesAction(
   }
 }
 
+export async function resetCognitoUserPasswordAction(email: string, passwordRaw: string, branchSlug?: string) {
+  const access = await requireUserManagementAccess(branchSlug);
+  if ('error' in access && access.error) {
+    return { success: false, error: access.error };
+  }
+
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) {
+    return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
+  }
+
+  try {
+    const setPasswordCommand = new AdminSetUserPasswordCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: email,
+      Password: passwordRaw,
+      Permanent: true,
+    });
+    await cognitoClient.send(setPasswordCommand);
+
+    return { success: true };
+  } catch (error: unknown) {
+    console.error('Error resetting Cognito user password:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to reset password' };
+  }
+}
+
 export async function deleteCognitoUserAction(email: string, branchSlug?: string) {
   const access = await requireUserManagementAccess(branchSlug);
   if ('error' in access && access.error) {
@@ -272,8 +298,8 @@ export async function deleteCognitoUserAction(email: string, branchSlug?: string
       const target = listRes.Users?.[0];
       const targetRole = getAttribute(target?.Attributes, 'custom:role');
       const targetBranch = getAttribute(target?.Attributes, 'custom:branchId');
-      if (targetRole !== 'staff' || targetBranch !== access.user.branchId) {
-        return { success: false, error: 'You can only remove staff from your branch.' };
+      if ((targetRole !== 'staff' && !(targetRole || '').startsWith('warehouse_')) || targetBranch !== access.user.branchId) {
+        return { success: false, error: 'You can only remove staff or warehouse users from your branch.' };
       }
     }
 

@@ -821,13 +821,15 @@ CREATE TABLE IF NOT EXISTS ic_sales (
     entered_by VARCHAR(255), -- Signed-in user (branch user)
     entered_by_name VARCHAR(255),
     entered_by_user_id VARCHAR(255),
-    location_id UUID REFERENCES ic_regions(id) ON DELETE SET NULL,
+    warehouse_id UUID REFERENCES ic_warehouses(id) ON DELETE SET NULL,
+    transaction_type VARCHAR(50),
     units NUMERIC(15, 4) NOT NULL,
     unit_rate NUMERIC(15, 4) NOT NULL,
-    address TEXT,
-    payment_mode VARCHAR(50),
     inr_amount NUMERIC(15, 4),
     aed_amount NUMERIC(15, 4),
+    address TEXT,
+    image_url TEXT,
+    service_charge NUMERIC(15, 4) DEFAULT 0.00,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ic_sales_user ON ic_sales(entered_by_user_id);
@@ -845,3 +847,41 @@ CREATE TABLE IF NOT EXISTS ic_warehouse_transactions (
 );
 CREATE INDEX IF NOT EXISTS idx_ic_warehouse_tx_warehouse ON ic_warehouse_transactions(warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_ic_warehouse_tx_created ON ic_warehouse_transactions(created_at);
+
+-- =========================================================================
+-- Warehouse Portal & Delivery Module
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS ic_warehouse_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    warehouse_id UUID REFERENCES ic_warehouses(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_warehouse_groups_warehouse ON ic_warehouse_groups(warehouse_id);
+
+CREATE TABLE IF NOT EXISTS ic_delivery_agents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    warehouse_id UUID REFERENCES ic_warehouses(id) ON DELETE CASCADE,
+    account_id VARCHAR(50) UNIQUE NOT NULL, -- e.g. USER0006
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(50),
+    region_id UUID REFERENCES ic_regions(id) ON DELETE SET NULL,
+    group_id UUID REFERENCES ic_warehouse_groups(id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_delivery_agents_warehouse ON ic_delivery_agents(warehouse_id);
+
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_agent_id UUID REFERENCES ic_delivery_agents(id) ON DELETE SET NULL;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS collected_amount NUMERIC(15, 4) DEFAULT 0.00;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'Normal' CHECK (priority IN ('High', 'Normal', 'Low'));
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20) DEFAULT 'Pending' CHECK (delivery_status IN ('Pending', 'Completed', 'Cancelled', 'Partial'));
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS service_charge NUMERIC(15, 4) DEFAULT 0.00;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_image_url TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS sar_amount NUMERIC(15, 4);
+

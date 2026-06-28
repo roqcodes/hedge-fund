@@ -6,7 +6,7 @@ import {
 } from '@/lib/branchPages';
 import type { PageAccessLevel, PagePermissionMap, User, UserRole } from '@/types';
 
-export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff'];
+export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff', 'delivery'];
 
 /** Shown on disabled write controls for read-only staff. */
 export const READ_ONLY_ACCESS_MESSAGE =
@@ -18,7 +18,7 @@ export const PERMISSION_MANAGED_PAGE_IDS: BranchPageId[] = BRANCH_NAV_PAGES.filt
 ).map(p => p.id);
 
 export function isBranchPortalRole(role: UserRole): boolean {
-  return role === 'branch_manager' || role === 'staff';
+  return role === 'branch_manager' || role === 'staff' || role.startsWith('delivery') || role.startsWith('warehouse_');
 }
 
 export function isBranchScopedUser(user: Pick<User, 'role' | 'branchId'> | null | undefined): boolean {
@@ -42,6 +42,10 @@ export function getEffectivePageAccess(
   if (!isBranchPageEnabled(pageId, hiddenPages)) return 'none';
 
   if (user.role === 'admin' || user.role === 'branch_manager') return 'write';
+
+  if (user.role.startsWith('delivery')) {
+    return pageId === 'warehouse' ? 'write' : 'none';
+  }
 
   if (pageId === 'dashboard') {
     return user.permissions?.dashboard ?? 'read';
@@ -86,6 +90,10 @@ export function defaultStaffPermissions(hiddenPages?: string[] | null): PagePerm
     result[pageId] = 'read';
   }
   return result;
+}
+
+export function defaultDeliveryPermissions(): PagePermissionMap {
+  return { dashboard: 'none', warehouse: 'write' };
 }
 
 export function normalizePermissionMap(

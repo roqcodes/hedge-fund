@@ -28,7 +28,8 @@ export async function loginAction(email: string, securityKey: string, branchSlug
     // ── Authorization gate ──────────────────────────────────────────────
     if (branchSlug) {
       // Branch portal: branch managers and staff assigned to THIS branch may enter
-      if (user.role !== 'branch_manager' && user.role !== 'staff') {
+      const { isBranchPortalRole } = await import('@/lib/rbac');
+      if (!isBranchPortalRole(user.role)) {
         return { success: false, error: 'Access denied. Only branch users can sign in through a branch portal.' };
       }
       const branchRes = await query(

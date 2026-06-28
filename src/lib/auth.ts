@@ -105,7 +105,13 @@ export async function authenticateWithCognito(email: string, securityKey: string
     const nameAttr = getAttr('name') || email.split('@')[0];
     const userId = getAttr('sub');
 
-    if (!roleAttr || (roleAttr !== 'admin' && roleAttr !== 'branch_manager' && roleAttr !== 'staff')) {
+    if (!roleAttr || (
+      roleAttr !== 'admin' && 
+      roleAttr !== 'branch_manager' && 
+      roleAttr !== 'staff' && 
+      !roleAttr.startsWith('warehouse_') && 
+      !roleAttr.startsWith('delivery_')
+    )) {
       throw new Error('Access Denied: Your account has not been assigned a valid role by an Administrator.');
     }
     if (roleAttr !== 'admin' && !branchIdAttr) {

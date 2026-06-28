@@ -34,6 +34,14 @@ export default function BranchPageGuard() {
     if (user.role === 'staff' && !canReadPage(user, pageId, hiddenPages)) {
       router.replace(`/${currentSlug}`);
     }
+
+    if (user.role.startsWith('delivery') && pageId !== 'warehouse') {
+      router.replace(`/${currentSlug}/warehouse`);
+    }
+
+    if (user.role.startsWith('warehouse_') && pageId !== 'warehouse') {
+      router.replace(`/${currentSlug}/warehouse`);
+    }
   }, [pathname, currentSlug, branches, user, router]);
 
   return null;

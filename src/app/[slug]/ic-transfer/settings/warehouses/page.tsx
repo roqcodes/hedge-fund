@@ -6,9 +6,13 @@ import { AddButton } from '@/components/ic-transfer/ui';
 import AddRegionModal from '@/components/ic-transfer/settings/AddRegionModal';
 import AddUserModal from '@/components/ic-transfer/settings/AddUserModal';
 import { useApp } from '@/context/AppContext';
+import { useRouter, useParams } from 'next/navigation';
 
 export default function WarehouseManagementPage() {
   const { icRegions, icWarehouses, addICRegion, addICWarehouse, updateICWarehouse, deleteICWarehouse } = useApp();
+  const router = useRouter();
+  const params = useParams();
+  const branchSlug = params.slug as string;
   const [regionModalOpen, setRegionModalOpen] = useState(false);
   const [warehouseModalOpen, setWarehouseModalOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<any>(null);
@@ -49,6 +53,7 @@ export default function WarehouseManagementPage() {
       data={icWarehouses}
       onEditItem={openEdit}
       onDeleteItem={handleDeleteWarehouse}
+      onRowClick={(w) => router.push(`/${branchSlug}/ic-transfer/settings/warehouses/${w.id}`)}
       showCommission={true}
       showRate={false}
       actions={

@@ -42,33 +42,37 @@ export function CreateUserModal({
   open,
   onClose,
   onAdd,
-  fixedBranchId
+  fixedBranchId,
+  fixedWarehouseId
 }: {
   open: boolean;
   onClose: () => void;
-  onAdd: (email: string, name: string, role: string, branchId: string, passwordRaw: string) => Promise<void>;
+  onAdd: (email: string, name: string, role: string, branchId: string, passwordRaw: string, warehouseId?: string) => Promise<void>;
   fixedBranchId?: string;
+  fixedWarehouseId?: string;
 }) {
-  const { branches } = useApp();
+  const { branches, icWarehouses } = useApp();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState(fixedBranchId ? 'staff' : 'admin');
+  const [role, setRole] = useState(fixedWarehouseId ? 'warehouse_manager' : (fixedBranchId ? 'staff' : 'admin'));
   const [branchId, setBranchId] = useState(fixedBranchId || '');
+  const [warehouseId, setWarehouseId] = useState(fixedWarehouseId || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!email || !name || !validatePassword(password).isValid) return;
     if ((role === 'branch_manager' || role === 'staff') && !branchId) return;
+    if ((role === 'warehouse_manager' || role === 'delivery') && !warehouseId) return;
     
     setLoading(true);
-    await onAdd(email, name, role, branchId, password);
+    await onAdd(email, name, role, branchId, password, warehouseId);
     setLoading(false);
     
     // reset
     setEmail('');
     setName('');
-    setRole(fixedBranchId ? 'staff' : 'admin');
+    setRole(fixedWarehouseId ? 'warehouse_manager' : (fixedBranchId ? 'staff' : 'admin'));
     setBranchId(fixedBranchId || '');
     setPassword('');
     onClose();
@@ -116,8 +120,14 @@ export function CreateUserModal({
       {fixedBranchId && (
         <div className={formGroup}>
           <label className={formLabel}>Role</label>
-          <input className={formInput} value="Staff" disabled readOnly />
-          <p className={formHint}>Branch managers can create staff accounts only.</p>
+          <select className={formInput} value={role} onChange={e => setRole(e.target.value)} disabled={loading}>
+            {!fixedWarehouseId && <option value="staff">Staff</option>}
+            <option value="warehouse_manager">Warehouse Manager</option>
+            <option value="delivery">Delivery User</option>
+          </select>
+          <p className={formHint}>
+            {fixedWarehouseId ? 'Create a manager or delivery account for this warehouse.' : 'Branch managers can create staff, warehouse manager, and delivery accounts.'}
+          </p>
         </div>
       )}
       {(role === 'branch_manager' || role === 'staff') && !fixedBranchId && (
@@ -129,6 +139,26 @@ export function CreateUserModal({
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
+        </div>
+      )}
+      {(role === 'warehouse_manager' || role === 'delivery') && fixedBranchId && (
+        <div className={formGroup}>
+          <label className={formLabel}>Assign to Warehouse</label>
+          {fixedWarehouseId ? (
+            <input 
+              className={formInput} 
+              value={icWarehouses?.find((w: any) => w.id === fixedWarehouseId)?.name || fixedWarehouseId} 
+              disabled 
+              readOnly 
+            />
+          ) : (
+            <select className={formInput} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} disabled={loading}>
+              <option value="">-- Select a warehouse --</option>
+              {icWarehouses?.map((w: any) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
     </Modal>

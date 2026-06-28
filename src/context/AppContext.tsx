@@ -79,7 +79,9 @@ import {
   dbUpdateICWarehouseAction,
   dbDeleteICWarehouseAction,
   dbUpdateICPurchaseAction,
+  dbDeleteICPurchaseAction,
   dbUpdateICSaleAction,
+  dbDeleteICSaleAction,
 } from '@/app/actions/icTransferActions';
 import { fetchCurrencyRatesAction } from '@/app/actions/currencyActions';
 import {
@@ -179,6 +181,11 @@ interface AppContextType extends AppState {
   showICTransferSecondarySidebar: boolean;
   openICTransferMainMenu: () => void;
   showICTransferSubNav: () => void;
+  isWarehouseRoute: boolean;
+  warehouseMainMenuOpen: boolean;
+  showWarehouseSecondarySidebar: boolean;
+  openWarehouseMainMenu: () => void;
+  showWarehouseSubNav: () => void;
   selectBranch: (id: string | null) => void;
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
@@ -223,6 +230,8 @@ interface AppContextType extends AppState {
   updateICPurchase: (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => Promise<boolean>;
   addICSale: (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => Promise<boolean>;
   updateICSale: (id: string, updates: Partial<Omit<ICSale, 'id' | 'createdAt'>>) => Promise<boolean>;
+  deleteICPurchase: (id: string) => Promise<boolean>;
+  deleteICSale: (id: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -258,6 +267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const currentSlug = useMemo(() => getSlugFromPath(pathname), [pathname]);
   const [icTransferMainMenuOpen, setICTransferMainMenuOpen] = useState(false);
+  const [warehouseMainMenuOpen, setWarehouseMainMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!pathname.includes('/ic-transfer')) {
@@ -519,6 +529,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const showICTransferSubNav = useCallback(() => {
     setICTransferMainMenuOpen(false);
+    setSidebarCollapsed(true);
+  }, [setSidebarCollapsed]);
+
+  const openWarehouseMainMenu = useCallback(() => {
+    setWarehouseMainMenuOpen(true);
+    setSidebarCollapsed(false);
+  }, [setSidebarCollapsed]);
+
+  const showWarehouseSubNav = useCallback(() => {
+    setWarehouseMainMenuOpen(false);
     setSidebarCollapsed(true);
   }, [setSidebarCollapsed]);
 
@@ -1626,6 +1646,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
+  const deleteICPurchase = useCallback(async (id: string) => {
+    try {
+      const res = await dbDeleteICPurchaseAction(id);
+      if (res.success) {
+        setState(s => ({
+          ...s,
+          icPurchases: s.icPurchases.filter(p => p.id !== id)
+        }));
+        showToast('Purchase deleted successfully');
+        refetchData(); // fetch to get warehouse updates
+        return true;
+      } else {
+        showToast(res.error || 'Failed to delete purchase', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error deleting purchase', 'error');
+      return false;
+    }
+  }, [showToast, refetchData]);
+
+  const deleteICSale = useCallback(async (id: string) => {
+    try {
+      const res = await dbDeleteICSaleAction(id);
+      if (res.success) {
+        setState(s => ({
+          ...s,
+          icSales: s.icSales.filter(sale => sale.id !== id)
+        }));
+        showToast('Sale deleted successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to delete sale', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error deleting sale', 'error');
+      return false;
+    }
+  }, [showToast]);
+
   const contextValue = useMemo(() => {
     let filteredState = state;
     const activeSlug = pathname === '/' ? undefined : pathname?.split('/')[1];
@@ -1687,8 +1748,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const isBranchView = !!filterBranchId || isBranchScopedUser(filteredState.user);
-    const isICTransferRoute = pathname.includes('/ic-transfer');
+    const isICTransferRoute = pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-branch');
     const showICTransferSecondarySidebar = isICTransferRoute && !icTransferMainMenuOpen;
+    const isWarehouseRoute = pathname.split('/').includes('warehouse') && !pathname.split('/').includes('ic-transfer');
+    const showWarehouseSecondarySidebar = isWarehouseRoute && !warehouseMainMenuOpen && filteredState.user?.role !== 'branch_manager' && filteredState.user?.role !== 'staff';
 
     const viewBranchSlug = resolveViewBranchSlug(pathname, currentSlug);
     let enabledCurrencies: CurrencyCode[] = sanitizeEnabledCurrencies(['AED', 'USD', 'INR']);
@@ -1707,16 +1770,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isICTransferRoute,
       icTransferMainMenuOpen,
       showICTransferSecondarySidebar,
+      isWarehouseRoute,
+      warehouseMainMenuOpen,
+      showWarehouseSecondarySidebar,
       currentSlug,
       enabledCurrencies,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
-      addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor,
+      addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, openWarehouseMainMenu, showWarehouseSubNav, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
       addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, updateICRates, addICPurchase, updateICPurchase, addICSale, updateICSale,
+      deleteICPurchase,
+      deleteICSale,
     };
-  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, updateICRates, addICPurchase, updateICPurchase, addICSale, updateICSale]);
+  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, updateICRates, addICPurchase, updateICPurchase, addICSale, updateICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;
