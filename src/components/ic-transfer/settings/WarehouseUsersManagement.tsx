@@ -166,6 +166,7 @@ export default function WarehouseUsersManagement({
                 <thead>
                   <tr>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Name & Email</th>
+                    <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Role</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Status</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Created</th>
                     <th className="px-3 pb-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
@@ -174,7 +175,7 @@ export default function WarehouseUsersManagement({
                 <tbody>
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-sm text-slate-500">
+                      <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
                         {error ? 'Unable to load users.' : searchTerm ? 'No users match your search.' : 'No users found.'}
                       </td>
                     </tr>
@@ -186,6 +187,9 @@ export default function WarehouseUsersManagement({
                             <span className="text-sm font-bold text-slate-900">{u.name}</span>
                             <span className="text-xs text-slate-500">{u.email}</span>
                           </div>
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-600 sm:px-5 sm:py-4">
+                          {u.role?.startsWith('delivery_') ? 'Delivery Agent' : 'Warehouse Manager'}
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
                           <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
@@ -219,11 +223,14 @@ export default function WarehouseUsersManagement({
                       <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
                     </div>
                     <p className="text-xs text-slate-500">{u.email}</p>
-                    <div className="flex items-center justify-end gap-3 mt-2">
-                      <button onClick={() => setEditingUser(u)} className="text-xs font-bold text-slate-600">Edit</button>
-                      {u.email !== currentUser?.email && (
-                        <button onClick={() => handleDelete(u.email)} className="text-xs font-bold text-red-600">Delete</button>
-                      )}
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span>Role: <strong className="font-semibold text-slate-700">{u.role?.startsWith('delivery_') ? 'Delivery Agent' : 'Warehouse Manager'}</strong></span>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => setEditingUser(u)} className="text-xs font-bold text-slate-600">Edit</button>
+                        {u.email !== currentUser?.email && (
+                          <button onClick={() => handleDelete(u.email)} className="text-xs font-bold text-red-600">Delete</button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

@@ -59,6 +59,7 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
     const payload = {
       supplierId,
       warehouseId,
+      locationId: icWarehouses.find(w => w.id === warehouseId)?.regionId || undefined,
       unitRate: rateNum,
       units: unitNum,
       notes,
