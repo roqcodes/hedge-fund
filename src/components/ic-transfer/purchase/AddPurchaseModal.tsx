@@ -22,6 +22,8 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
+  const [inrRateInput, setInrRateInput] = useState('');
+  const [sarRateInput, setSarRateInput] = useState('');
 
   const activeRate = icRates.length > 0 ? icRates[0] : null;
   const buyRate = activeRate?.buyRate || 0;
@@ -42,15 +44,26 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       setSupplierId(initialData?.supplierId || '');
       setWarehouseId(initialData?.warehouseId || '');
       setNotes(initialData?.notes || '');
+      
+      const initialInrRate = initialData
+        ? (initialData.inrTotal && initialData.aedTotal && initialData.aedTotal !== 0
+          ? (initialData.inrTotal / initialData.aedTotal).toString()
+          : inrConversion.toString())
+        : inrConversion.toString();
+      const initialSarRate = sarConversion.toString();
+      setInrRateInput(initialInrRate);
+      setSarRateInput(initialSarRate);
     }
-  }, [open, initialData]);
+  }, [open, initialData, inrConversion, sarConversion]);
 
   const unitNum = parseFloat(units) || 0;
   const rateNum = parseFloat(rate) || 0;
+  const inrConversionRate = parseFloat(inrRateInput) || inrConversion;
+  const sarConversionRate = parseFloat(sarRateInput) || sarConversion;
   
   const aedTotal = unitNum * rateNum;
-  const inrTotal = aedTotal * inrConversion;
-  const sarTotal = aedTotal * sarConversion;
+  const inrTotal = aedTotal * inrConversionRate;
+  const sarTotal = aedTotal * sarConversionRate;
 
   const handleSubmit = async () => {
     if (!unitNum || !rateNum || !supplierId || !warehouseId) return;
@@ -149,11 +162,21 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
           <div className={formRow}>
             <div className={formGroup}>
               <label className={formLabel}>Unit Rate</label>
-              <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="0.01" />
+              <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="any" />
             </div>
             <div className={formGroup}>
-              <label className={formLabel}>Number of Unit</label>
-              <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="0.01" />
+              <label className={formLabel}>Number of Units</label>
+              <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="any" />
+            </div>
+          </div>
+          <div className={formRow}>
+            <div className={formGroup}>
+              <label className={formLabel}>INR Conversion Rate</label>
+              <input className={formInput} value={inrRateInput} onChange={e => setInrRateInput(e.target.value)} type="number" step="any" />
+            </div>
+            <div className={formGroup}>
+              <label className={formLabel}>SAR Conversion Rate</label>
+              <input className={formInput} value={sarRateInput} onChange={e => setSarRateInput(e.target.value)} type="number" step="any" />
             </div>
           </div>
           <div className={formGroup}>

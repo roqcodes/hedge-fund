@@ -792,8 +792,8 @@ CREATE TABLE IF NOT EXISTS ic_rates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     buy_rate NUMERIC(15, 4) NOT NULL,
     sale_rate NUMERIC(15, 4) NOT NULL,
-    sar_conversion NUMERIC(15, 4) NOT NULL,
-    inr_conversion NUMERIC(15, 4) NOT NULL,
+    sar_conversion NUMERIC(24, 14) NOT NULL,
+    inr_conversion NUMERIC(24, 14) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -50,11 +50,11 @@ export default function ICTransferRatesPage() {
             </div>
             <div className={formGroup}>
               <label className={formLabel}>SAR Conversion</label>
-              <input className={formInput} value={sarConversion} onChange={(e) => setSarConversion(parseFloat(e.target.value) || 0)} type="number" step="0.01" />
+              <input className={formInput} value={sarConversion} onChange={(e) => setSarConversion(parseFloat(e.target.value) || 0)} type="number" step="any" />
             </div>
             <div className={formGroup}>
               <label className={formLabel}>INR Conversion</label>
-              <input className={formInput} value={inrConversion} onChange={(e) => setInrConversion(parseFloat(e.target.value) || 0)} type="number" step="0.01" />
+              <input className={formInput} value={inrConversion} onChange={(e) => setInrConversion(parseFloat(e.target.value) || 0)} type="number" step="any" />
             </div>
           </div>
           <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
