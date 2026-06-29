@@ -790,13 +790,28 @@ CREATE TABLE IF NOT EXISTS ic_warehouses (
 );
 CREATE INDEX IF NOT EXISTS idx_ic_warehouses_region ON ic_warehouses(region_id);
 
-CREATE TABLE IF NOT EXISTS ic_rates (
+CREATE TABLE IF NOT EXISTS ic_rate_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    buy_rate NUMERIC(15, 4) NOT NULL,
-    sale_rate NUMERIC(15, 4) NOT NULL,
-    sar_conversion NUMERIC(24, 14) NOT NULL,
-    inr_conversion NUMERIC(24, 14) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    country VARCHAR(255) NOT NULL,
+    region VARCHAR(255) NOT NULL,
+    currency VARCHAR(10) NOT NULL,
+    sale_rate DECIMAL(15, 6) NOT NULL DEFAULT 0,
+    conversion_rate DECIMAL(15, 6) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ic_rate_group_customers (
+    group_id UUID REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
+    customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE CASCADE,
+    PRIMARY KEY (group_id, customer_id)
+);
+
+CREATE TABLE IF NOT EXISTS ic_rate_group_branches (
+    group_id UUID REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
+    branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
+    PRIMARY KEY (group_id, branch_id)
 );
 
 CREATE TABLE IF NOT EXISTS ic_purchases (
@@ -808,7 +823,7 @@ CREATE TABLE IF NOT EXISTS ic_purchases (
     units NUMERIC(15, 4) NOT NULL,
     payment_method VARCHAR(50),
     notes TEXT,
-    inr_total NUMERIC(15, 4),
+    converted_total NUMERIC(15, 4),
     aed_total NUMERIC(15, 4),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -827,7 +842,7 @@ CREATE TABLE IF NOT EXISTS ic_sales (
     transaction_type VARCHAR(50),
     units NUMERIC(15, 4) NOT NULL,
     unit_rate NUMERIC(15, 4) NOT NULL,
-    inr_amount NUMERIC(15, 4),
+    converted_amount NUMERIC(15, 4),
     aed_amount NUMERIC(15, 4),
     address TEXT,
     image_url TEXT,
@@ -885,5 +900,5 @@ ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS service_charge NUMERIC(15, 4) DEFAULT 0.00;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_image_url TEXT;
-ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS sar_amount NUMERIC(15, 4);
+
 

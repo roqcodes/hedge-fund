@@ -4,3 +4,4 @@ import FundManagement from '@/components/funds/FundManagement';
 export default function TransactionV2Page() {
   return <FundManagement variant="beta" />;
 }
+  

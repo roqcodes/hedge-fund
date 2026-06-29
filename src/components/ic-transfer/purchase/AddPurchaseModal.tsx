@@ -14,7 +14,7 @@ type Props = {
 };
 
 export default function AddPurchaseModal({ open, onClose, initialData }: Props) {
-  const { icSuppliers, icWarehouses, addICPurchase, updateICPurchase, icPurchases, icRates } = useApp();
+  const { icSuppliers, icWarehouses, addICPurchase, updateICPurchase, icPurchases, icRateGroups, entities, user } = useApp();
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [supplierId, setSupplierId] = useState(initialData?.supplierId || '');
@@ -22,13 +22,16 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
-  const [inrRateInput, setInrRateInput] = useState('');
-  const [sarRateInput, setSarRateInput] = useState('');
 
-  const activeRate = icRates.length > 0 ? icRates[0] : null;
-  const buyRate = activeRate?.buyRate || 0;
-  const inrConversion = activeRate?.inrConversion || 25;
-  const sarConversion = activeRate?.sarConversion || 1.02;
+  const selectedSupplierId = icSuppliers.find(s => s.id === supplierId || s.name === supplierId)?.id;
+  const applicableGroup = icRateGroups.find(g => 
+    (selectedSupplierId && g.customerIds?.includes(selectedSupplierId)) || 
+    (user?.branchId && g.branchIds?.includes(user.branchId))
+  );
+
+  const groupCurrency = applicableGroup?.currency || 'Currency';
+  const groupSaleRate = applicableGroup?.saleRate || 0;
+  const groupConversionRate = applicableGroup?.conversionRate || 1;
 
   const selectedPurchases = icPurchases.filter(p => p.supplierId === supplierId && p.warehouseId === warehouseId);
   const totalStock = selectedPurchases.reduce((acc, p) => acc + (p.units || 0), 0);
@@ -45,25 +48,16 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       setWarehouseId(initialData?.warehouseId || '');
       setNotes(initialData?.notes || '');
       
-      const initialInrRate = initialData
-        ? (initialData.inrTotal && initialData.aedTotal && initialData.aedTotal !== 0
-          ? (initialData.inrTotal / initialData.aedTotal).toString()
-          : inrConversion.toString())
-        : inrConversion.toString();
-      const initialSarRate = sarConversion.toString();
-      setInrRateInput(initialInrRate);
-      setSarRateInput(initialSarRate);
     }
-  }, [open, initialData, inrConversion, sarConversion]);
+  }, [open, initialData]);
 
   const unitNum = parseFloat(units) || 0;
-  const rateNum = parseFloat(rate) || 0;
-  const inrConversionRate = parseFloat(inrRateInput) || inrConversion;
-  const sarConversionRate = parseFloat(sarRateInput) || sarConversion;
+  const rateNum = parseFloat(rate) || groupSaleRate;
+  const aedBaseTotal = unitNum * rateNum;
+  const convertedTotal = aedBaseTotal * groupConversionRate;
   
-  const aedTotal = unitNum * rateNum;
-  const inrTotal = aedTotal * inrConversionRate;
-  const sarTotal = aedTotal * sarConversionRate;
+  const inrConversionRate = rateNum > 0 ? 1000 / rateNum : 0;
+  const inrTotal = aedBaseTotal * inrConversionRate;
 
   const handleSubmit = async () => {
     if (!unitNum || !rateNum || !supplierId || !warehouseId) return;
@@ -76,8 +70,8 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       unitRate: rateNum,
       units: unitNum,
       notes,
-      inrTotal,
-      aedTotal,
+      convertedTotal: convertedTotal,
+      aedTotal: aedBaseTotal,
     };
 
     if (initialData) {
@@ -105,28 +99,16 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
         </>
       }
     >
-      {buyRate > 0 && (
+      {applicableGroup && (
         <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-500 uppercase tracking-wider">Live Buy Rates:</span>
+            <span className="font-semibold text-slate-500 uppercase tracking-wider">Applicable Rate Group: {applicableGroup.name}</span>
           </div>
           <div className="flex gap-4">
             <div>
-              <span className="font-semibold text-slate-400 uppercase">AED:</span>{' '}
-              <span className="font-bold text-accent">{buyRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className="font-semibold text-slate-400 uppercase">Rate ({groupCurrency}):</span>{' '}
+              <span className="font-bold text-accent">{groupSaleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
-            {inrConversion > 0 && (
-              <div className="border-l border-slate-200 pl-4">
-                <span className="font-semibold text-slate-400 uppercase">INR:</span>{' '}
-                <span className="font-bold text-emerald-600">{(buyRate * inrConversion).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              </div>
-            )}
-            {sarConversion > 0 && (
-              <div className="border-l border-slate-200 pl-4">
-                <span className="font-semibold text-slate-400 uppercase">SAR:</span>{' '}
-                <span className="font-bold text-indigo-600">{(buyRate * sarConversion).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -169,16 +151,6 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
               <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="any" />
             </div>
           </div>
-          <div className={formRow}>
-            <div className={formGroup}>
-              <label className={formLabel}>INR Conversion Rate</label>
-              <input className={formInput} value={inrRateInput} onChange={e => setInrRateInput(e.target.value)} type="number" step="any" />
-            </div>
-            <div className={formGroup}>
-              <label className={formLabel}>SAR Conversion Rate</label>
-              <input className={formInput} value={sarRateInput} onChange={e => setSarRateInput(e.target.value)} type="number" step="any" />
-            </div>
-          </div>
           <div className={formGroup}>
             <label className={formLabel}>Warehouse</label>
             <select className={formSelect} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
@@ -201,33 +173,20 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
         </div>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f5f0e8] p-4">
+          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#f5f0e8] p-4">
             <div className="text-center border-r border-amber-900/10">
-              <p className="text-[10px] font-semibold text-slate-500">INR</p>
-              <p className="text-base font-bold text-slate-900 mt-1">{inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </div>
-            <div className="text-center border-r border-amber-900/10 px-1">
-              <p className="text-[10px] font-semibold text-slate-500">SAR</p>
-              <p className="text-base font-bold text-indigo-700 mt-1">{sarTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-[10px] font-semibold text-slate-500">Amount (INR)</p>
+              <p className="text-sm font-bold text-slate-900 mt-1">{inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">Rate: {inrConversionRate.toFixed(4)}</p>
             </div>
             <div className="text-center">
-              <p className="text-[10px] font-semibold text-slate-500">AED</p>
-              <p className="text-base font-bold text-slate-900 mt-1">{aedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 rounded-2xl bg-[#f5f0e8] p-4">
-            <div className="text-center">
-              <p className="text-xs font-semibold text-slate-500">Payment</p>
-              <p className="text-xl font-bold text-slate-900">0</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs font-semibold text-slate-500">Due Amount</p>
-              <p className="text-xl font-bold text-slate-900">{aedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-[10px] font-semibold text-slate-500">Amount (AED)</p>
+              <p className="text-sm font-bold text-slate-900 mt-1">{aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
           </div>
           <div className="rounded-2xl bg-[#f5f0e8] p-4 text-center">
             <p className="text-xs font-semibold text-slate-500">Total Due</p>
-            <p className="text-3xl font-extrabold text-slate-900 mt-0.5">{aedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</p>
+            <p className="text-3xl font-extrabold text-slate-900 mt-0.5">{aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</p>
             <p className="mt-1 text-[10px] text-slate-400">Due Date: —</p>
           </div>
         </div>

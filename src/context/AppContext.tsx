@@ -24,7 +24,7 @@ import {
   ICRegion,
   ICSupplier,
   ICWarehouse,
-  ICRates,
+  ICRateGroup,
   ICPurchase,
   ICSale,
   ICWarehouseTransaction,
@@ -69,7 +69,11 @@ import {
   dbAddICRegionAction,
   dbAddICSupplierAction,
   dbAddICWarehouseAction,
-  dbUpdateICRatesAction,
+  dbAddICRateGroupAction,
+  dbUpdateICRateGroupAction,
+  dbDeleteICRateGroupAction,
+  dbSetICRateGroupCustomersAction,
+  dbSetICRateGroupBranchesAction,
   dbAddICPurchaseAction,
   dbAddICSaleAction,
   dbUpdateICRegionAction,
@@ -100,6 +104,8 @@ interface AppState {
   isAuthenticated: boolean;
   currentPage: PageId;
   dateRange: DateRange;
+  globalBranches: Branch[];
+  globalEntities: import('@/types').Entity[];
   branches: Branch[];
   transactions: Transaction[];
   expenses: Expense[];
@@ -131,7 +137,7 @@ interface AppState {
   icRegions: ICRegion[];
   icSuppliers: ICSupplier[];
   icWarehouses: ICWarehouse[];
-  icRates: ICRates[];
+  icRateGroups: ICRateGroup[];
   icPurchases: ICPurchase[];
   icSales: ICSale[];
   icWarehouseTransactions: ICWarehouseTransaction[];
@@ -205,6 +211,8 @@ interface AppContextType extends AppState {
   refetchData: () => Promise<void>;
   isBranchView: boolean;
   currentSlug: string;
+  allBranches: Branch[];
+  allEntities: import('@/types').Entity[];
   addEntity: (entity: import('@/types').Entity) => Promise<boolean>;
   updateEntity: (entity: import('@/types').Entity) => Promise<boolean>;
   deleteEntity: (entityName: string, entityId: string) => Promise<boolean>;
@@ -225,7 +233,11 @@ interface AppContextType extends AppState {
   addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   updateICWarehouse: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   deleteICWarehouse: (id: string) => Promise<boolean>;
-  updateICRates: (buyRate: number, saleRate: number, sarConversion: number, inrConversion: number) => Promise<boolean>;
+  addICRateGroup: (name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => Promise<string | null>;
+  updateICRateGroup: (id: string, name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => Promise<boolean>;
+  deleteICRateGroup: (id: string) => Promise<boolean>;
+  setICRateGroupCustomers: (groupId: string, customerIds: string[]) => Promise<boolean>;
+  setICRateGroupBranches: (groupId: string, branchIds: string[]) => Promise<boolean>;
   addICPurchase: (purchase: Omit<ICPurchase, 'id' | 'createdAt'>) => Promise<boolean>;
   updateICPurchase: (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => Promise<boolean>;
   addICSale: (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => Promise<boolean>;
@@ -288,6 +300,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toasts: [],
     sidebarOpen: false,
     sidebarCollapsed: false,
+    globalBranches: [],
+    globalEntities: [],
     selectedBranchId: null,
     selectedInvestorId: null,
     investors: [],
@@ -311,7 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     icRegions: [],
     icSuppliers: [],
     icWarehouses: [],
-    icRates: [],
+    icRateGroups: [],
     icPurchases: [],
     icSales: [],
     icWarehouseTransactions: [],
@@ -359,7 +373,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             icRegions: data.icRegions || [],
             icSuppliers: data.icSuppliers || [],
             icWarehouses: data.icWarehouses || [],
-            icRates: data.icRates || [],
+            icRateGroups: data.icRateGroups || [],
             icPurchases: data.icPurchases || [],
             icSales: data.icSales || [],
             icWarehouseTransactions: data.icWarehouseTransactions || [],
@@ -411,6 +425,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...s,
             user: currentUser,
             isAuthenticated,
+            globalBranches: data.globalBranches || data.branches,
+            globalEntities: data.globalEntities || data.entities || [],
             branches: data.branches,
             transactions: data.transactions,
             expenses: data.expenses,
@@ -432,7 +448,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             icRegions: data.icRegions || [],
             icSuppliers: data.icSuppliers || [],
             icWarehouses: data.icWarehouses || [],
-            icRates: data.icRates || [],
+            icRateGroups: data.icRateGroups || [],
             icPurchases: data.icPurchases || [],
             icSales: data.icSales || [],
             icWarehouseTransactions: data.icWarehouseTransactions || [],
@@ -1557,19 +1573,87 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const updateICRates = useCallback(async (buyRate: number, saleRate: number, sarConversion: number, inrConversion: number) => {
+  const addICRateGroup = useCallback(async (name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => {
     try {
-      const res = await dbUpdateICRatesAction(buyRate, saleRate, sarConversion, inrConversion);
+      const res = await dbAddICRateGroupAction(name, country, region, currency, saleRate, conversionRate);
       if (res.success && res.data) {
-        setState(s => ({ ...s, icRates: [res.data!] }));
-        showToast('Rates updated successfully');
+        setState(s => ({ ...s, icRateGroups: [res.data!, ...s.icRateGroups] }));
+        showToast('Rate group added successfully');
+        return res.data.id;
+      } else {
+        showToast(res.error || 'Failed to add rate group', 'error');
+        return null;
+      }
+    } catch (e) {
+      showToast('Error adding rate group', 'error');
+      return null;
+    }
+  }, [showToast]);
+
+  const updateICRateGroup = useCallback(async (id: string, name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => {
+    try {
+      const res = await dbUpdateICRateGroupAction(id, name, country, region, currency, saleRate, conversionRate);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icRateGroups: s.icRateGroups.map(g => g.id === id ? res.data! : g) }));
+        showToast('Rate group updated successfully');
         return true;
       } else {
-        showToast(res.error || 'Failed to update rates', 'error');
+        showToast(res.error || 'Failed to update rate group', 'error');
         return false;
       }
     } catch (e) {
-      showToast('Error updating rates', 'error');
+      showToast('Error updating rate group', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const deleteICRateGroup = useCallback(async (id: string) => {
+    try {
+      const res = await dbDeleteICRateGroupAction(id);
+      if (res.success) {
+        setState(s => ({ ...s, icRateGroups: s.icRateGroups.filter(g => g.id !== id) }));
+        showToast('Rate group deleted successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to delete rate group', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error deleting rate group', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const setICRateGroupCustomers = useCallback(async (groupId: string, customerIds: string[]) => {
+    try {
+      const res = await dbSetICRateGroupCustomersAction(groupId, customerIds);
+      if (res.success) {
+        setState(s => ({ ...s, icRateGroups: s.icRateGroups.map(g => g.id === groupId ? { ...g, customerIds } : g) }));
+        showToast('Rate group customers updated successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update rate group customers', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating rate group customers', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const setICRateGroupBranches = useCallback(async (groupId: string, branchIds: string[]) => {
+    try {
+      const res = await dbSetICRateGroupBranchesAction(groupId, branchIds);
+      if (res.success) {
+        setState(s => ({ ...s, icRateGroups: s.icRateGroups.map(g => g.id === groupId ? { ...g, branchIds } : g) }));
+        showToast('Rate group branches updated successfully');
+        return true;
+      } else {
+        showToast(res.error || 'Failed to update rate group branches', 'error');
+        return false;
+      }
+    } catch (e) {
+      showToast('Error updating rate group branches', 'error');
       return false;
     }
   }, [showToast]);
@@ -1728,6 +1812,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           expenses: state.expenses.filter(e => e.branchId === filterBranchId),
           invoices: state.invoices.filter(i => i.branchId === filterBranchId),
           investors: state.investors.filter(i => i.assignedBranchId === filterBranchId || i.isGlobal),
+          entities: state.entities.filter(e => !e.branchId || e.branchId === filterBranchId),
           deals,
           dealTransactions: state.dealTransactions.filter(dt => dealIds.has(dt.dealId || '')),
         };
@@ -1770,6 +1855,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return {
       ...filteredState,
+      allBranches: state.globalBranches,
+      allEntities: state.globalEntities,
       isBranchView,
       isICTransferRoute,
       icTransferMainMenuOpen,
@@ -1784,11 +1871,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
-      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, updateICRates, addICPurchase, updateICPurchase, addICSale, updateICSale,
+      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale,
       deleteICPurchase,
       deleteICSale,
     };
-  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, updateICRates, addICPurchase, updateICPurchase, addICSale, updateICSale, deleteICPurchase, deleteICSale]);
+  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;

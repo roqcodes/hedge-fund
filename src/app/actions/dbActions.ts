@@ -18,7 +18,7 @@ import {
   mapICRegionRow,
   mapICSupplierRow,
   mapICWarehouseRow,
-  mapICRatesRow,
+  mapICRateGroupRow,
   mapICPurchaseRow,
   mapICSaleRow,
   mapICWarehouseTransactionRow,
@@ -46,7 +46,7 @@ import {
   ICRegion,
   ICSupplier,
   ICWarehouse,
-  ICRates,
+  ICRateGroup,
   ICPurchase,
   ICSale,
   ICWarehouseTransaction,
@@ -96,6 +96,8 @@ function formatPgError(error: unknown): string {
 }
 
 export interface InitialDataPayload {
+  globalBranches: Branch[];
+  globalEntities: Entity[];
   branches: Branch[];
   transactions: Transaction[];
   expenses: Expense[];
@@ -117,7 +119,7 @@ export interface InitialDataPayload {
   icRegions: ICRegion[];
   icSuppliers: ICSupplier[];
   icWarehouses: ICWarehouse[];
-  icRates: ICRates[];
+  icRateGroups: ICRateGroup[];
   icPurchases: ICPurchase[];
   icSales: ICSale[];
   icWarehouseTransactions: ICWarehouseTransaction[];
@@ -550,8 +552,13 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const icSuppliers = icSuppliersRes.rows.map(r => mapICSupplierRow(r));
     const icWarehousesRes = await query('SELECT * FROM ic_warehouses');
     const icWarehouses = icWarehousesRes.rows.map(r => mapICWarehouseRow(r));
-    const icRatesRes = await query('SELECT * FROM ic_rates');
-    const icRates = icRatesRes.rows.map(r => mapICRatesRow(r));
+    const icRateGroupsRes = await query(`
+      SELECT g.*, 
+             COALESCE((SELECT array_agg(customer_id) FROM ic_rate_group_customers WHERE group_id = g.id), ARRAY[]::varchar[]) as customer_ids,
+             COALESCE((SELECT array_agg(branch_id) FROM ic_rate_group_branches WHERE group_id = g.id), ARRAY[]::varchar[]) as branch_ids
+      FROM ic_rate_groups g
+    `);
+    const icRateGroups = icRateGroupsRes.rows.map(r => mapICRateGroupRow(r));
     const icPurchasesRes = await query('SELECT * FROM ic_purchases ORDER BY created_at DESC');
     const icPurchases = icPurchasesRes.rows.map(r => mapICPurchaseRow(r));
     const icSalesRes = await query('SELECT s.*, a.name as delivery_agent_name FROM ic_sales s LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id ORDER BY s.created_at DESC');
@@ -605,6 +612,8 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     return {
       success: true,
       data: {
+        globalBranches: branches,
+        globalEntities: entities,
         branches: finalBranches,
         transactions: finalTransactions,
         expenses: finalExpenses,
@@ -626,7 +635,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         icRegions,
         icSuppliers,
         icWarehouses,
-        icRates,
+        icRateGroups,
         icPurchases,
         icSales,
         icWarehouseTransactions,

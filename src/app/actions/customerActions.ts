@@ -23,6 +23,23 @@ export async function getCustomersBySlug(slug: string) {
   }
 }
 
+export async function getAllCustomers() {
+  try {
+    const res = await query(
+      `
+      SELECT c.*
+      FROM customers c
+      ORDER BY c.name ASC
+    `
+    );
+    return { success: true, customers: res.rows };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('getAllCustomers error:', err);
+    return { success: false, error: message };
+  }
+}
+
 export async function getCustomerById(customerId: string, slug?: string) {
   try {
     const res = await query(

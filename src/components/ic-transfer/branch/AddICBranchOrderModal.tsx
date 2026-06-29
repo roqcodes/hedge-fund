@@ -13,9 +13,9 @@ type Props = {
 };
 
 export default function AddICBranchOrderModal({ open, onClose, initialData }: Props) {
-  const { addICSale, updateICSale, branches, currentSlug, icRates } = useApp();
+  const { addICSale, updateICSale, branches, currentSlug, icRateGroups } = useApp();
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
-  const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'by_hand');
+  const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
   const [address, setAddress] = useState(initialData?.address || '');
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
   const [deleteToken, setDeleteToken] = useState<string>('');
@@ -23,23 +23,26 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Retrieve current active rates
-  const activeRate = icRates.length > 0 ? icRates[0] : null;
-  const saleRate = activeRate?.saleRate || 0;
-  const inrConversion = activeRate?.inrConversion || 1;
-  const sarConversion = activeRate?.sarConversion || 1;
-
   // Cloudinary credentials from env
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'finite-x-reality';
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'meal_payments';
 
-  // Retrieve branch name
-  const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || 'Branch Customer';
+  // Retrieve branch info
+  const currentBranch = branches.find(b => b.slug === currentSlug);
+  const branchName = currentBranch?.name || currentSlug || 'Branch Customer';
+  const currentBranchId = currentBranch?.id;
+
+  const applicableGroup = icRateGroups.find(g => 
+    (currentBranchId && g.branchIds?.includes(currentBranchId))
+  );
+
+  const groupCurrency = applicableGroup?.currency || 'Currency';
+  const groupSaleRate = applicableGroup?.saleRate || 0;
 
   useEffect(() => {
     if (open) {
       setUnits(initialData?.units?.toString() || '');
-      setTransactionType(initialData?.transactionType || 'by_hand');
+      setTransactionType(initialData?.transactionType || 'transfer');
       setAddress(initialData?.address || '');
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
@@ -92,15 +95,14 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   };
 
   const unitNum = parseFloat(units) || 0;
-  const rateNum = initialData ? initialData.unitRate : saleRate;
-  const inrConversionRate = initialData ? (initialData.inrAmount && initialData.aedAmount ? initialData.inrAmount / initialData.aedAmount : inrConversion) : inrConversion;
-  const sarConversionRate = sarConversion;
+  const rateNum = initialData ? initialData.unitRate : groupSaleRate;
   const serviceChargeNum = parseFloat(serviceCharge) || 0;
 
   const aedBaseTotal = unitNum * rateNum;
   const aedNetTotal = Math.max(0, aedBaseTotal - serviceChargeNum);
-  const inrTotal = aedNetTotal * inrConversionRate;
-  const sarTotal = aedNetTotal * sarConversionRate;
+  
+  const inrConversionRate = rateNum > 0 ? 1000 / rateNum : 0;
+  const inrTotal = aedBaseTotal * inrConversionRate;
 
   const handleSubmit = async () => {
     if (!unitNum || !rateNum) return;
@@ -111,12 +113,11 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       transactionType,
       unitRate: rateNum,
       units: unitNum,
-      inrAmount: inrTotal,
+      convertedAmount: inrTotal,
       aedAmount: aedNetTotal,
       address: address || undefined,
       imageUrl: imageUrl || undefined,
       serviceCharge: serviceChargeNum,
-      sarAmount: sarTotal,
     };
 
     if (initialData) {
@@ -144,28 +145,16 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
         </>
       }
     >
-      {saleRate > 0 && (
+      {applicableGroup && (
         <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-500 uppercase tracking-wider">Live Sale Rates:</span>
+            <span className="font-semibold text-slate-500 uppercase tracking-wider">Applicable Rate Group: {applicableGroup.name}</span>
           </div>
           <div className="flex gap-4">
             <div>
-              <span className="font-semibold text-slate-400 uppercase">AED:</span>{' '}
-              <span className="font-bold text-accent">{saleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              <span className="font-semibold text-slate-400 uppercase">Rate ({groupCurrency}):</span>{' '}
+              <span className="font-bold text-accent">{groupSaleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
-            {inrConversion > 0 && (
-              <div className="border-l border-slate-200 pl-4">
-                <span className="font-semibold text-slate-400 uppercase">INR:</span>{' '}
-                <span className="font-bold text-emerald-600">{(saleRate * inrConversion).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              </div>
-            )}
-            {sarConversion > 0 && (
-              <div className="border-l border-slate-200 pl-4">
-                <span className="font-semibold text-slate-400 uppercase">SAR:</span>{' '}
-                <span className="font-bold text-indigo-600">{(saleRate * sarConversion).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -185,9 +174,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
             <div className={formGroup}>
               <label className={formLabel}>Transaction Type</label>
               <select className={formSelect} value={transactionType} onChange={e => setTransactionType(e.target.value)}>
-                <option value="by_hand">By Hand</option>
                 <option value="transfer">Transfer</option>
                 <option value="cdm">CDM</option>
+                <option value="by_hand">By Hand</option>
               </select>
             </div>
           </div>
@@ -204,18 +193,6 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
               <p className="mt-1 text-[11px] text-slate-400 font-medium">Autofilled from active rates settings.</p>
             </div>
             <div className={formGroup}>
-              <label className={formLabel}>INR Conversion Rate (Locked)</label>
-              <input 
-                className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`} 
-                value={inrConversionRate} 
-                disabled 
-                readOnly 
-                type="number" 
-              />
-            </div>
-          </div>
-          <div className={formRow}>
-            <div className={formGroup}>
               <label className={formLabel}>Order Units</label>
               <input 
                 className={formInput} 
@@ -227,6 +204,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                 required
               />
             </div>
+          </div>
+          <div className={formRow}>
             <div className={formGroup}>
               <label className={formLabel}>Service Charge (AED)</label>
               <input 
@@ -238,8 +217,6 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                 placeholder="0.00"
               />
             </div>
-          </div>
-          <div className={formRow}>
             <div className={formGroup}>
               <label className={formLabel}>Address</label>
               <textarea 
@@ -250,6 +227,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                 rows={3}
               />
             </div>
+          </div>
+          <div className={formRow}>
             <div className={formGroup}>
               <label className={formLabel}>Captured Image</label>
               <div className="flex items-center gap-3 mt-2">
@@ -291,14 +270,11 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
         </div>
 
         <div className="space-y-4 flex flex-col justify-center">
-          <div className="grid grid-cols-3 gap-3 rounded-3xl border border-slate-100 p-5 bg-slate-50/50">
+          <div className="grid grid-cols-2 gap-3 rounded-3xl border border-slate-100 p-5 bg-slate-50/50">
             <div className="text-center border-r border-slate-100 pr-1">
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Amount (INR)</p>
               <p className="text-lg font-bold text-slate-900 mt-1">{inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </div>
-            <div className="text-center border-r border-slate-100 px-1">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Amount (SAR)</p>
-              <p className="text-lg font-bold text-indigo-600 mt-1">{sarTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">Rate: {inrConversionRate.toFixed(4)}</p>
             </div>
             <div className="text-center pl-1">
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Amount (AED)</p>

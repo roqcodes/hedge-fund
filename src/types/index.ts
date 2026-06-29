@@ -522,12 +522,17 @@ export interface ICWarehouse {
   createdAt?: string;
 }
 
-export interface ICRates {
+export interface ICRateGroup {
   id: string;
-  buyRate: number;
+  name: string;
+  country: string;
+  region: string;
+  currency: string;
   saleRate: number;
-  sarConversion: number;
-  inrConversion: number;
+  conversionRate: number;
+  customerIds?: string[];
+  branchIds?: string[];
+  createdAt?: string;
   updatedAt?: string;
 }
 
@@ -540,7 +545,7 @@ export interface ICPurchase {
   units: number;
   paymentMethod?: string;
   notes?: string;
-  inrTotal?: number;
+  convertedTotal?: number;
   aedTotal?: number;
   paymentStatus?: 'pending' | 'paid';
   createdAt?: string;
@@ -553,7 +558,7 @@ export interface ICSale {
   transactionType?: string;
   units: number;
   unitRate: number;
-  inrAmount?: number;
+  convertedAmount?: number;
   aedAmount?: number;
   enteredBy?: string;
   enteredByName?: string;
@@ -568,7 +573,6 @@ export interface ICSale {
   priority?: 'High' | 'Normal' | 'Low';
   deliveryStatus?: 'Pending' | 'Completed' | 'Cancelled' | 'Partial';
   deliveryImageUrl?: string;
-  sarAmount?: number;
   createdAt?: string;
 }
 

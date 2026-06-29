@@ -1,4 +1,4 @@
-import { ICRegion, ICSupplier, ICWarehouse, ICRates, ICPurchase, ICSale, ICWarehouseTransaction } from '@/types';
+import { ICRegion, ICSupplier, ICWarehouse, ICRateGroup, ICPurchase, ICSale, ICWarehouseTransaction } from '@/types';
 
 export function mapICRegionRow(row: any): ICRegion {
   return {
@@ -35,13 +35,18 @@ export function mapICWarehouseRow(row: any): ICWarehouse {
   };
 }
 
-export function mapICRatesRow(row: any): ICRates {
+export function mapICRateGroupRow(row: any): ICRateGroup {
   return {
     id: row.id,
-    buyRate: parseFloat(row.buy_rate),
+    name: row.name,
+    country: row.country,
+    region: row.region,
+    currency: row.currency,
     saleRate: parseFloat(row.sale_rate),
-    sarConversion: parseFloat(row.sar_conversion),
-    inrConversion: parseFloat(row.inr_conversion),
+    conversionRate: row.conversion_rate ? parseFloat(row.conversion_rate) : 1,
+    customerIds: row.customer_ids || [],
+    branchIds: row.branch_ids || [],
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };
 }
@@ -56,7 +61,7 @@ export function mapICPurchaseRow(row: any): ICPurchase {
     units: parseFloat(row.units),
     paymentMethod: row.payment_method,
     notes: row.notes,
-    inrTotal: row.inr_total ? parseFloat(row.inr_total) : undefined,
+    convertedTotal: row.converted_total ? parseFloat(row.converted_total) : undefined,
     aedTotal: row.aed_total ? parseFloat(row.aed_total) : undefined,
     paymentStatus: row.payment_status || 'pending',
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
@@ -71,7 +76,7 @@ export function mapICSaleRow(row: any): ICSale {
     transactionType: row.transaction_type,
     units: parseFloat(row.units),
     unitRate: parseFloat(row.unit_rate),
-    inrAmount: row.inr_amount ? parseFloat(row.inr_amount) : undefined,
+    convertedAmount: row.converted_amount ? parseFloat(row.converted_amount) : undefined,
     aedAmount: row.aed_amount ? parseFloat(row.aed_amount) : undefined,
     enteredBy: row.entered_by,
     enteredByName: row.entered_by_name,
@@ -86,7 +91,6 @@ export function mapICSaleRow(row: any): ICSale {
     priority: row.priority || undefined,
     deliveryStatus: row.delivery_status || undefined,
     deliveryImageUrl: row.delivery_image_url || undefined,
-    sarAmount: row.sar_amount ? parseFloat(row.sar_amount) : undefined,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
   };
 }

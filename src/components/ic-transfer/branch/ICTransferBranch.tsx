@@ -26,7 +26,7 @@ const ORDER_COLUMNS = [
 ];
 
 export default function ICTransferBranch() {
-  const { icSales, icRegions, icWarehouses, currentSlug, branches, icRates } = useApp();
+  const { icSales, icRegions, icWarehouses, currentSlug, branches } = useApp();
   const [location, setLocation] = useState('All');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -41,11 +41,6 @@ export default function ICTransferBranch() {
     customEndDate,
     setCustomEndDate,
   } = useICTransferFilters();
-
-  const activeRate = icRates.length > 0 ? icRates[0] : null;
-  const saleRate = activeRate?.saleRate || 0;
-  const inrConversion = activeRate?.inrConversion || 0;
-  const sarConversion = activeRate?.sarConversion || 0;
 
   const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || 'Branch Customer';
 
@@ -110,26 +105,6 @@ export default function ICTransferBranch() {
         subtitle="Submit and track transfer orders from your branch"
         actions={
           <div className="flex items-center gap-3">
-            {saleRate > 0 && (
-              <div className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-1.5 shadow-sm flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">AED:</span>
-                  <span className="text-xs font-extrabold text-accent">{saleRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                {inrConversion > 0 && (
-                  <div className="flex items-center gap-1.5 border-l border-slate-100 pl-3">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">INR:</span>
-                    <span className="text-xs font-extrabold text-emerald-600">{(saleRate * inrConversion).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-                {sarConversion > 0 && (
-                  <div className="flex items-center gap-1.5 border-l border-slate-100 pl-3">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SAR:</span>
-                    <span className="text-xs font-extrabold text-indigo-600">{(saleRate * sarConversion).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-              </div>
-            )}
             <AddButton label="Create Order" onClick={() => setModalOpen(true)} />
           </div>
         }
