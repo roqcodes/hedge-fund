@@ -58,7 +58,14 @@ export default function PhysicalBuyModal({ open, slug, branchId, onClose, onSucc
   const { currencyRates } = useApp();
   const [form, setForm] = useState(defaultForm());
   const [customers, setCustomers] = useState<{ id: string; name: string; balance: string | number }[]>([]);
-  const [products, setProducts] = useState<{ id: string; name: string; sku: string; purity: string | number }[]>([]);
+  const [products, setProducts] = useState<{
+    id: string;
+    name: string;
+    sku: string;
+    purity: string | number;
+    weight?: string | number;
+    buy_premium?: string | number;
+  }[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -227,9 +234,17 @@ export default function PhysicalBuyModal({ open, slug, branchId, onClose, onSucc
                 onSelectOption={opt => {
                   const p = products.find(x => x.id === opt.value);
                   if (p) {
+                    const touchVal = p.purity 
+                      ? (parseFloat(p.purity.toString()) > 1 
+                        ? parseFloat(p.purity.toString()) / 1000 
+                        : parseFloat(p.purity.toString()))
+                      : 0.995;
                     set({
                       productId: p.id,
                       item: p.name,
+                      touchStr: touchVal.toString(),
+                      grossWeightStr: p.weight ? p.weight.toString() : '',
+                      dealStr: p.buy_premium ? p.buy_premium.toString() : '0',
                     });
                   }
                 }}
