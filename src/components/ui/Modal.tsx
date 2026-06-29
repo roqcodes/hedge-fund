@@ -6,9 +6,9 @@ import { createPortal } from 'react-dom';
 type ModalProps = {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
-  footer: React.ReactNode;
+  footer?: React.ReactNode;
   maxWidth?: string;
 };
 
@@ -64,9 +64,9 @@ export default function Modal({
         onClick={e => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3.5 sm:px-5 sm:py-4">
-          <h3 id="modal-title" className="text-base font-bold text-slate-900 sm:text-lg">
+          <div id="modal-title" className="text-base font-bold text-slate-900 sm:text-lg flex-1 mr-4">
             {title}
-          </h3>
+          </div>
           <button
             type="button"
             className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600"
@@ -81,9 +81,11 @@ export default function Modal({
           {children}
         </div>
 
-        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 bg-white p-3 sm:flex-row sm:justify-end sm:gap-3 sm:p-4 [&>button]:w-full sm:[&>button]:w-auto">
-          {footer}
-        </div>
+        {footer && (
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 bg-white p-3 sm:flex-row sm:justify-end sm:gap-3 sm:p-4 [&>button]:w-full sm:[&>button]:w-auto">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

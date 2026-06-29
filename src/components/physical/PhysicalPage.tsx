@@ -12,8 +12,7 @@ import { useDateFilter } from '@/hooks/useDateFilter';
 import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import PhysicalExportModal from './PhysicalExportModal';
-import PhysicalBuyModal from './PhysicalBuyModal';
-import PhysicalStockSellModal from './PhysicalStockSellModal';
+import PhysicalDealModal from './PhysicalDealModal';
 import PhysicalSplitKPICard, { PhysicalSingleKPICard } from './PhysicalSplitKPICard';
 import CustomerLink from '@/components/customers/CustomerLink';
 import { useWriteAccess } from '@/context/RbacWriteContext';
@@ -49,8 +48,7 @@ export default function PhysicalPage() {
   const balance = physicalBalances.find(b => b.branchId === branchId) || null;
   const buys = physicalBuys.filter(b => b.branchId === branchId);
 
-  const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
-  const [isSellModalOpen, setIsSellModalOpen] = useState(false);
+  const [isDealModalOpen, setIsDealModalOpen] = useState(false);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
@@ -281,26 +279,14 @@ export default function PhysicalPage() {
             </button>
             <button
               type="button"
-              onClick={() => canWrite && setIsBuyModalOpen(true)}
+              onClick={() => canWrite && setIsDealModalOpen(true)}
               {...wp()}
               className={`${btnPrimary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              Buy
-            </button>
-            <button
-              type="button"
-              onClick={() => canWrite && setIsSellModalOpen(true)}
-              disabled={!canWrite || availableStock.length === 0}
-              {...wp({ disabled: availableStock.length === 0, title: availableStock.length === 0 ? 'No stock available to sell' : undefined })}
-              className={`${btnSecondary} w-full sm:w-auto disabled:pointer-events-none disabled:opacity-50${!canWrite ? ' cursor-not-allowed' : ''}`}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                <path d="M5 12h14" />
-              </svg>
-              Sell
+              New Deal
             </button>
           </div>
         </div>
@@ -747,23 +733,14 @@ export default function PhysicalPage() {
         </div>
       )}
 
-      {isBuyModalOpen && branchSlug && (
-        <PhysicalBuyModal
-          open={isBuyModalOpen}
+      {isDealModalOpen && branchSlug && branchId && (
+        <PhysicalDealModal
+          open={isDealModalOpen}
           slug={branchSlug}
           branchId={branchId}
-          onClose={() => setIsBuyModalOpen(false)}
-          onSuccess={handleCreateBuySuccess}
-        />
-      )}
-
-      {isSellModalOpen && branchSlug && (
-        <PhysicalStockSellModal
-          open={isSellModalOpen}
-          slug={branchSlug}
           availableBuys={availableStock}
-          onClose={() => setIsSellModalOpen(false)}
-          onSuccess={handleCreateBuySuccess}
+          onClose={() => setIsDealModalOpen(false)}
+          onSuccess={refetchData}
         />
       )}
 

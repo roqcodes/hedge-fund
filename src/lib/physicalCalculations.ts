@@ -1,3 +1,5 @@
+import { getLiveCurrencyRates } from './currency';
+
 export type PhysicalPaymentMode = 'CASH' | 'BANK_TRANSFER' | 'USDT' | 'MULTI_CURRENCY';
 
 export const PAYMENT_MODE_OPTIONS: { value: PhysicalPaymentMode; label: string }[] = [
@@ -28,10 +30,12 @@ export function computePhysicalTxn(values: {
   const actualPurity = Math.max(0, values.grossWeight * values.touch - touchLoss);
   const totalWeight = actualPurity;
   const idrRate = values.idrToUsdt > 0 ? values.idrGram / values.idrToUsdt : 0;
-  const value = actualPurity * idrRate;
+  const totalUsdt = actualPurity * idrRate;
+  
+  const rates = getLiveCurrencyRates();
+  const usdToAedRate = rates['USD'] ? 1 / rates['USD'] : 3.6725;
+  const tltAedValue = totalUsdt * usdToAedRate;
   const tltIdrValue = actualPurity * values.idrGram;
-  const tltAedValue = value;
-  const totalUsdt = values.idrToUsdt > 0 ? tltIdrValue / values.idrToUsdt : 0;
 
   return {
     pureGram: actualPurity,
@@ -39,7 +43,7 @@ export function computePhysicalTxn(values: {
     actualPurity,
     totalWeight,
     idrRate,
-    total: value,
+    total: tltAedValue,
     tltIdrValue,
     tltAedValue,
     totalUsdt,

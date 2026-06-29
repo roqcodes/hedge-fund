@@ -7,7 +7,7 @@ import { PhysicalBuy, PhysicalBalance } from '@/types';
 import { 
   dbUpdatePhysicalBalanceAction, 
 } from '@/app/actions/physicalActions';
-import PhysicalBuyModal from './PhysicalBuyModal';
+import PhysicalDealModal from './PhysicalDealModal';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
@@ -34,7 +34,7 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
   const balance = physicalBalances.find(b => b.branchId === branchId) || null;
   const buys = physicalBuys.filter(b => b.branchId === branchId);
 
-  const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
+  const [isDealModalOpen, setIsDealModalOpen] = useState(false);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -162,13 +162,13 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
           <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
             <button
               type="button"
-              onClick={() => setIsBuyModalOpen(true)}
+              onClick={() => setIsDealModalOpen(true)}
               className={`${btnPrimary} w-full sm:w-auto`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              Buy
+              New Deal
             </button>
           </div>
         </div>
@@ -452,12 +452,12 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
         </div>
       )}
 
-      {isBuyModalOpen && branchId && (
-        <PhysicalBuyModal
-          open={isBuyModalOpen}
+      {isDealModalOpen && branchId && (
+        <PhysicalDealModal
+          open={isDealModalOpen}
           slug={branchSlug}
           branchId={branchId}
-          onClose={() => setIsBuyModalOpen(false)}
+          onClose={() => setIsDealModalOpen(false)}
           onSuccess={handleCreateBuySuccess}
         />
       )}
