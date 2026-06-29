@@ -32,7 +32,7 @@ export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurr
   const subTab = tabs.some(t => t.id === activeSubTab) ? activeSubTab : defaultTab;
 
   if (buys.length === 0 && sells.length === 0) {
-    return <p className="py-10 text-center text-sm text-slate-400">No physical sales activity for this customer.</p>;
+    return <p className="py-10 text-center text-sm text-slate-400">No physical deals activity for this customer.</p>;
   }
 
   return (
@@ -58,7 +58,7 @@ export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurr
                   <tr
                     key={buy.id}
                     className="cursor-pointer hover:bg-slate-50"
-                    onClick={() => router.push(`/${slug}/physical-sales/${buy.id}`)}
+                    onClick={() => router.push(`/${slug}/physical-deals/${buy.id}`)}
                   >
                     <td className="border-y border-l border-black/5 bg-white px-3 py-3 text-xs first:rounded-l-2xl">{formatDateTime(buy.date).split(',')[0]}</td>
                     <td className="border-y border-black/5 bg-white px-3 py-3 text-sm font-medium">{buy.item || buy.particulars || '—'}</td>
@@ -90,7 +90,7 @@ export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurr
                   <tr
                     key={sell.id}
                     className="cursor-pointer hover:bg-slate-50"
-                    onClick={() => router.push(`/${slug}/physical-sales/${sell.buyId}`)}
+                    onClick={() => router.push(`/${slug}/physical-deals/${sell.buyId}`)}
                   >
                     <td className="border-y border-l border-black/5 bg-white px-3 py-3 text-xs first:rounded-l-2xl">{formatDateTime(sell.date).split(',')[0]}</td>
                     <td className="border-y border-black/5 bg-white px-3 py-3 text-sm">{sell.narration || sell.particulars || '—'}</td>

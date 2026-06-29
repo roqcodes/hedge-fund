@@ -47,6 +47,7 @@ export function mapPhysicalBuyRow(r: Record<string, unknown>): PhysicalBuy {
     tltIdrValue: r.tlt_idr_value != null ? num(r.tlt_idr_value) : undefined,
     tltAedValue: r.tlt_aed_value != null ? num(r.tlt_aed_value) : undefined,
     totalUsdt: r.total_usdt != null ? num(r.total_usdt) : undefined,
+    fixOrUnfix: str(r.fix_or_unfix) as PhysicalBuy['fixOrUnfix'],
   };
 }
 

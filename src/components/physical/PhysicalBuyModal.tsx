@@ -39,6 +39,7 @@ const defaultForm = () => ({
   touchLossStr: '0',
   marketUsdStr: '',
   dealStr: '',
+  fixOrUnfix: 'unfixed' as 'fixed' | 'unfixed',
   paymentMode: 'CASH' as PhysicalPaymentMode,
   idrGramStr: '',
   idrToUsdtStr: '17770',
@@ -167,6 +168,7 @@ export default function PhysicalBuyModal({ open, slug, branchId, onClose, onSucc
       actualPurity: calc.actualPurity,
       marketUsd: calc.marketUsd || undefined,
       deal: calc.deal || undefined,
+      fixOrUnfix: form.fixOrUnfix,
       paymentMode: form.paymentMode,
       idrAmount: calc.idrGram || undefined,
       usdAmount: calc.usdAmount || undefined,
@@ -299,6 +301,16 @@ export default function PhysicalBuyModal({ open, slug, branchId, onClose, onSucc
               </InputField>
               <InputField label="Deal">
                 <input type="number" step="0.01" value={form.dealStr} onChange={e => set({ dealStr: e.target.value })} className={formInput} />
+              </InputField>
+              <InputField label="Fix / Unfix">
+                <select 
+                  value={form.fixOrUnfix} 
+                  onChange={e => set({ fixOrUnfix: e.target.value as 'fixed' | 'unfixed' })} 
+                  className={formInput}
+                >
+                  <option value="fixed">Fixed</option>
+                  <option value="unfixed">Unfixed</option>
+                </select>
               </InputField>
             </div>
 

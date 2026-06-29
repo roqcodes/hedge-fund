@@ -212,7 +212,7 @@ export default function CustomerDetailPage() {
 
         {showPhysicalSalesKpi && (
           <PhysicalSplitKPICard
-            top={{ label: 'Physical Sales · Sold to Branch', value: physicalStats.soldToBranchCount }}
+            top={{ label: 'Physical Deals · Sold to Branch', value: physicalStats.soldToBranchCount }}
             bottom={{ label: 'AED Received', value: fmtAed(physicalStats.totalReceivedFromBranch) }}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -227,7 +227,7 @@ export default function CustomerDetailPage() {
 
         {showPhysicalSalesKpi && (
           <PhysicalSplitKPICard
-            top={{ label: 'Physical Sales · Bought from Branch', value: physicalStats.boughtFromBranchCount }}
+            top={{ label: 'Physical Deals · Bought from Branch', value: physicalStats.boughtFromBranchCount }}
             bottom={{ label: 'AED Paid', value: fmtAed(physicalStats.totalPaidToBranch) }}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

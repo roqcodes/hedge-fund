@@ -33,6 +33,9 @@ type SellSortField = 'date' | 'customerName' | 'narration' | 'grossWeight' | 'pu
 type SortDirection = 'asc' | 'desc';
 
 function isFixedDeal(buy: PhysicalBuy) {
+  if (buy.fixOrUnfix) {
+    return buy.fixOrUnfix === 'fixed';
+  }
   return buy.deal != null && buy.deal > 0;
 }
 
@@ -260,7 +263,7 @@ export default function PhysicalPage() {
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
         <div className={pageHeader}>
           <div>
-            <h2 className={pageTitle}>Physical Sales</h2>
+            <h2 className={pageTitle}>Physical Deals</h2>
             <p className={pageSubtitle}>Vault inventory, bullion tracking, and gold buys</p>
           </div>
           <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
@@ -437,7 +440,7 @@ export default function PhysicalPage() {
                     <tr
                       key={buy.id}
                       data-interactive-row
-                      onClick={() => router.push(`/${branchSlug}/physical-sales/${buy.id}`)}
+                      onClick={() => router.push(`/${branchSlug}/physical-deals/${buy.id}`)}
                       className={`cursor-pointer group hover:bg-slate-50/80 transition-colors ${buy.remainingWeight > 0 ? 'bg-gradient-to-l from-amber-100/80 to-transparent' : ''}`}
                     >
                       <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
@@ -470,7 +473,7 @@ export default function PhysicalPage() {
                           className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/${branchSlug}/physical-sales/${buy.id}`);
+                            router.push(`/${branchSlug}/physical-deals/${buy.id}`);
                           }}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -494,7 +497,7 @@ export default function PhysicalPage() {
                 {filteredAndSortedBuys.map((buy) => (
                   <div 
                     key={buy.id}
-                    onClick={() => router.push(`/${branchSlug}/physical-sales/${buy.id}`)}
+                    onClick={() => router.push(`/${branchSlug}/physical-deals/${buy.id}`)}
                     className={`group flex flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all hover:shadow-md cursor-pointer active:scale-[0.98] ${buy.remainingWeight > 0 ? 'bg-gradient-to-br from-amber-50 to-white' : 'bg-white'}`}
                   >
                     <div className="flex items-center justify-between border-b border-slate-50 pb-3">
@@ -608,7 +611,7 @@ export default function PhysicalPage() {
                       <tr
                         key={sell.id}
                         className={`cursor-pointer hover:bg-slate-50/80 transition-colors ${rowGradient}`}
-                        onClick={() => router.push(`/${branchSlug}/physical-sales/${sell.buyId}`)}
+                        onClick={() => router.push(`/${branchSlug}/physical-deals/${sell.buyId}`)}
                       >
                         <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 ${cellBg}`}>
                           {new Date(sell.date).toLocaleDateString()}
@@ -646,7 +649,7 @@ export default function PhysicalPage() {
                             className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
                             onClick={e => {
                               e.stopPropagation();
-                              router.push(`/${branchSlug}/physical-sales/${sell.buyId}`);
+                              router.push(`/${branchSlug}/physical-deals/${sell.buyId}`);
                             }}
                           >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -678,7 +681,7 @@ export default function PhysicalPage() {
                   return (
                     <div
                       key={sell.id}
-                      onClick={() => router.push(`/${branchSlug}/physical-sales/${sell.buyId}`)}
+                      onClick={() => router.push(`/${branchSlug}/physical-deals/${sell.buyId}`)}
                       className={`flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] ${cardGradient}`}
                     >
                       <div className="flex items-start justify-between border-b border-slate-50 pb-3">

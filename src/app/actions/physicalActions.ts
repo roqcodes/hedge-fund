@@ -105,10 +105,11 @@ export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbA
         idr_gram, idr_to_usdt, idr_rate, total, buy_value, remaining_weight, status,
         txn_id, customer_id, customer_name, opening_balance, product_id, item, notes,
         purity, touch_loss, actual_purity, market_usd, deal, payment_mode,
-        idr_amount, usd_amount, aed_amount, total_weight, tlt_idr_value, tlt_aed_value, total_usdt
+        idr_amount, usd_amount, aed_amount, total_weight, tlt_idr_value, tlt_aed_value, total_usdt,
+        fix_or_unfix
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-        $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
+        $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35
       )`,
       [
         id,
@@ -145,6 +146,7 @@ export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbA
         buy.tltIdrValue ?? null,
         buy.tltAedValue ?? null,
         buy.totalUsdt ?? null,
+        buy.fixOrUnfix ?? 'unfixed',
       ],
     );
 

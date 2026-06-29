@@ -239,7 +239,7 @@ const AppContext = createContext<AppContextType | null>(null);
 const getSlugFromPath = (path: string): string => {
   const parts = path.split('/').filter(Boolean);
   const first = parts[0];
-  const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 'investors', 'invoices', 'physical', 'physical-sales', 'reports', 'settings', 'usdt', 'api']);
+  const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 'investors', 'invoices', 'physical', 'physical-deals', 'reports', 'settings', 'usdt', 'api']);
   if (first && !SYSTEM_PATHS.has(first)) {
     return first;
   }
@@ -248,7 +248,7 @@ const getSlugFromPath = (path: string): string => {
 
 const resolveViewBranchSlug = (pathname: string, currentSlug: string): string | null => {
   const parts = pathname.split('/').filter(Boolean);
-  const drillPrefixes = new Set(['group', 'funds', 'physical-sales', 'usdt']);
+  const drillPrefixes = new Set(['group', 'funds', 'physical-deals', 'usdt']);
   if (parts[0] && drillPrefixes.has(parts[0]) && parts[1]) {
     return parts[1];
   }

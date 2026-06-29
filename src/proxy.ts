@@ -16,7 +16,7 @@ const encodedKey = new TextEncoder().encode(SESSION_SECRET);
 // Routes that do NOT require authentication
 const PUBLIC_PATHS = new Set(['/', '/api/health']);
 
-const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 'investors', 'invoices', 'physical', 'physical-sales', 'reports', 'settings', 'usdt', 'api']);
+const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 'investors', 'invoices', 'physical', 'physical-deals', 'reports', 'settings', 'usdt', 'api']);
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;

@@ -475,6 +475,7 @@ CREATE TABLE IF NOT EXISTS physical_buys (
     buy_value DECIMAL(15, 2) NOT NULL,
     remaining_weight DECIMAL(15, 2) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
+    fix_or_unfix VARCHAR(20) DEFAULT 'unfixed',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -663,6 +664,7 @@ ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_weight DECIMAL(15, 2);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_idr_value DECIMAL(15, 2);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_aed_value DECIMAL(15, 2);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(15, 4);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS fix_or_unfix VARCHAR(20) DEFAULT 'unfixed';
 
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS txn_id VARCHAR(50);
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL;

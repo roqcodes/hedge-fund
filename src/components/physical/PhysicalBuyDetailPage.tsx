@@ -26,7 +26,7 @@ interface Props {
 
 export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
   const { physicalBuys, physicalSells, refetchData, currentSlug } = useApp();
-  const basePath = currentSlug === 'superadmin' ? `/physical-sales/${branchSlug}` : `/${branchSlug}/physical-sales`;
+  const basePath = currentSlug === 'superadmin' ? `/physical-deals/${branchSlug}` : `/${branchSlug}/physical-deals`;
 
   const buy = physicalBuys.find(b => b.id === buyId) || null;
   const sells = physicalSells.filter(s => s.buyId === buyId);
@@ -147,7 +147,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               <Link
                 href={basePath}
                 className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
-                aria-label="Back to Physical Sales"
+                aria-label="Back to Physical Deals"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 12H5M12 19l-7-7 7-7" />

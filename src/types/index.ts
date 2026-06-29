@@ -324,6 +324,7 @@ export interface PhysicalBuy {
   tltIdrValue?: number;
   tltAedValue?: number;
   totalUsdt?: number;
+  fixOrUnfix?: 'fixed' | 'unfixed';
 }
 
 export interface PhysicalSell {

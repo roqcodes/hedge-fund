@@ -36,7 +36,7 @@ export const SEARCH_CATEGORY_LABELS: Record<GlobalSearchCategory, string> = {
   transactions: 'Transactions',
   entities: 'Entities',
   investors: 'Investors',
-  physical: 'Physical Sales',
+  physical: 'Physical Deals',
   products: 'Products',
   marketplace: 'Physical',
 };
@@ -55,7 +55,7 @@ export const SEARCH_PAGE_ITEMS: {
   { id: 'transactions-beta', label: 'Daily Ledger', path: '/transactions', keywords: ['daily ledger', 'z-report', 'beta'], branchOnly: true },
   { id: 'ic-transfer', label: 'IC Transfer & Reverse', path: '/ic-transfer', keywords: ['intercompany', 'ic'], branchOnly: true },
   { id: 'finance', label: 'Finance - Reports', path: '/finance', keywords: ['finance', 'reports', 'expense', 'invoice'] },
-  { id: 'physical', label: 'Physical Sales', path: '/physical-sales', keywords: ['gold', 'buy', 'sell', 'sales', 'bullion', 'vault'] },
+  { id: 'physical', label: 'Physical Deals', path: '/physical-deals', keywords: ['gold', 'buy', 'sell', 'deals', 'bullion', 'vault'] },
   { id: 'investors', label: 'Investors', path: '/investors', keywords: ['investor', 'capital', 'kyc'] },
   { id: 'usdt', label: 'USDT', path: '/usdt', keywords: ['crypto', 'usdt', 'stablecoin'] },
   { id: 'marketplace', label: 'Physical', path: '/physical', keywords: ['physical', 'tax', 'invoice', 'stock'] },
@@ -96,8 +96,8 @@ function dealHref(deal: Deal, branches: Branch[], basePath: string, currentSlug:
 
 function physicalHref(buy: PhysicalBuy, branches: Branch[], basePath: string): string {
   const slug = branchSlugById(branches, buy.branchId) || (basePath ? basePath.slice(1) : undefined);
-  if (!slug) return basePath ? `${basePath}/physical-sales` : '/physical-sales';
-  return basePath ? `${basePath}/physical-sales/${buy.id}` : `/physical-sales/${slug}/${buy.id}`;
+  if (!slug) return basePath ? `${basePath}/physical-deals` : '/physical-deals';
+  return basePath ? `${basePath}/physical-deals/${buy.id}` : `/physical-deals/${slug}/${buy.id}`;
 }
 
 export function buildContextSearchResults(input: {
