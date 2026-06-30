@@ -5,6 +5,9 @@ import Modal from '@/components/ui/Modal';
 import { btnPrimary, btnSecondary, formInput, formSelect } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
 import { ICPurchase } from '@/types';
+import RateGroupBanner from '../shared/RateGroupBanner';
+import ICSaleAmountCards from '../shared/ICSaleAmountCards';
+import { computeICSaleAmounts, resolveApplicableRateGroup } from '@/lib/icTransfer/rateCalculations';
 
 type Props = {
   open: boolean;
@@ -30,14 +33,14 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
   const [now, setNow] = useState<Date | null>(null);
 
   const selectedSupplierId = icSuppliers.find(s => s.id === supplierId || s.name === supplierId)?.id;
-  const applicableGroup = icRateGroups.find(g => 
-    (selectedSupplierId && g.customerIds?.includes(selectedSupplierId)) || 
-    (user?.branchId && g.branchIds?.includes(user.branchId))
-  );
+  const applicableGroup = resolveApplicableRateGroup(icRateGroups, {
+    branchId: user?.branchId,
+    customerId: selectedSupplierId,
+  });
 
+  const groupConversionRate = applicableGroup?.conversionRate || 1;
   const groupCurrency = applicableGroup?.currency || 'Currency';
   const groupSaleRate = applicableGroup?.saleRate || 0;
-  const groupConversionRate = applicableGroup?.conversionRate || 1;
 
   const selectedPurchases = icPurchases.filter(p => p.supplierId === supplierId && p.warehouseId === warehouseId);
   const totalStock = selectedPurchases.reduce((acc, p) => acc + (p.units || 0), 0);
@@ -58,11 +61,7 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
 
   const unitNum = parseFloat(units) || 0;
   const rateNum = parseFloat(rate) || groupSaleRate;
-  const aedBaseTotal = unitNum * rateNum;
-  const convertedTotal = aedBaseTotal * groupConversionRate;
-  
-  const inrConversionRate = rateNum > 0 ? 1000 / rateNum : 0;
-  const inrTotal = aedBaseTotal * inrConversionRate;
+  const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,8 +75,8 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       unitRate: rateNum,
       units: unitNum,
       notes,
-      convertedTotal: convertedTotal,
-      aedTotal: aedBaseTotal,
+      convertedTotal: amounts.currencyTotal,
+      aedTotal: amounts.aedBaseTotal,
     };
 
     if (initialData) {
@@ -106,15 +105,7 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       }
     >
       <form id="ic-purchase-form" onSubmit={handleSubmit} className="space-y-5">
-        {applicableGroup && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-500 uppercase tracking-wider">Applicable Rate Group: <strong>{applicableGroup.name}</strong></span>
-            <div>
-              <span className="font-semibold text-slate-400 uppercase">Rate ({groupCurrency}):</span>{' '}
-              <span className="font-bold text-accent">{groupSaleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            </div>
-          </div>
-        )}
+        {applicableGroup && <RateGroupBanner group={applicableGroup} />}
 
         <div className="mb-4 flex flex-wrap gap-4 text-xs text-slate-500 font-semibold uppercase tracking-wider">
           <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
@@ -173,7 +164,7 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
             <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Purchase Pricing</h3>
             
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="Unit Rate">
+              <InputField label="Unit Rate (AED)">
                 <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="any" required />
               </InputField>
               
@@ -184,28 +175,13 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
 
             <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>
             
-            <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
-              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (INR)</span>
-                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
-                  {inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              
-              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (AED)</span>
-                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
-                  {aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-
-              <div className="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Total Due (AED)</span>
-                <span className="mt-1.5 text-lg sm:text-xl font-black text-emerald-700 font-mono">
-                  {aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
+            <ICSaleAmountCards
+              inrTotal={amounts.inrTotal}
+              currencyTotal={amounts.currencyTotal}
+              currencyCode={groupCurrency}
+              aedBaseTotal={amounts.aedBaseTotal}
+              showCurrency={!!applicableGroup}
+            />
           </div>
         </div>
       </form>

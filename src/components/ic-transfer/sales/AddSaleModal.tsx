@@ -8,6 +8,9 @@ import { useApp } from '@/context/AppContext';
 import { getCustomersBySlug, getAllCustomers } from '@/app/actions/customerActions';
 import { ICSale } from '@/types';
 import PrioritySelector from '../shared/PrioritySelector';
+import RateGroupBanner from '../shared/RateGroupBanner';
+import ICSaleAmountCards from '../shared/ICSaleAmountCards';
+import { computeICSaleAmounts, resolveApplicableRateGroup } from '@/lib/icTransfer/rateCalculations';
 import type { OrderPriority } from '@/types/warehouse';
 
 type Props = {
@@ -45,11 +48,12 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
 
   const selectedCustomerId = customers.find(c => c.id === customerName || c.name === customerName)?.id;
   
-  const applicableGroup = icRateGroups.find(g => 
-    (selectedCustomerId && g.customerIds?.includes(selectedCustomerId)) || 
-    (user?.branchId && g.branchIds?.includes(user.branchId))
-  );
+  const applicableGroup = resolveApplicableRateGroup(icRateGroups, {
+    branchId: user?.branchId,
+    customerId: selectedCustomerId,
+  });
 
+  const groupConversionRate = applicableGroup?.conversionRate || 1;
   const groupCurrency = applicableGroup?.currency || 'Currency';
   const groupSaleRate = applicableGroup?.saleRate || 0;
 
@@ -130,12 +134,8 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
   const unitNum = parseFloat(units) || 0;
   const rateNum = parseFloat(rate) || groupSaleRate;
   const serviceChargeNum = parseFloat(serviceCharge) || 0;
-  
-  const aedBaseTotal = unitNum * rateNum;
-  const aedNetTotal = Math.max(0, aedBaseTotal - serviceChargeNum);
-  
-  const inrConversionRate = rateNum > 0 ? 1000 / rateNum : 0;
-  const inrTotal = aedBaseTotal * inrConversionRate;
+
+  const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate, serviceChargeNum);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,8 +148,8 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
       transactionType,
       unitRate: rateNum,
       units: unitNum,
-      convertedAmount: inrTotal,
-      aedAmount: aedNetTotal,
+      convertedAmount: amounts.inrTotal,
+      aedAmount: amounts.aedNetTotal,
       serviceCharge: serviceChargeNum,
       priority,
       address: address || undefined,
@@ -182,15 +182,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
       }
     >
       <form id="ic-sale-form" onSubmit={handleSubmit} className="space-y-5">
-        {applicableGroup && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-500 uppercase tracking-wider">Applicable Rate Group: <strong>{applicableGroup.name}</strong></span>
-            <div>
-              <span className="font-semibold text-slate-400 uppercase">Rate ({groupCurrency}):</span>{' '}
-              <span className="font-bold text-accent">{groupSaleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            </div>
-          </div>
-        )}
+        {applicableGroup && <RateGroupBanner group={applicableGroup} />}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left Column: Customer details, Address and Upload */}
@@ -299,7 +291,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
                 <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="0.01" required />
               </InputField>
 
-              <InputField label="Unit Rate">
+              <InputField label="Unit Rate (AED)">
                 <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="0.01" required />
               </InputField>
 
@@ -310,28 +302,13 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
 
             <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>
             
-            <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
-              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (INR)</span>
-                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
-                  {inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              
-              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (AED)</span>
-                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
-                  {aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-
-              <div className="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Total Due (AED)</span>
-                <span className="mt-1.5 text-lg sm:text-xl font-black text-emerald-700 font-mono">
-                  {aedNetTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
+            <ICSaleAmountCards
+              inrTotal={amounts.inrTotal}
+              currencyTotal={amounts.currencyTotal}
+              currencyCode={groupCurrency}
+              aedBaseTotal={amounts.aedBaseTotal}
+              showCurrency={!!applicableGroup}
+            />
           </div>
         </div>
       </form>

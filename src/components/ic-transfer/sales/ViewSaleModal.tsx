@@ -208,7 +208,14 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               sale={liveSale}
               variant={workflowUiVariant}
               onUpdated={handleWorkflowUpdated}
-              onResubmit={onEdit ? s => onEdit(s) : undefined}
+              onResubmit={
+                onEdit
+                  ? s => {
+                      onClose();
+                      onEdit(s);
+                    }
+                  : undefined
+              }
             />
 
             {(deliveredUnits > 0 || remainingUnits < liveSale.units) && (

@@ -6,8 +6,11 @@ import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
 import { ICSale } from '@/types';
 import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
-import { hasICSaleContentChanged } from '@/lib/icTransfer/saleChanges';
+import { hasICSaleEditableFieldsChanged, type ICSaleContentFields } from '@/lib/icTransfer/saleChanges';
 import { WorkflowNotice } from '../shared/orderWorkflow';
+import RateGroupBanner from '../shared/RateGroupBanner';
+import ICSaleAmountCards from '../shared/ICSaleAmountCards';
+import { computeICSaleAmounts, resolveApplicableRateGroup } from '@/lib/icTransfer/rateCalculations';
 
 type Props = {
   open: boolean;
@@ -32,6 +35,10 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const [serviceCharge, setServiceCharge] = useState(initialData?.serviceCharge?.toString() || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [editBaseline, setEditBaseline] = useState<Pick<
+    ICSaleContentFields,
+    'units' | 'transactionType' | 'address' | 'imageUrl' | 'serviceCharge'
+  > | null>(null);
 
   // Cloudinary credentials from env
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'finite-x-reality';
@@ -42,10 +49,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const branchName = currentBranch?.name || currentSlug || 'Branch Customer';
   const currentBranchId = currentBranch?.id;
 
-  const applicableGroup = icRateGroups.find(g => 
-    (currentBranchId && g.branchIds?.includes(currentBranchId))
-  );
+  const applicableGroup = resolveApplicableRateGroup(icRateGroups, { branchId: currentBranchId });
 
+  const groupConversionRate = applicableGroup?.conversionRate || 1;
   const groupCurrency = applicableGroup?.currency || 'Currency';
   const groupSaleRate = applicableGroup?.saleRate || 0;
 
@@ -57,6 +63,18 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
       setServiceCharge(initialData?.serviceCharge?.toString() || '');
+
+      if (initialData && canBranchResubmitOrder(initialData.orderStatus)) {
+        setEditBaseline({
+          units: initialData.units,
+          transactionType: initialData.transactionType || 'transfer',
+          address: initialData.address,
+          imageUrl: initialData.imageUrl,
+          serviceCharge: initialData.serviceCharge ?? 0,
+        });
+      } else {
+        setEditBaseline(null);
+      }
     }
   }, [open, initialData]);
 
@@ -108,11 +126,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const rateNum = initialData ? initialData.unitRate : groupSaleRate;
   const serviceChargeNum = parseFloat(serviceCharge) || 0;
 
-  const aedBaseTotal = unitNum * rateNum;
-  const aedNetTotal = Math.max(0, aedBaseTotal - serviceChargeNum);
-  
-  const inrConversionRate = rateNum > 0 ? 1000 / rateNum : 0;
-  const inrTotal = aedBaseTotal * inrConversionRate;
+  const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate, serviceChargeNum);
 
   const isResubmitMode = !!initialData && canBranchResubmitOrder(initialData.orderStatus);
 
@@ -121,8 +135,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     transactionType,
     unitRate: rateNum,
     units: unitNum,
-    convertedAmount: inrTotal,
-    aedAmount: aedNetTotal,
+    convertedAmount: amounts.inrTotal,
+    aedAmount: amounts.aedNetTotal,
     address: address || undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
@@ -131,19 +145,34 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const contentPayload = {
     units: unitNum,
     transactionType,
-    convertedAmount: inrTotal,
-    aedAmount: aedNetTotal,
+    convertedAmount: amounts.inrTotal,
+    aedAmount: amounts.aedNetTotal,
     address: address || undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
   };
 
-  const hasChanges = !initialData || hasICSaleContentChanged(initialData, contentPayload);
+  const editableSnapshot = {
+    units: unitNum,
+    transactionType,
+    address: address || undefined,
+    imageUrl: imageUrl || undefined,
+    serviceCharge: serviceChargeNum,
+  };
+
+  const canResubmit =
+    !!editBaseline && hasICSaleEditableFieldsChanged(editBaseline, editableSnapshot);
+
+  const submitDisabled =
+    isSubmitting ||
+    isUploading ||
+    !unitNum ||
+    !rateNum ||
+    (isResubmitMode && !canResubmit);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!unitNum || !rateNum) return;
-    if (isResubmitMode && !hasChanges) return;
+    if (submitDisabled) return;
     setIsSubmitting(true);
 
     if (initialData && isResubmitMode) {
@@ -168,9 +197,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           <button
             type="submit"
             form="branch-order-form"
-            className={btnPrimary}
-            disabled={isSubmitting || isUploading || !unitNum || !rateNum || (isResubmitMode && !hasChanges)}
-            title={isResubmitMode && !hasChanges ? 'Change at least one field before resubmitting' : undefined}
+            className={`${btnPrimary} disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none motion-safe:disabled:hover:translate-y-0 motion-safe:disabled:hover:shadow-primary`}
+            disabled={submitDisabled}
+            title={isResubmitMode && !canResubmit ? 'Change at least one field before resubmitting' : undefined}
           >
             {isSubmitting
               ? 'Saving...'
@@ -191,15 +220,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           </WorkflowNotice>
         )}
 
-        {applicableGroup && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-500 uppercase tracking-wider">Applicable Rate Group: <strong>{applicableGroup.name}</strong></span>
-            <div>
-              <span className="font-semibold text-slate-400 uppercase">Rate ({groupCurrency}):</span>{' '}
-              <span className="font-bold text-accent">{groupSaleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            </div>
-          </div>
-        )}
+        {applicableGroup && <RateGroupBanner group={applicableGroup} />}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left Column: Customer details, Address and Upload */}
@@ -290,7 +311,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                 </div>
               </InputField>
 
-              <InputField label="Unit Rate (Locked)">
+              <InputField label="Unit Rate (AED) (Locked)">
                 <input 
                   className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`} 
                   value={rateNum} 
@@ -328,28 +349,13 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
 
             <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>
             
-            <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
-              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (INR)</span>
-                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
-                  {inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              
-              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (AED)</span>
-                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
-                  {aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-
-              <div className="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100 flex flex-col justify-center shadow-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Total Due (AED)</span>
-                <span className="mt-1.5 text-lg sm:text-xl font-black text-emerald-700 font-mono">
-                  {aedNetTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
+            <ICSaleAmountCards
+              inrTotal={amounts.inrTotal}
+              currencyTotal={amounts.currencyTotal}
+              currencyCode={groupCurrency}
+              aedBaseTotal={amounts.aedBaseTotal}
+              showCurrency={!!applicableGroup}
+            />
           </div>
         </div>
       </form>

@@ -19,7 +19,10 @@ import {
   mapICPurchaseRow,
   mapICSaleRow,
 } from '@/lib/icTransferMappers';
-import { hasICSaleContentChanged, type ICSaleContentFields } from '@/lib/icTransfer/saleChanges';
+import {
+  hasICSaleEditableFieldsChanged,
+  type ICSaleContentFields,
+} from '@/lib/icTransfer/saleChanges';
 import { normalizeOrderStatus } from '@/lib/icTransfer/orderStatus';
 import { isBranchPortalRole } from '@/lib/rbac';
 
@@ -602,7 +605,7 @@ export async function branchResubmitICSaleAction(
     return { success: false, error: 'Only admin-rejected orders can be resubmitted' };
   }
 
-  if (!hasICSaleContentChanged(sale, updates)) {
+  if (!hasICSaleEditableFieldsChanged(sale, updates)) {
     return { success: false, error: 'Update at least one field before resubmitting the order' };
   }
 
