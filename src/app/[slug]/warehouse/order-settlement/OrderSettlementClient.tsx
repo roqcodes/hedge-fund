@@ -15,6 +15,7 @@ import { PriorityBadge, SkeletonRows } from '@/components/warehouse/shared';
 import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
 import { formatUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
 import { resolveDateRange } from '@/lib/warehouseDateUtils';
+import DeliveryAgentKpiGrid from '@/components/warehouse/DeliveryAgentKpiGrid';
 import type { WarehouseOrder } from '@/types/warehouse';
 
 type TabKey = 'Pending' | 'Completed' | 'Rejected';
@@ -129,7 +130,9 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
         setCustomEndDate={setCustomEndDate}
       />
 
-      <div className="flex flex-col gap-6">
+      <DeliveryAgentKpiGrid orders={orders} />
+
+      <div className="flex flex-col gap-6 mt-2">
         {/* Tabs */}
         <div className="flex items-center gap-1 border-b border-slate-200 pb-px overflow-x-auto scrollbar-none">
           <button onClick={() => setTab('Pending')} className={tab === 'Pending' ? tabBtnActive : tabBtn}>

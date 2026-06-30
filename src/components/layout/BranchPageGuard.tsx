@@ -36,7 +36,7 @@ export default function BranchPageGuard() {
     }
 
     if (user.role.startsWith('delivery') && pageId !== 'warehouse') {
-      router.replace(`/${currentSlug}/warehouse`);
+      router.replace(`/${currentSlug}/warehouse/order-settlement`);
     }
 
     if (user.role.startsWith('warehouse_') && pageId !== 'warehouse') {

@@ -10,5 +10,9 @@ export default async function WarehouseDashboardPage(
   const user = await getSessionUser(params.slug);
   if (!user) redirect('/');
 
+  if (user.role?.startsWith('delivery')) {
+    redirect(`/${params.slug}/warehouse/order-settlement`);
+  }
+
   return <WarehouseDashboardClient branchSlug={params.slug} />;
 }

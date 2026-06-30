@@ -11,7 +11,7 @@ export default async function DeliveryAgentsPage(
   if (!user) redirect('/');
 
   if (user.role?.startsWith('delivery')) {
-    redirect(`/${params.slug}/warehouse`);
+    redirect(`/${params.slug}/warehouse/order-settlement`);
   }
 
   return <DeliveryAgentsClient branchSlug={params.slug} />;

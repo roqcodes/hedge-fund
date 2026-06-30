@@ -32,7 +32,7 @@ export default function WarehouseSecondarySidebar() {
 
   const items = useMemo(() => {
     if (user?.role?.startsWith('delivery')) {
-      return WAREHOUSE_NAV.filter(item => item.id === 'dashboard' || item.id === 'order-settlement');
+      return WAREHOUSE_NAV.filter(item => item.id === 'order-settlement');
     }
     return WAREHOUSE_NAV.filter(item => item.id !== 'order-settlement');
   }, [user]);

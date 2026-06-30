@@ -139,7 +139,12 @@ export default function Sidebar() {
               }
             })
             .map(item => {
-              const itemHref = item.id === 'dashboard' ? (basePath || '/') : `${basePath}${item.path}`;
+              const itemHref =
+                item.id === 'dashboard'
+                  ? (basePath || '/')
+                  : item.id === 'warehouse' && user?.role?.startsWith('delivery')
+                    ? `${basePath}/warehouse/order-settlement`
+                    : `${basePath}${item.path}`;
               const isActive =
                 item.id === 'ic-transfer'
                   ? pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-branch')
