@@ -86,6 +86,7 @@ import {
   dbDeleteICPurchaseAction,
   dbUpdateICSaleAction,
   dbDeleteICSaleAction,
+  branchResubmitICSaleAction,
 } from '@/app/actions/icTransferActions';
 import { fetchCurrencyRatesAction } from '@/app/actions/currencyActions';
 import {
@@ -242,6 +243,7 @@ interface AppContextType extends AppState {
   updateICPurchase: (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => Promise<boolean>;
   addICSale: (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => Promise<boolean>;
   updateICSale: (id: string, updates: Partial<Omit<ICSale, 'id' | 'createdAt'>>) => Promise<boolean>;
+  resubmitICSale: (id: string, updates: import('@/lib/icTransfer/saleChanges').ICSaleContentFields, branchSlug?: string) => Promise<boolean>;
   deleteICPurchase: (id: string) => Promise<boolean>;
   deleteICSale: (id: string) => Promise<boolean>;
 }
@@ -1734,6 +1736,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
+  const resubmitICSale = useCallback(async (
+    id: string,
+    updates: import('@/lib/icTransfer/saleChanges').ICSaleContentFields,
+    branchSlug?: string,
+  ) => {
+    try {
+      const slug = branchSlug ?? (currentSlug !== 'superadmin' ? currentSlug : undefined);
+      const res = await branchResubmitICSaleAction(id, updates, slug);
+      if (res.success && res.data) {
+        setState(s => ({
+          ...s,
+          icSales: s.icSales.map(sItem => sItem.id === id ? res.data! : sItem),
+        }));
+        showToast('Order updated and resubmitted for admin review');
+        return true;
+      }
+      showToast(res.error || 'Failed to resubmit order', 'error');
+      return false;
+    } catch {
+      showToast('Error resubmitting order', 'error');
+      return false;
+    }
+  }, [showToast, currentSlug]);
+
   const deleteICPurchase = useCallback(async (id: string) => {
     try {
       const res = await dbDeleteICPurchaseAction(id);
@@ -1871,11 +1897,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
-      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale,
+      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale,
       deleteICPurchase,
       deleteICSale,
     };
-  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, deleteICPurchase, deleteICSale]);
+  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;

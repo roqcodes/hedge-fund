@@ -1,6 +1,7 @@
 import React from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatAED } from '@/data/mockData';
+import { AdminOrderStatusBadge } from '@/components/ic-transfer/shared/OrderStatusBadge';
 
 type ViewOrderModalProps = {
   open: boolean;
@@ -34,13 +35,9 @@ export default function ViewOrderModal({ open, onClose, order }: ViewOrderModalP
           </div>
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Status</h4>
-            <span className={`mt-1 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-              order.delivery_status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-              order.delivery_status === 'Cancelled' ? 'bg-red-100 text-red-700' :
-              'bg-amber-100 text-amber-700'
-            }`}>
-              {order.delivery_status || 'Pending'}
-            </span>
+            <div className="mt-1">
+              <AdminOrderStatusBadge status={order.order_status} />
+            </div>
           </div>
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Agent</h4>

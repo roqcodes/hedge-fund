@@ -39,8 +39,10 @@ export default function ICTransferRatesPage() {
   const [country, setCountry] = useState('');
   const [region, setRegion] = useState('');
   const [currency, setCurrency] = useState('');
-  const [saleRate, setSaleRate] = useState(0);
-  const [conversionRate, setConversionRate] = useState(1);
+  
+  // Use string states so they can be cleared in the UI
+  const [saleRate, setSaleRate] = useState<string>('0');
+  const [conversionRate, setConversionRate] = useState<string>('1');
   
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
@@ -50,8 +52,8 @@ export default function ICTransferRatesPage() {
   
   const [isSaving, setIsSaving] = useState(false);
   const [inlineEditing, setInlineEditing] = useState<string | null>(null);
-  const [inlineSaleRate, setInlineSaleRate] = useState<number>(0);
-  const [inlineConversionRate, setInlineConversionRate] = useState<number>(1);
+  const [inlineSaleRate, setInlineSaleRate] = useState<string>('0');
+  const [inlineConversionRate, setInlineConversionRate] = useState<string>('1');
   const [branchCustomers, setBranchCustomers] = useState<{id: string, name: string}[]>([]);
 
   React.useEffect(() => {
@@ -70,8 +72,8 @@ export default function ICTransferRatesPage() {
     setCountry('');
     setRegion('');
     setCurrency('');
-    setSaleRate(0);
-    setConversionRate(1);
+    setSaleRate('0');
+    setConversionRate('1');
     setSelectedCustomers([]);
     setSelectedBranches([]);
     setBranchSearch('');
@@ -85,8 +87,8 @@ export default function ICTransferRatesPage() {
     setCountry(group.country);
     setRegion(group.region);
     setCurrency(group.currency);
-    setSaleRate(group.saleRate);
-    setConversionRate(group.conversionRate || 1);
+    setSaleRate(group.saleRate.toString());
+    setConversionRate((group.conversionRate || 1).toString());
     setSelectedCustomers(group.customerIds || []);
     setSelectedBranches(group.branchIds || []);
     setBranchSearch('');
@@ -128,10 +130,13 @@ export default function ICTransferRatesPage() {
     let success = false;
     let groupId = editingGroup?.id;
     
+    const saleRateNum = parseFloat(saleRate) || 0;
+    const conversionRateNum = parseFloat(conversionRate) || 1;
+    
     if (editingGroup) {
-      success = await updateICRateGroup(editingGroup.id, name, country, region, currency.toUpperCase(), saleRate, conversionRate);
+      success = await updateICRateGroup(editingGroup.id, name, country, region, currency.toUpperCase(), saleRateNum, conversionRateNum);
     } else {
-      const newGroupId = await addICRateGroup(name, country, region, currency.toUpperCase(), saleRate, conversionRate);
+      const newGroupId = await addICRateGroup(name, country, region, currency.toUpperCase(), saleRateNum, conversionRateNum);
       if (newGroupId) {
         success = true;
         groupId = newGroupId;
@@ -160,12 +165,14 @@ export default function ICTransferRatesPage() {
 
   const startInlineEdit = (group: ICRateGroup) => {
     setInlineEditing(group.id);
-    setInlineSaleRate(group.saleRate);
-    setInlineConversionRate(group.conversionRate || 1);
+    setInlineSaleRate(group.saleRate.toString());
+    setInlineConversionRate((group.conversionRate || 1).toString());
   };
 
   const saveInlineEdit = async (group: ICRateGroup) => {
-    const success = await updateICRateGroup(group.id, group.name, group.country, group.region, group.currency, inlineSaleRate, inlineConversionRate);
+    const saleRateNum = parseFloat(inlineSaleRate) || 0;
+    const conversionRateNum = parseFloat(inlineConversionRate) || 1;
+    const success = await updateICRateGroup(group.id, group.name, group.country, group.region, group.currency, saleRateNum, conversionRateNum);
     if (success) {
       setInlineEditing(null);
     }
@@ -231,11 +238,11 @@ export default function ICTransferRatesPage() {
                     <div className="space-y-2 mt-2">
                       <div>
                         <label className="text-[10px] text-slate-400">Sale Rate (AED)</label>
-                        <input type="number" step="0.000001" className="w-full text-xs p-1 border rounded" value={inlineSaleRate} onChange={e => setInlineSaleRate(parseFloat(e.target.value) || 0)} />
+                        <input type="number" step="0.000001" className="w-full text-xs p-1 border rounded" value={inlineSaleRate} onChange={e => setInlineSaleRate(e.target.value)} />
                       </div>
                       <div>
                         <label className="text-[10px] text-slate-400">Conversion Rate</label>
-                        <input type="number" step="0.000001" className="w-full text-xs p-1 border rounded" value={inlineConversionRate} onChange={e => setInlineConversionRate(parseFloat(e.target.value) || 0)} />
+                        <input type="number" step="0.000001" className="w-full text-xs p-1 border rounded" value={inlineConversionRate} onChange={e => setInlineConversionRate(e.target.value)} />
                       </div>
                     </div>
                   ) : (
@@ -325,11 +332,11 @@ export default function ICTransferRatesPage() {
           <div className={formRow}>
             <div className={formGroup}>
               <label className={formLabel}>Sale Rate (AED)</label>
-              <input className={formInput} value={saleRate} onChange={e => setSaleRate(parseFloat(e.target.value) || 0)} type="number" step="0.000001" required />
+              <input className={formInput} value={saleRate} onChange={e => setSaleRate(e.target.value)} type="number" step="0.000001" required />
             </div>
             <div className={formGroup}>
               <label className={formLabel}>AED to {currency || 'Currency'} Conversion Rate</label>
-              <input className={formInput} value={conversionRate} onChange={e => setConversionRate(parseFloat(e.target.value) || 0)} type="number" step="0.000001" required />
+              <input className={formInput} value={conversionRate} onChange={e => setConversionRate(e.target.value)} type="number" step="0.000001" required />
             </div>
           </div>
           
@@ -356,14 +363,25 @@ export default function ICTransferRatesPage() {
                     .filter(b => b.name.toLowerCase().includes(branchSearch.toLowerCase()))
                     .map(b => {
                     const isSelected = selectedBranches.includes(b.id);
+                    const assignedGroup = icRateGroups.find(g => g.id !== editingGroup?.id && g.branchIds?.includes(b.id));
+                    const isAssignedElsewhere = !!assignedGroup;
                     return (
                       <div 
                         key={b.id} 
-                        onClick={() => toggleSelection(b.id, selectedBranches, setSelectedBranches)}
-                        className={`px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors flex items-center justify-between ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium border' : 'hover:bg-slate-100 border border-transparent text-slate-600'}`}
+                        onClick={() => !isAssignedElsewhere && toggleSelection(b.id, selectedBranches, setSelectedBranches)}
+                        className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between ${
+                          isAssignedElsewhere 
+                            ? 'opacity-40 bg-slate-100 border border-transparent text-slate-400 cursor-not-allowed' 
+                            : isSelected 
+                              ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium border cursor-pointer' 
+                              : 'hover:bg-slate-100 border border-transparent text-slate-600 cursor-pointer'
+                        }`}
                       >
-                        {b.name}
-                        {isSelected && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-indigo-600"><path d="M20 6L9 17l-5-5"/></svg>}
+                        <div className="flex items-center gap-1.5">
+                          <span>{b.name}</span>
+                          {assignedGroup && <span className="text-[10px] text-slate-400 font-normal">({assignedGroup.name})</span>}
+                        </div>
+                        {isSelected && !isAssignedElsewhere && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-indigo-600"><path d="M20 6L9 17l-5-5"/></svg>}
                       </div>
                     );
                   })}
@@ -393,14 +411,25 @@ export default function ICTransferRatesPage() {
                 <div className="border border-slate-200 rounded-xl h-60 overflow-y-auto p-2 bg-slate-50 space-y-1">
                   {branchCustomers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).map(c => {
                     const isSelected = selectedCustomers.includes(c.id);
+                    const assignedGroup = icRateGroups.find(g => g.id !== editingGroup?.id && g.customerIds?.includes(c.id));
+                    const isAssignedElsewhere = !!assignedGroup;
                     return (
                       <div 
                         key={c.id} 
-                        onClick={() => toggleSelection(c.id, selectedCustomers, setSelectedCustomers)}
-                        className={`px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors flex items-center justify-between ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium border' : 'hover:bg-slate-100 border border-transparent text-slate-600'}`}
+                        onClick={() => !isAssignedElsewhere && toggleSelection(c.id, selectedCustomers, setSelectedCustomers)}
+                        className={`px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between ${
+                          isAssignedElsewhere 
+                            ? 'opacity-40 bg-slate-100 border border-transparent text-slate-400 cursor-not-allowed' 
+                            : isSelected 
+                              ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium border cursor-pointer' 
+                              : 'hover:bg-slate-100 border border-transparent text-slate-600 cursor-pointer'
+                        }`}
                       >
-                        {c.name}
-                        {isSelected && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-indigo-600"><path d="M20 6L9 17l-5-5"/></svg>}
+                        <div className="flex items-center gap-1.5">
+                          <span>{c.name}</span>
+                          {assignedGroup && <span className="text-[10px] text-slate-400 font-normal">({assignedGroup.name})</span>}
+                        </div>
+                        {isSelected && !isAssignedElsewhere && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-indigo-600"><path d="M20 6L9 17l-5-5"/></svg>}
                       </div>
                     );
                   })}

@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
-import { btnPrimary, btnSecondary, formGroup, formInput, formLabel, formRow, formSelect, formTextarea } from '@/lib/ui';
+import { btnPrimary, btnSecondary, formInput, formSelect } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
-
 import { ICPurchase } from '@/types';
 
 type Props = {
@@ -13,8 +12,15 @@ type Props = {
   initialData?: ICPurchase;
 };
 
+const InputField = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</label>
+    {children}
+  </div>
+);
+
 export default function AddPurchaseModal({ open, onClose, initialData }: Props) {
-  const { icSuppliers, icWarehouses, addICPurchase, updateICPurchase, icPurchases, icRateGroups, entities, user } = useApp();
+  const { icSuppliers, icWarehouses, addICPurchase, updateICPurchase, icPurchases, icRateGroups, user } = useApp();
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [supplierId, setSupplierId] = useState(initialData?.supplierId || '');
@@ -39,7 +45,7 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
     ? selectedPurchases.reduce((acc, p) => acc + (p.unitRate || 0), 0) / selectedPurchases.length 
     : 0;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (open) {
       setNow(new Date());
       setUnits(initialData?.units?.toString() || '');
@@ -47,7 +53,6 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       setSupplierId(initialData?.supplierId || '');
       setWarehouseId(initialData?.warehouseId || '');
       setNotes(initialData?.notes || '');
-      
     }
   }, [open, initialData]);
 
@@ -59,7 +64,8 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
   const inrConversionRate = rateNum > 0 ? 1000 / rateNum : 0;
   const inrTotal = aedBaseTotal * inrConversionRate;
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!unitNum || !rateNum || !supplierId || !warehouseId) return;
     setIsSubmitting(true);
     
@@ -89,108 +95,120 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       open={open}
       onClose={onClose}
       title={initialData ? "Edit Purchase" : "Add Purchase"}
-      maxWidth="max-w-4xl"
+      maxWidth="max-w-[1100px] w-[95vw]"
       footer={
         <>
           <button type="button" className={btnSecondary} onClick={onClose} disabled={isSubmitting}>Cancel</button>
-          <button type="button" className={btnPrimary} onClick={handleSubmit} disabled={isSubmitting || !unitNum || !rateNum || !supplierId || !warehouseId}>
+          <button type="submit" form="ic-purchase-form" className={btnPrimary} disabled={isSubmitting || !unitNum || !rateNum || !supplierId || !warehouseId}>
             {isSubmitting ? 'Saving...' : (initialData ? 'Save Changes' : 'Add Purchase')}
           </button>
         </>
       }
     >
-      {applicableGroup && (
-        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-500 uppercase tracking-wider">Applicable Rate Group: {applicableGroup.name}</span>
-          </div>
-          <div className="flex gap-4">
+      <form id="ic-purchase-form" onSubmit={handleSubmit} className="space-y-5">
+        {applicableGroup && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex items-center justify-between text-xs">
+            <span className="font-semibold text-slate-500 uppercase tracking-wider">Applicable Rate Group: <strong>{applicableGroup.name}</strong></span>
             <div>
               <span className="font-semibold text-slate-400 uppercase">Rate ({groupCurrency}):</span>{' '}
               <span className="font-bold text-accent">{groupSaleRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="mb-4 flex flex-wrap gap-4 text-sm text-slate-600">
-        <span className="flex items-center gap-1.5">
-          <svg className="size-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <path d="M16 2v4M8 2v4M3 10h18" />
-          </svg>
-          {now ? now.toLocaleDateString() : '...'}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <svg className="size-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 6v6l4 2" />
-          </svg>
-          {now ? now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
-        </span>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <div className={formGroup}>
-            <label className={formLabel}>Select Supplier</label>
-            <select className={formSelect} value={supplierId} onChange={e => setSupplierId(e.target.value)}>
-              <option value="" disabled>Supplier</option>
-              {icSuppliers.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className={formRow}>
-            <div className={formGroup}>
-              <label className={formLabel}>Unit Rate</label>
-              <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="any" />
-            </div>
-            <div className={formGroup}>
-              <label className={formLabel}>Number of Units</label>
-              <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="any" />
-            </div>
-          </div>
-          <div className={formGroup}>
-            <label className={formLabel}>Warehouse</label>
-            <select className={formSelect} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
-              <option value="" disabled>Select Warehouse</option>
-              {icWarehouses.map(w => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
-          </div>
-          {warehouseId && supplierId && (
-            <div className="mb-4 rounded-xl bg-slate-100 p-3 flex justify-between items-center border border-slate-200">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Current Stock:</span>
-              <span className="text-sm font-bold text-slate-900">{totalStock.toLocaleString()} units @ AED {averageRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} avg</span>
-            </div>
-          )}
-          <div className={formGroup}>
-            <label className={formLabel}>Notes</label>
-            <textarea className={formTextarea} rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
-          </div>
+        <div className="mb-4 flex flex-wrap gap-4 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+          <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
+            <svg className="size-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+            {now ? now.toLocaleDateString() : '...'}
+          </span>
+          <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
+            <svg className="size-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+            {now ? now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
+          </span>
         </div>
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#f5f0e8] p-4">
-            <div className="text-center border-r border-amber-900/10">
-              <p className="text-[10px] font-semibold text-slate-500">Amount (INR)</p>
-              <p className="text-sm font-bold text-slate-900 mt-1">{inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              <p className="text-[9px] text-slate-400 mt-0.5">Rate: {inrConversionRate.toFixed(4)}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] font-semibold text-slate-500">Amount (AED)</p>
-              <p className="text-sm font-bold text-slate-900 mt-1">{aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Left Column: Supplier Details & Notes */}
+          <div className="space-y-4 lg:col-span-5">
+            <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Supplier Info</h3>
+            
+            <InputField label="Select Supplier">
+              <select className={formSelect} value={supplierId} onChange={e => setSupplierId(e.target.value)} required>
+                <option value="" disabled>Select Supplier</option>
+                {icSuppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </InputField>
+
+            <InputField label="Warehouse">
+              <select className={formSelect} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required>
+                <option value="" disabled>Select Warehouse</option>
+                {icWarehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </InputField>
+
+            {warehouseId && supplierId && (
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 flex justify-between items-center text-xs">
+                <span className="font-semibold text-slate-500 uppercase tracking-wider">Current Stock:</span>
+                <span className="font-bold text-slate-900">{totalStock.toLocaleString()} units @ AED {averageRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} avg</span>
+              </div>
+            )}
+
+            <InputField label="Notes">
+              <textarea className={`${formInput} resize-none`} rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Enter purchase notes..." />
+            </InputField>
           </div>
-          <div className="rounded-2xl bg-[#f5f0e8] p-4 text-center">
-            <p className="text-xs font-semibold text-slate-500">Total Due</p>
-            <p className="text-3xl font-extrabold text-slate-900 mt-0.5">{aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED</p>
-            <p className="mt-1 text-[10px] text-slate-400">Due Date: —</p>
+
+          {/* Right Column: Pricing details and Calculations */}
+          <div className="space-y-4 lg:col-span-7 lg:border-l lg:pl-6 lg:border-slate-100">
+            <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Purchase Pricing</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <InputField label="Unit Rate">
+                <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="any" required />
+              </InputField>
+              
+              <InputField label="Number of Units">
+                <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="any" required />
+              </InputField>
+            </div>
+
+            <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>
+            
+            <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
+              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (INR)</span>
+                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
+                  {inrTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              
+              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (AED)</span>
+                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
+                  {aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <div className="text-center p-3 rounded-xl bg-emerald-50 border border-emerald-100 flex flex-col justify-center shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Total Due (AED)</span>
+                <span className="mt-1.5 text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                  {aedBaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }

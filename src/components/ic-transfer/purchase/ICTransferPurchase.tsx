@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import DateFilterBar from '@/components/ui/DateFilterBar';
-import { IC_TRANSFER_CITIES } from '@/lib/icTransfer/nav';
+import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import { useApp } from '@/context/AppContext';
 import {
   AddButton,
@@ -49,7 +49,11 @@ export default function ICTransferPurchase() {
   const getLocationName = (id: string) => icRegions.find(r => r.id === id)?.name || id;
 
   const filteredPurchases = icPurchases.filter(p => {
-    if (search && !p.id.toLowerCase().includes(search.toLowerCase()) && !getSupplierName(p.supplierId || '').toLowerCase().includes(search.toLowerCase())) return false;
+    const formattedId = getFormattedTxnId(p.id, 'purchase', p);
+    if (search && 
+        !formattedId.toLowerCase().includes(search.toLowerCase()) && 
+        !p.id.toLowerCase().includes(search.toLowerCase()) && 
+        !getSupplierName(p.supplierId || '').toLowerCase().includes(search.toLowerCase())) return false;
     if (cityFilter !== 'All' && getLocationName(p.locationId || '') !== cityFilter) return false;
     return true;
   });
@@ -184,7 +188,7 @@ export default function ICTransferPurchase() {
         {filteredPurchases.map((p) => (
           <tr key={p.id} onClick={() => handleView(p)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">
             <td className={icCompactTd('left')}>{new Date(p.createdAt || '').toLocaleDateString()}</td>
-            <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{p.id.substring(0, 8)}</span></td>
+            <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{getFormattedTxnId(p.id, 'purchase', p)}</span></td>
             <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{getSupplierName(p.supplierId || '')}</span></td>
             <td className={icCompactTd('left')}>{getLocationName(p.locationId || '')}</td>
             <td className={icCompactTd('right')}>{p.units.toLocaleString()}</td>

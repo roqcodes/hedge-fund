@@ -835,7 +835,7 @@ CREATE INDEX IF NOT EXISTS idx_ic_purchases_created ON ic_purchases(created_at);
 CREATE TABLE IF NOT EXISTS ic_sales (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_name VARCHAR(255) NOT NULL,
-    entered_by VARCHAR(255), -- Signed-in user (branch user)
+    entered_by VARCHAR(255),
     entered_by_name VARCHAR(255),
     entered_by_user_id VARCHAR(255),
     warehouse_id UUID REFERENCES ic_warehouses(id) ON DELETE SET NULL,
@@ -847,10 +847,18 @@ CREATE TABLE IF NOT EXISTS ic_sales (
     address TEXT,
     image_url TEXT,
     service_charge NUMERIC(15, 4) DEFAULT 0.00,
+    collected_units NUMERIC(15, 4) DEFAULT 0.00,
+    priority VARCHAR(20) DEFAULT 'Normal' CHECK (priority IN ('High', 'Normal', 'Low')),
+    payment_status VARCHAR(20) DEFAULT 'pending',
+    order_status VARCHAR(30) DEFAULT 'pending',
+    rejection_remarks TEXT,
+    status_updated_at TIMESTAMP WITH TIME ZONE,
+    status_updated_by VARCHAR(255),
+    delivery_image_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ic_sales_user ON ic_sales(entered_by_user_id);
-CREATE INDEX IF NOT EXISTS idx_ic_sales_location ON ic_sales(location_id);
+CREATE INDEX IF NOT EXISTS idx_ic_sales_warehouse ON ic_sales(warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_ic_sales_created ON ic_sales(created_at);
 
 CREATE TABLE IF NOT EXISTS ic_warehouse_transactions (
@@ -892,13 +900,68 @@ CREATE TABLE IF NOT EXISTS ic_delivery_agents (
 );
 CREATE INDEX IF NOT EXISTS idx_ic_delivery_agents_warehouse ON ic_delivery_agents(warehouse_id);
 
+-- Idempotent column adds for databases created before consolidated ic_sales definition
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_agent_id UUID REFERENCES ic_delivery_agents(id) ON DELETE SET NULL;
-ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS collected_amount NUMERIC(15, 4) DEFAULT 0.00;
-ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'Normal' CHECK (priority IN ('High', 'Normal', 'Low'));
-ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20) DEFAULT 'Pending' CHECK (delivery_status IN ('Pending', 'Completed', 'Cancelled', 'Partial'));
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS collected_units NUMERIC(15, 4) DEFAULT 0.00;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'Normal';
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'pending';
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS order_status VARCHAR(30) DEFAULT 'pending';
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS rejection_remarks TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS status_updated_by VARCHAR(255);
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_image_url TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS derived_from_sale_id UUID REFERENCES ic_sales(id) ON DELETE SET NULL;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS service_charge NUMERIC(15, 4) DEFAULT 0.00;
-ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_image_url TEXT;
+
+-- Drop legacy constraint if present, then apply expanded order_status check
+ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_order_status_check;
+ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_order_status_check
+  CHECK (order_status IN (
+    'pending', 'accepted', 'admin_rejected', 'wh_rejected',
+    'wh_processing', 'da_rejected', 'completed'
+  ));
+
+ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_payment_status_check;
+ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_payment_status_check
+  CHECK (payment_status IN ('pending', 'paid', 'partial'));
+
+ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_priority_check;
+ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_priority_check
+  CHECK (priority IN ('High', 'Normal', 'Low'));
+
+-- Backfill workflow + units from legacy delivery_status / collected_amount (if still present)
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'ic_sales' AND column_name = 'delivery_status'
+  ) THEN
+    UPDATE ic_sales SET order_status = 'completed'
+      WHERE order_status = 'pending' AND delivery_status IN ('Completed', 'Partial');
+
+    UPDATE ic_sales SET order_status = 'wh_processing'
+      WHERE order_status = 'pending' AND delivery_agent_id IS NOT NULL;
+
+    UPDATE ic_sales SET order_status = 'accepted'
+      WHERE order_status = 'pending' AND warehouse_id IS NOT NULL AND delivery_agent_id IS NULL;
+
+    UPDATE ic_sales SET collected_units = units
+      WHERE order_status = 'completed' AND COALESCE(collected_units, 0) = 0
+        AND delivery_status IN ('Completed', 'Partial');
+  END IF;
+END $$;
+
+UPDATE ic_sales SET collected_units = units
+  WHERE order_status = 'completed' AND COALESCE(collected_units, 0) = 0;
+
+-- Drop redundant / legacy columns and orphan index
+DROP INDEX IF EXISTS idx_ic_sales_location;
+ALTER TABLE ic_sales DROP COLUMN IF EXISTS location_id;
+ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_delivery_status_check;
+ALTER TABLE ic_sales DROP COLUMN IF EXISTS delivery_status;
+ALTER TABLE ic_sales DROP COLUMN IF EXISTS collected_amount;
+
+CREATE INDEX IF NOT EXISTS idx_ic_sales_derived_from ON ic_sales(derived_from_sale_id);
 
 

@@ -9,12 +9,16 @@ import { fetchDeliveryAgentOrders } from '@/app/actions/warehouseActions';
 import { formatDateTime } from '@/data/mockData';
 import OrderDetailsModal from '../settlement/OrderDetailsModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
-import { StatusBadge, PriorityBadge, SkeletonRows } from '@/components/warehouse/shared';
+import { normalizeOrderStatus, isDeliveryAgentRejected } from '@/lib/icTransfer/orderStatus';
+import { WarehouseOrderStatusCard } from '@/components/warehouse/WarehouseOrderStatusCell';
+import { PriorityBadge, SkeletonRows } from '@/components/warehouse/shared';
+import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
+import { formatUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
 import { resolveDateRange } from '@/lib/warehouseDateUtils';
 import type { WarehouseOrder } from '@/types/warehouse';
 
-type TabKey = 'Pending' | 'Completed';
-type SortField = 'Date' | 'Customer' | 'Units' | 'Total AED' | 'Remaining' | 'Priority' | 'Status';
+type TabKey = 'Pending' | 'Completed' | 'Rejected';
+type SortField = 'Date' | 'Customer' | 'Units' | 'Remaining' | 'Priority' | 'Status';
 
 export default function OrderSettlementClient({ branchSlug }: { branchSlug: string }) {
   const { user, showToast } = useApp();
@@ -30,8 +34,8 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
   const [customEndDate, setCustomEndDate]     = useState('');
 
   // Sort
-  const [sortField, setSortField] = useState<SortField>('Date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortField, setSortField] = useState<SortField>('Priority');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Modal
   const [selectedOrder,    setSelectedOrder]    = useState<WarehouseOrder | null>(null);
@@ -64,10 +68,13 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
 
   const filteredOrders = useMemo<WarehouseOrder[]>(() => {
     return orders.filter(o => {
+      const status = normalizeOrderStatus(o.order_status);
       const matchTab =
         tab === 'Pending'
-          ? o.delivery_status === 'Pending' || o.delivery_status === 'Partial' || !o.delivery_status
-          : o.delivery_status === 'Completed';
+          ? status === 'wh_processing'
+          : tab === 'Completed'
+            ? isSaleCompleted(o.order_status)
+            : isDeliveryAgentRejected(o.order_status);
       const matchSearch =
         o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
         o.id.toLowerCase().includes(search.toLowerCase());
@@ -81,27 +88,29 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
       switch (sortField) {
         case 'Customer': vA = a.customer_name;                                 vB = b.customer_name;                                 break;
         case 'Units':    vA = Number(a.units);                                 vB = Number(b.units);                                 break;
-        case 'Total AED':vA = Number(a.aed_amount);                            vB = Number(b.aed_amount);                            break;
-        case 'Remaining':vA = Number(a.aed_amount) - Number(a.collected_amount || 0); vB = Number(b.aed_amount) - Number(b.collected_amount || 0); break;
-        case 'Priority': vA = a.priority || 'Normal';                          vB = b.priority || 'Normal';                          break;
-        case 'Status':   vA = a.delivery_status || 'Pending';                  vB = b.delivery_status || 'Pending';                  break;
+        case 'Remaining': vA = getRemainingUnits(Number(a.units), a.collected_units, a.order_status);
+                          vB = getRemainingUnits(Number(b.units), b.collected_units, b.order_status); break;
+        case 'Priority': return comparePriority(a.priority, b.priority, sortOrder);
+        case 'Status':   vA = a.order_status || 'pending';                  vB = b.order_status || 'pending';                  break;
         default:         vA = new Date(a.created_at).getTime();                vB = new Date(b.created_at).getTime();
       }
       if (vA < vB) return sortOrder === 'asc' ? -1 : 1;
       if (vA > vB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
+      const priDiff = comparePriority(a.priority, b.priority, 'asc');
+      if (priDiff !== 0) return priDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [filteredOrders, sortField, sortOrder]);
 
-  const pendingCount   = orders.filter(o => o.delivery_status === 'Pending' || o.delivery_status === 'Partial' || !o.delivery_status).length;
-  const completedCount = orders.filter(o => o.delivery_status === 'Completed').length;
+  const pendingCount   = orders.filter(o => normalizeOrderStatus(o.order_status) === 'wh_processing').length;
+  const completedCount = orders.filter(o => isSaleCompleted(o.order_status)).length;
+  const rejectedCount  = orders.filter(o => isDeliveryAgentRejected(o.order_status)).length;
 
   const COLS: { label: SortField; align: 'left' | 'right' | 'center' }[] = [
     { label: 'Date',      align: 'left'   },
     { label: 'Customer',  align: 'left'   },
-    { label: 'Units',     align: 'right'  },
-    { label: 'Total AED', align: 'right'  },
-    { label: 'Remaining', align: 'right'  },
+    { label: 'Units',      align: 'right'  },
+    { label: 'Remaining',  align: 'right'  },
     { label: 'Priority',  align: 'center' },
     { label: 'Status',    align: 'center' },
   ];
@@ -130,6 +139,10 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
           <button onClick={() => setTab('Completed')} className={tab === 'Completed' ? tabBtnActive : tabBtn}>
             Completed
             <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">{completedCount}</span>
+          </button>
+          <button onClick={() => setTab('Rejected')} className={tab === 'Rejected' ? tabBtnActive : tabBtn}>
+            Rejected
+            <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">{rejectedCount}</span>
           </button>
         </div>
 
@@ -170,30 +183,36 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <SkeletonRows cols={7} />
+                  <SkeletonRows cols={6} />
                 ) : sortedOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-400">
+                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
                       No {tab.toLowerCase()} orders found for this date range.
                     </td>
                   </tr>
                 ) : (
                   sortedOrders.map(order => {
-                    const remaining = Math.max(0, Number(order.aed_amount || 0) - Number(order.collected_amount || 0));
+                    const remaining = getRemainingUnits(Number(order.units), order.collected_units, order.order_status);
                     return (
                       <tr
                         key={order.id}
-                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                        className={`cursor-pointer transition-colors ${highPriorityRowClass(order.priority)}`}
                         data-interactive-row
                         onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }}
                       >
                         <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm font-semibold first:rounded-l-2xl sm:px-5 sm:py-4 text-slate-900">{formatDateTime(order.created_at)}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium sm:px-5 sm:py-4 text-slate-900">{order.customer_name}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium text-right sm:px-5 sm:py-4 text-slate-600">{Number(order.units).toLocaleString()}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-bold text-right sm:px-5 sm:py-4 text-slate-900">{Number(order.aed_amount || 0).toLocaleString()} <span className="text-[10px] font-normal text-slate-400">AED</span></td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-bold text-right sm:px-5 sm:py-4 text-amber-600">{remaining.toLocaleString()} <span className="text-[10px] font-normal text-amber-400">AED</span></td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium sm:px-5 sm:py-4 text-slate-900">
+                          {order.customer_name}
+                          {order.derived_from_sale_id && (
+                            <span className="ml-1.5 text-[10px] font-semibold text-indigo-600">(split)</span>
+                          )}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium text-right sm:px-5 sm:py-4 text-slate-600">{formatUnits(order.units)}</td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-bold text-right sm:px-5 sm:py-4 text-amber-600">{formatUnits(remaining)}</td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center sm:px-5 sm:py-4"><PriorityBadge priority={order.priority} /></td>
-                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4"><StatusBadge status={order.delivery_status} /></td>
+                        <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4" onClick={e => e.stopPropagation()}>
+                          <WarehouseOrderStatusCard order={order} />
+                        </td>
                       </tr>
                     );
                   })
@@ -210,12 +229,12 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
               <div className="py-8 text-center text-sm text-slate-400">No orders found.</div>
             ) : (
               sortedOrders.map(order => {
-                const remaining = Math.max(0, Number(order.aed_amount || 0) - Number(order.collected_amount || 0));
+                const remaining = getRemainingUnits(Number(order.units), order.collected_units, order.order_status);
                 return (
                   <div
                     key={order.id}
                     onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }}
-                    className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors"
+                    className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors ${highPriorityCardClass(order.priority)}`}
                   >
                     <div className="flex justify-between items-start">
                       <div>
@@ -223,16 +242,14 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
                         <p className="text-xs font-mono text-slate-500">{order.id.slice(0, 8)}</p>
                         <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(order.created_at)}</p>
                       </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <StatusBadge status={order.delivery_status} />
+                      <div className="flex flex-col items-end gap-1.5" onClick={e => e.stopPropagation()}>
+                        <WarehouseOrderStatusCard order={order} />
                         <PriorityBadge priority={order.priority} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 bg-slate-50/70 p-2.5 rounded-xl">
-                      <span>Units: <strong className="text-slate-700">{Number(order.units).toLocaleString()}</strong></span>
-                      <span className="text-right">Total: <strong className="text-accent">{Number(order.aed_amount || 0).toLocaleString()} AED</strong></span>
-                      <span>Collected: <strong className="text-emerald-600">{Number(order.collected_amount || 0).toLocaleString()} AED</strong></span>
-                      <span className="text-right">Remaining: <strong className="text-amber-600">{remaining.toLocaleString()} AED</strong></span>
+                    <div className="grid grid-cols-1 gap-2 text-xs text-slate-500 bg-slate-50/70 p-2.5 rounded-xl">
+                      <span>Units: <strong className="text-slate-700">{formatUnits(order.units)}</strong></span>
+                      <span>To deliver: <strong className="text-amber-600">{formatUnits(remaining)}</strong></span>
                     </div>
                     <div className="flex justify-end pt-1 border-t border-slate-50">
                       <button className="text-xs font-bold text-accent hover:text-accent/80" onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }}>Update / View Details →</button>

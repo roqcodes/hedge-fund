@@ -551,6 +551,15 @@ export interface ICPurchase {
   createdAt?: string;
 }
 
+export type ICOrderStatus =
+  | 'pending'
+  | 'accepted'
+  | 'admin_rejected'
+  | 'wh_rejected'
+  | 'wh_processing'
+  | 'da_rejected'
+  | 'completed';
+
 export interface ICSale {
   id: string;
   customerName: string;
@@ -563,15 +572,19 @@ export interface ICSale {
   enteredBy?: string;
   enteredByName?: string;
   enteredByUserId?: string;
-  paymentStatus?: 'pending' | 'paid';
+  paymentStatus?: 'pending' | 'paid' | 'partial';
+  orderStatus?: ICOrderStatus;
+  rejectionRemarks?: string;
+  statusUpdatedAt?: string;
+  statusUpdatedBy?: string;
   address?: string;
   imageUrl?: string;
   serviceCharge?: number;
   deliveryAgentId?: string;
   deliveryAgentName?: string;
-  collectedAmount?: number;
+  collectedUnits?: number;
+  derivedFromSaleId?: string;
   priority?: 'High' | 'Normal' | 'Low';
-  deliveryStatus?: 'Pending' | 'Completed' | 'Cancelled' | 'Partial';
   deliveryImageUrl?: string;
   createdAt?: string;
 }

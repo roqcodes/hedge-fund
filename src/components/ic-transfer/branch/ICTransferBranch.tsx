@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { useApp } from '@/context/AppContext';
+import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import {
   DataTableSection,
   FilterChips,
@@ -16,6 +17,9 @@ import ViewSaleModal from '../sales/ViewSaleModal';
 import { ICSale } from '@/types';
 import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
 import { kpiGrid } from '@/lib/ui';
+import { BranchOrderStatusCell, BranchOrderWorkflowActions } from '../shared/BranchOrderStatusCell';
+import { getCustomerOrderStatus, canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
+import { getDeliveredUnits } from '@/lib/icTransfer/saleUnits';
 
 const icCompactTd = (align: 'left' | 'center' | 'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
@@ -55,13 +59,23 @@ export default function ICTransferBranch() {
     const isOurOrder = s.customerName.toLowerCase() === branchName.toLowerCase();
     if (!isOurOrder) return false;
 
-    if (search && !s.id.toLowerCase().includes(search.toLowerCase()) && !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
+    const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
+    if (search && 
+        !formattedId.toLowerCase().includes(search.toLowerCase()) && 
+        !s.id.toLowerCase().includes(search.toLowerCase()) && 
+        !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
     if (location !== 'All' && getRegionNameByWarehouseId(s.warehouseId) !== location) return false;
     return true;
   });
 
   const handleEdit = (s: ICSale) => {
+    if (!canBranchResubmitOrder(s.orderStatus)) return;
     setSelectedSale(s);
+    setModalOpen(true);
+  };
+
+  const handleCreateOrder = () => {
+    setSelectedSale(null);
     setModalOpen(true);
   };
 
@@ -78,13 +92,13 @@ export default function ICTransferBranch() {
     const totalValue = branchSales.reduce((acc, s) => acc + (s.aedAmount || 0), 0);
     const avgRate = totalUnits > 0 ? totalValue / totalUnits : 0;
 
-    const pendingOrders = branchSales.filter(s => s.deliveryStatus === 'Pending' || !s.deliveryStatus).length;
-    const partialOrders = branchSales.filter(s => s.deliveryStatus === 'Partial').length;
-    const fulfilledOrders = branchSales.filter(s => s.deliveryStatus === 'Completed').length;
+    const pendingOrders = branchSales.filter(s => getCustomerOrderStatus(s) === 'Pending').length;
+    const partialOrders = branchSales.filter(s => getCustomerOrderStatus(s) === 'Partial').length;
+    const fulfilledOrders = branchSales.filter(s => getCustomerOrderStatus(s) === 'Paid').length;
 
-    const totalPartialAmountReceived = branchSales
-      .filter(s => s.deliveryStatus === 'Partial')
-      .reduce((acc, s) => acc + (s.collectedAmount || 0), 0);
+    const totalPartialUnitsDelivered = branchSales
+      .filter(s => getCustomerOrderStatus(s) === 'Partial' || !!s.derivedFromSaleId)
+      .reduce((acc, s) => acc + getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus), 0);
 
     return {
       totalOrders,
@@ -94,7 +108,7 @@ export default function ICTransferBranch() {
       pendingOrders,
       partialOrders,
       fulfilledOrders,
-      totalPartialAmountReceived
+      totalPartialUnitsDelivered
     };
   }, [icSales, branchName]);
 
@@ -105,7 +119,7 @@ export default function ICTransferBranch() {
         subtitle="Submit and track transfer orders from your branch"
         actions={
           <div className="flex items-center gap-3">
-            <AddButton label="Create Order" onClick={() => setModalOpen(true)} />
+            <AddButton label="Create Order" onClick={handleCreateOrder} />
           </div>
         }
       />
@@ -162,7 +176,7 @@ export default function ICTransferBranch() {
         />
         <PhysicalSplitKPICard
           top={{ label: 'Partial Orders', value: `${stats.partialOrders} Partial` }}
-          bottom={{ label: 'Collected Amount', value: fmt(stats.totalPartialAmountReceived) }}
+          bottom={{ label: 'Delivered Units', value: `${stats.totalPartialUnitsDelivered.toLocaleString()} Units` }}
           color="var(--accent)"
           bgColor="var(--accent-light)"
           icon={
@@ -183,19 +197,18 @@ export default function ICTransferBranch() {
         {filteredSales.map((s) => (
           <tr key={s.id} onClick={() => handleView(s)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">
             <td className={icCompactTd('left')}>{new Date(s.createdAt || '').toLocaleDateString()}</td>
-            <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{s.id.substring(0, 8)}</span></td>
+            <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</span></td>
             <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{s.customerName}</span></td>
             <td className={icCompactTd('left')}>{s.address || 'None'}</td>
             <td className={icCompactTd('right')}>{s.units.toLocaleString()}</td>
             <td className={icCompactTd('right')}><span className="font-bold text-slate-900">{(s.aedAmount || 0).toLocaleString()}</span></td>
-            <td className={icCompactTd('center')}>
-              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${s.paymentStatus === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                }`}>
-                {s.paymentStatus || 'pending'}
-              </span>
+            <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+              <BranchOrderStatusCell sale={s} />
             </td>
-            <td className={icCompactTd('center')}>
-              <div className="flex items-center justify-center gap-1.5" onClick={e => e.stopPropagation()}>
+            <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+              <div className="flex flex-col items-center gap-1.5">
+                <BranchOrderWorkflowActions sale={s} onResubmit={handleEdit} />
+                <div className="flex items-center justify-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleView(s)}
@@ -207,17 +220,7 @@ export default function ICTransferBranch() {
                     <circle cx="12" cy="12" r="3" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleEdit(s)}
-                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
-                  title="Edit"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
+                </div>
               </div>
             </td>
           </tr>
@@ -233,6 +236,11 @@ export default function ICTransferBranch() {
         open={viewModalOpen}
         onClose={() => { setViewModalOpen(false); setSelectedSale(null); }}
         sale={selectedSale}
+        onEdit={
+          selectedSale && canBranchResubmitOrder(selectedSale.orderStatus)
+            ? handleEdit
+            : undefined
+        }
       />
     </PageShell>
   );

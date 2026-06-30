@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { useApp } from '@/context/AppContext';
+import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import {
   DataTableSection,
   ExportButtons,
@@ -11,24 +12,28 @@ import {
   PageShell,
   useICTransferFilters,
   AddButton,
-  SectionCard,
 } from '../ui';
 import AddSaleModal from './AddSaleModal';
 import ViewSaleModal from './ViewSaleModal';
 import { ICSale } from '@/types';
-import PhysicalSplitKPICard, { PhysicalSingleKPICard } from '@/components/physical/PhysicalSplitKPICard';
-import { kpiGrid } from '@/lib/ui';
+import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
+import { ConfirmModal } from '@/components/warehouse/shared';
+import { AdminOrderStatusCard, AdminOrderWorkflowActions } from '../shared/AdminOrderWorkflowPanel';
+import SalePriorityControl from '../shared/SalePriorityControl';
+import { IC_ORDER_STATUSES, getAdminStatusLabel, normalizeOrderStatus, canAdminAccept, getCustomerOrderStatus } from '@/lib/icTransfer/orderStatus';
+import { comparePriority, highPriorityRowClass } from '@/lib/icTransfer/orderPriority';
+import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 
 const icCompactTd = (align: 'left'|'center'|'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
 const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDigits: 2 })}`;
 
 const SALE_COLUMNS = [
-  'Date', 'Customer', 'Units', 'Total AED', 'Collected Amount', 'Remaining Amount', 'Priority', 'Status'
+  'Date', 'Customer', 'Units', 'Total AED', 'Delivered Units', 'Remaining Units', 'Warehouse', 'Priority', 'Status', 'Actions'
 ];
 
 export default function ICTransferSales() {
-  const { icSales, icRegions, icWarehouses, updateICSale, icRateGroups } = useApp();
+  const { icSales, icRegions, icWarehouses, deleteICSale, branches } = useApp();
   const [location, setLocation] = useState('All');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -38,8 +43,13 @@ export default function ICTransferSales() {
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterWarehouse, setFilterWarehouse] = useState('All');
 
-  const [sortField, setSortField] = useState<string>('Date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortField, setSortField] = useState<string>('Priority');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Delete from Table states
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState<ICSale | null>(null);
 
   const {
     dateFilter,
@@ -58,7 +68,7 @@ export default function ICTransferSales() {
 
   const filteredSales = useMemo<ICSale[]>(() => {
     return icSales.filter((s: ICSale) => {
-      // ── Date filter (was a no-op before — now applied) ──────────────────
+      // ── Date filter ──────────────────
       const createdAt = s.createdAt ? new Date(s.createdAt) : null;
       if (createdAt && dateFilter !== 'all-time') {
         const today = new Date();
@@ -87,13 +97,20 @@ export default function ICTransferSales() {
         }
       }
 
-      if (search && !s.id.toLowerCase().includes(search.toLowerCase()) && !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
+      const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
+      if (search && 
+          !formattedId.toLowerCase().includes(search.toLowerCase()) && 
+          !s.id.toLowerCase().includes(search.toLowerCase()) && 
+          !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
       if (location !== 'All' && getRegionNameByWarehouseId(s.warehouseId) !== location) return false;
 
       if (filterStatus !== 'All') {
         if (filterStatus === 'paid') return s.paymentStatus === 'paid';
         if (filterStatus === 'pending') return s.paymentStatus === 'pending';
-        if (filterStatus === 'Partial') return s.deliveryStatus === 'Partial';
+        if (filterStatus === 'Partial') return getCustomerOrderStatus(s) === 'Partial';
+        if (IC_ORDER_STATUSES.includes(filterStatus as any)) {
+          return normalizeOrderStatus(s.orderStatus) === filterStatus;
+        }
       }
       if (filterWarehouse !== 'All') {
         if (filterWarehouse === 'None') return !s.warehouseId;
@@ -109,8 +126,9 @@ export default function ICTransferSales() {
       'Customer': 'Customer',
       'Units': 'Units',
       'Total AED': 'Total AED',
-      'Collected Amount': 'Collected Amount',
-      'Remaining Amount': 'Remaining Amount',
+      'Delivered Units': 'Delivered Units',
+      'Remaining Units': 'Remaining Units',
+      'Warehouse': 'Warehouse',
       'Priority': 'Priority',
       'Status': 'Status',
     };
@@ -138,19 +156,22 @@ export default function ICTransferSales() {
       } else if (sortField === 'Total AED') {
         valA = Number(a.aedAmount || 0);
         valB = Number(b.aedAmount || 0);
-      } else if (sortField === 'Collected Amount') {
-        valA = Number(a.collectedAmount || 0);
-        valB = Number(b.collectedAmount || 0);
-      } else if (sortField === 'Remaining Amount') {
-        valA = Number(a.aedAmount || 0) - Number(a.collectedAmount || 0);
-        valB = Number(b.aedAmount || 0) - Number(b.collectedAmount || 0);
+      } else if (sortField === 'Delivered Units') {
+        valA = getDeliveredUnits(Number(a.units || 0), a.collectedUnits, a.orderStatus);
+        valB = getDeliveredUnits(Number(b.units || 0), b.collectedUnits, b.orderStatus);
+      } else if (sortField === 'Remaining Units') {
+        valA = getRemainingUnits(Number(a.units || 0), a.collectedUnits, a.orderStatus);
+        valB = getRemainingUnits(Number(b.units || 0), b.collectedUnits, b.orderStatus);
+      } else if (sortField === 'Warehouse') {
+        valA = getWarehouseName(a.warehouseId);
+        valB = getWarehouseName(b.warehouseId);
       } else if (sortField === 'Priority') {
         const order: Record<string, number> = { High: 0, Normal: 1, Low: 2 };
         valA = order[a.priority || 'Normal'] ?? 1;
         valB = order[b.priority || 'Normal'] ?? 1;
       } else if (sortField === 'Status') {
-        valA = a.deliveryStatus || 'Pending';
-        valB = b.deliveryStatus || 'Pending';
+        valA = a.orderStatus || 'pending';
+        valB = b.orderStatus || 'pending';
       } else {
         valA = new Date(a.createdAt || '').getTime();
         valB = new Date(b.createdAt || '').getTime();
@@ -158,7 +179,10 @@ export default function ICTransferSales() {
 
       if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
       if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
+      // Secondary sort: always keep high priority on top within same primary value
+      const priDiff = comparePriority(a.priority, b.priority, 'asc');
+      if (priDiff !== 0) return priDiff;
+      return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
     return sorted;
   }, [filteredSales, sortField, sortOrder]);
@@ -169,13 +193,13 @@ export default function ICTransferSales() {
     const totalUnits = filteredSales.reduce((acc: number, s: ICSale) => acc + s.units, 0);
     const avgRate = totalUnits > 0 ? totalValue / totalUnits : 0;
     
-    const pendingCount = filteredSales.filter((s: ICSale) => s.deliveryStatus === 'Pending' || !s.deliveryStatus).length;
-    const partialCount = filteredSales.filter((s: ICSale) => s.deliveryStatus === 'Partial').length;
-    const completedCount = filteredSales.filter((s: ICSale) => s.deliveryStatus === 'Completed').length;
+    const pendingCount = filteredSales.filter((s: ICSale) => normalizeOrderStatus(s.orderStatus) === 'pending').length;
+    const partialCount = filteredSales.filter((s: ICSale) => getCustomerOrderStatus(s) === 'Partial').length;
+    const completedCount = filteredSales.filter((s: ICSale) => normalizeOrderStatus(s.orderStatus) === 'completed').length;
     
-    const totalPartialAmountReceived = filteredSales
-      .filter((s: ICSale) => s.deliveryStatus === 'Partial')
-      .reduce((acc: number, s: ICSale) => acc + (s.collectedAmount || 0), 0);
+    const totalPartialUnitsDelivered = filteredSales
+      .filter((s: ICSale) => getCustomerOrderStatus(s) === 'Partial' || !!s.derivedFromSaleId)
+      .reduce((acc: number, s: ICSale) => acc + getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus), 0);
 
     return {
       totalOrders,
@@ -185,7 +209,7 @@ export default function ICTransferSales() {
       pendingCount,
       partialCount,
       completedCount,
-      totalPartialAmountReceived
+      totalPartialUnitsDelivered
     };
   }, [filteredSales]);
 
@@ -197,6 +221,27 @@ export default function ICTransferSales() {
   const handleView = (s: ICSale) => {
     setSelectedSale(s);
     setViewModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (!viewModalOpen || !selectedSale) return;
+    const fresh = icSales.find(s => s.id === selectedSale.id);
+    if (fresh) setSelectedSale(fresh);
+  }, [icSales, viewModalOpen, selectedSale?.id]);
+
+  const handleDeleteClick = (e: React.MouseEvent, s: ICSale) => {
+    e.stopPropagation();
+    setSaleToDelete(s);
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!saleToDelete) return;
+    setDeleteLoading(true);
+    await deleteICSale(saleToDelete.id);
+    setDeleteLoading(false);
+    setConfirmDeleteOpen(false);
+    setSaleToDelete(null);
   };
 
   const { salesColumns, matrixRows } = React.useMemo(() => {
@@ -282,7 +327,7 @@ export default function ICTransferSales() {
         />
         <PhysicalSplitKPICard 
           top={{ label: 'Partial Orders', value: `${stats.partialCount} Partial` }}
-          bottom={{ label: 'Collected Amount', value: fmt(stats.totalPartialAmountReceived) }}
+          bottom={{ label: 'Delivered Units', value: `${stats.totalPartialUnitsDelivered.toLocaleString()} Units` }}
           color="var(--accent)" 
           bgColor="var(--accent-light)" 
           icon={
@@ -311,7 +356,7 @@ export default function ICTransferSales() {
         onSearchChange={setSearch}
         searchPlaceholder="Search sales..."
         onHeaderClick={handleHeaderClick}
-        sortField={sortField === 'Date' ? 'Date' : sortField}
+        sortField={sortField}
         sortOrder={sortOrder}
         toolbar={
           <div className="flex gap-2 items-center flex-wrap">
@@ -321,7 +366,9 @@ export default function ICTransferSales() {
               className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 bg-white shadow-sm focus:border-accent focus:outline-none"
             >
               <option value="All">All Statuses</option>
-              <option value="pending">Pending Paid</option>
+              {IC_ORDER_STATUSES.map(st => (
+                <option key={st} value={st}>{getAdminStatusLabel(st)}</option>
+              ))}
               <option value="paid">Fully Paid</option>
               <option value="Partial">Partial Delivered</option>
             </select>
@@ -342,27 +389,17 @@ export default function ICTransferSales() {
       >
         {sortedSales.map((s: ICSale) => {
           const total = s.aedAmount || 0;
-          const collected = s.collectedAmount || 0;
-          const remaining = Math.max(0, total - collected);
-          const priority = s.priority || 'Normal';
-          const deliveryStatus = s.deliveryStatus || 'Pending';
+          const delivered = getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus);
+          const remaining = getRemainingUnits(s.units, s.collectedUnits, s.orderStatus);
 
-          const priorityStyle =
-            priority === 'High' ? 'bg-red-50 text-red-700 border-red-200' :
-            priority === 'Low'  ? 'bg-slate-50 text-slate-500 border-slate-200' :
-                                  'bg-slate-100 text-slate-600 border-slate-200';
-
-          const statusStyle =
-            deliveryStatus === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-            deliveryStatus === 'Partial'   ? 'bg-amber-50 text-amber-700 border-amber-200' :
-            deliveryStatus === 'Cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
-                                             'bg-slate-50 text-slate-500 border-slate-200';
+          const hasWarehouse = !!s.warehouseId;
+          const warehouseName = getWarehouseName(s.warehouseId);
 
           return (
             <tr
               key={s.id}
               onClick={() => handleView(s)}
-              className="cursor-pointer hover:bg-slate-50/60 transition-colors border-b border-slate-100 last:border-0"
+              className={`cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${highPriorityRowClass(s.priority)}`}
             >
               {/* DATE */}
               <td className={icCompactTd('left')}>
@@ -379,6 +416,11 @@ export default function ICTransferSales() {
               {/* CUSTOMER */}
               <td className={icCompactTd('left')}>
                 <span className="font-semibold text-slate-900">{s.customerName}</span>
+                {s.derivedFromSaleId && (
+                  <span className="ml-1.5 inline-flex rounded-full bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600" title={`Derived from ${getFormattedTxnId(s.derivedFromSaleId, 'sale', null, branches)}`}>
+                    SPLIT
+                  </span>
+                )}
               </td>
 
               {/* UNITS */}
@@ -393,32 +435,94 @@ export default function ICTransferSales() {
                 </span>
               </td>
 
-              {/* COLLECTED AMOUNT */}
+              {/* DELIVERED UNITS */}
               <td className={icCompactTd('right')}>
                 <span className="tabular-nums font-bold text-emerald-600">
-                  {collected.toLocaleString()} <span className="font-normal text-emerald-400 text-[10px]">AED</span>
+                  {delivered.toLocaleString()}
                 </span>
               </td>
 
-              {/* REMAINING AMOUNT */}
+              {/* REMAINING UNITS */}
               <td className={icCompactTd('right')}>
                 <span className={`tabular-nums font-bold ${remaining > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                  {remaining.toLocaleString()} <span className="font-normal text-[10px] opacity-60">AED</span>
+                  {remaining.toLocaleString()}
                 </span>
+              </td>
+
+              {/* WAREHOUSE COLUMN */}
+              <td className={icCompactTd('left')}>
+                {hasWarehouse ? (
+                  <span className="font-semibold text-slate-700">{warehouseName}</span>
+                ) : canAdminAccept(s.orderStatus) ? (
+                  <span className="text-[10.5px] font-medium text-slate-400 italic">Awaiting acceptance</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(s);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/50 px-2.5 py-1 text-[10.5px] font-bold text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors shadow-sm"
+                  >
+                    Assign Warehouse
+                  </button>
+                )}
               </td>
 
               {/* PRIORITY */}
-              <td className={icCompactTd('center')}>
-                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider border ${priorityStyle}`}>
-                  {priority}
-                </span>
+              <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+                <SalePriorityControl saleId={s.id} priority={s.priority} compact />
               </td>
 
               {/* STATUS */}
-              <td className={icCompactTd('center')}>
-                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider border ${statusStyle}`}>
-                  {deliveryStatus}
-                </span>
+              <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+                <AdminOrderStatusCard sale={s} />
+              </td>
+
+              {/* ACTIONS */}
+              <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+                <div className="flex flex-col items-center gap-1.5">
+                  <AdminOrderWorkflowActions sale={s} />
+                  <div className="flex items-center justify-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleView(s);
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                    title="View Details"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(s);
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                    title="Edit Sale"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteClick(e, s)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="Delete Sale"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                  </div>
+                </div>
               </td>
             </tr>
           );
@@ -435,6 +539,18 @@ export default function ICTransferSales() {
         onClose={() => { setViewModalOpen(false); setSelectedSale(null); }}
         sale={selectedSale}
         onEdit={handleEdit}
+        workflowVariant="admin"
+      />
+
+      <ConfirmModal
+        open={confirmDeleteOpen}
+        title="Delete Sale"
+        message="Are you sure you want to delete this sale? This action cannot be undone."
+        confirmLabel="Delete Sale"
+        variant="danger"
+        loading={deleteLoading}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setConfirmDeleteOpen(false)}
       />
     </PageShell>
   );

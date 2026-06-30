@@ -82,14 +82,18 @@ export function mapICSaleRow(row: any): ICSale {
     enteredByName: row.entered_by_name,
     enteredByUserId: row.entered_by_user_id,
     paymentStatus: row.payment_status || 'pending',
+    orderStatus: row.order_status || 'pending',
+    rejectionRemarks: row.rejection_remarks || undefined,
+    statusUpdatedAt: row.status_updated_at ? new Date(row.status_updated_at).toISOString() : undefined,
+    statusUpdatedBy: row.status_updated_by || undefined,
     address: row.address || undefined,
     imageUrl: row.image_url || undefined,
     serviceCharge: row.service_charge ? parseFloat(row.service_charge) : undefined,
     deliveryAgentId: row.delivery_agent_id || undefined,
     deliveryAgentName: row.delivery_agent_name || undefined,
-    collectedAmount: row.collected_amount ? parseFloat(row.collected_amount) : undefined,
+    collectedUnits: row.collected_units != null ? parseFloat(row.collected_units) : undefined,
+    derivedFromSaleId: row.derived_from_sale_id || undefined,
     priority: row.priority || undefined,
-    deliveryStatus: row.delivery_status || undefined,
     deliveryImageUrl: row.delivery_image_url || undefined,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
   };
@@ -105,4 +109,42 @@ export function mapICWarehouseTransactionRow(row: any): ICWarehouseTransaction {
     referenceId: row.reference_id,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
   };
+}
+
+type TxnIdRecord = {
+  derivedFromSaleId?: string | null;
+  derived_from_sale_id?: string | null;
+  customerName?: string | null;
+  customer_name?: string | null;
+};
+
+export function getFormattedTxnId(
+  id: string,
+  type: 'sale' | 'purchase',
+  record?: unknown,
+  branchesList?: { name: string }[]
+): string {
+  if (!id) return '';
+  const shortId = id.includes('-') ? id.split('-')[0] : id.substring(0, 8);
+  
+  if (type === 'purchase') {
+    return `IC-PU-${shortId}`;
+  }
+
+  const r = (record ?? null) as TxnIdRecord | null;
+
+  // It is a sale
+  const derivedId = r?.derivedFromSaleId || r?.derived_from_sale_id;
+  if (derivedId) {
+    return `IC-SA-DV-${shortId}`;
+  }
+
+  // Check if it's from a branch side
+  const custName = r?.customerName || r?.customer_name;
+  const isBranch = branchesList?.some(b => b.name === custName) || false;
+  if (isBranch) {
+    return `IC-SA-BR-${shortId}`;
+  }
+
+  return `IC-SA-AD-${shortId}`;
 }

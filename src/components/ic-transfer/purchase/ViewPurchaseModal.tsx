@@ -4,6 +4,7 @@ import React from 'react';
 import Modal from '@/components/ui/Modal';
 import { ICPurchase } from '@/types';
 import { useApp } from '@/context/AppContext';
+import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import { btnSecondary } from '@/lib/ui';
 
 type Props = {
@@ -70,7 +71,7 @@ export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
         <div className="space-y-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Transaction ID</p>
-            <p className="font-mono text-sm font-semibold text-slate-900">{purchase.id}</p>
+            <p className="font-mono text-sm font-semibold text-slate-900">{getFormattedTxnId(purchase.id, 'purchase', purchase)}</p>
           </div>
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Date</p>
@@ -114,7 +115,7 @@ export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Total INR</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{(purchase.inrTotal || 0).toLocaleString()}</p>
+              <p className="mt-1 text-xl font-bold text-slate-900">{(purchase.convertedTotal || 0).toLocaleString()}</p>
             </div>
           </div>
 

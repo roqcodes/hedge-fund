@@ -43,6 +43,21 @@ interface PriorityBadgeProps {
 export function PriorityBadge({ priority }: PriorityBadgeProps) {
   const label = priority || 'Normal';
   const cls = PRIORITY_STYLES[label] ?? PRIORITY_STYLES.Normal;
+
+  if (label === 'High') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border-2 border-red-400 bg-red-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-red-700 shadow-sm"
+        title="High priority — process first"
+      >
+        <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+        </svg>
+        High Priority
+      </span>
+    );
+  }
+
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cls}`}

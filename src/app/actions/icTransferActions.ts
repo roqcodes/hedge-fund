@@ -19,6 +19,9 @@ import {
   mapICPurchaseRow,
   mapICSaleRow,
 } from '@/lib/icTransferMappers';
+import { hasICSaleContentChanged, type ICSaleContentFields } from '@/lib/icTransfer/saleChanges';
+import { normalizeOrderStatus } from '@/lib/icTransfer/orderStatus';
+import { isBranchPortalRole } from '@/lib/rbac';
 
 async function resolveEnteredBy() {
   const userRes = await getCurrentUserAction();
@@ -293,10 +296,13 @@ export async function dbAddICSaleAction(
   sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>
 ): Promise<DbActionResult<ICSale>> {
   const { enteredBy, enteredByName, enteredByUserId } = await resolveEnteredBy();
+  const initialOrderStatus = sale.warehouseId ? 'accepted' : 'pending';
   try {
     const res = await query(
-      `INSERT INTO ic_sales (customer_name, warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount, entered_by, entered_by_name, entered_by_user_id, address, image_url, service_charge)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      `INSERT INTO ic_sales (
+        customer_name, warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
+        entered_by, entered_by_name, entered_by_user_id, address, image_url, service_charge, order_status, priority
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [
         sale.customerName,
         sale.warehouseId || null,
@@ -310,7 +316,9 @@ export async function dbAddICSaleAction(
         enteredByUserId,
         sale.address || null,
         sale.imageUrl || null,
-        sale.serviceCharge || 0.00
+        sale.serviceCharge || 0.00,
+        initialOrderStatus,
+        sale.priority || 'Normal',
       ]
     );
     return { success: true, data: mapICSaleRow(res.rows[0]) };
@@ -334,7 +342,11 @@ export async function dbUpdateICPurchaseAction(
     for (const key of keys) {
       const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
       setClauses.push(`${dbKey} = $${idx}`);
-      values.push((updates as any)[key]);
+      let val = (updates as any)[key];
+      if (key.endsWith('Id') && val === '') {
+        val = null;
+      }
+      values.push(val);
       idx++;
     }
     values.push(id);
@@ -367,7 +379,11 @@ export async function dbUpdateICSaleAction(
     for (const key of keys) {
       const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
       setClauses.push(`${dbKey} = $${idx}`);
-      values.push((updates as any)[key]);
+      let val = (updates as any)[key];
+      if (key.endsWith('Id') && val === '') {
+        val = null;
+      }
+      values.push(val);
       idx++;
     }
     values.push(id);
@@ -414,6 +430,217 @@ export async function dbDeleteICSaleAction(id: string): Promise<DbActionResult<n
     const res = await query('DELETE FROM ic_sales WHERE id = $1 RETURNING id', [id]);
     if (res.rowCount === 0) return { success: false, error: 'Sale not found' };
     return { success: true, data: null };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
+async function fetchICSaleById(id: string): Promise<ICSale | null> {
+  const res = await query(
+    `SELECT s.*, a.name AS delivery_agent_name
+     FROM ic_sales s
+     LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
+     WHERE s.id = $1`,
+    [id],
+  );
+  if (res.rows.length === 0) return null;
+  return mapICSaleRow(res.rows[0]);
+}
+
+async function assertBranchOwnsSale(
+  saleId: string,
+  branchSlug?: string,
+): Promise<{ sale: ICSale; updatedBy: string } | { error: string }> {
+  const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
+  const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
+  const user = userRes.success ? userRes.data : null;
+
+  if (!user || !isBranchPortalRole(user.role)) {
+    return { error: 'Only branch users can perform this action' };
+  }
+
+  let branchName: string;
+  if (slug) {
+    const branchRes = await query(
+      `SELECT id, name FROM branches WHERE slug = $1 LIMIT 1`,
+      [slug],
+    );
+    if (branchRes.rows.length === 0) {
+      return { error: 'Branch not found' };
+    }
+    if (user.branchId && branchRes.rows[0].id !== user.branchId) {
+      return { error: 'You are not authorized for this branch' };
+    }
+    branchName = String(branchRes.rows[0].name || '');
+  } else if (user.branchId) {
+    const branchRes = await query(`SELECT name FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
+    if (branchRes.rows.length === 0) {
+      return { error: 'Branch not found' };
+    }
+    branchName = String(branchRes.rows[0].name || '');
+  } else {
+    return { error: 'Only branch users can perform this action' };
+  }
+
+  const sale = await fetchICSaleById(saleId);
+  if (!sale) {
+    return { error: 'Order not found' };
+  }
+
+  if (sale.customerName.toLowerCase() !== branchName.toLowerCase()) {
+    return { error: 'You can only modify orders submitted by your branch' };
+  }
+
+  return { sale, updatedBy: user.email || user.name || 'branch' };
+}
+
+/** Admin accepts a pending order and assigns a warehouse. */
+export async function adminAcceptICSaleAction(
+  id: string,
+  warehouseId: string,
+): Promise<DbActionResult<ICSale>> {
+  const { enteredBy } = await resolveEnteredBy();
+  try {
+    const res = await query(
+      `UPDATE ic_sales
+       SET warehouse_id = $1,
+           order_status = 'accepted',
+           rejection_remarks = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3 AND order_status = 'pending'
+       RETURNING id`,
+      [warehouseId, enteredBy, id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or not in pending status' };
+    }
+    const sale = await fetchICSaleById(id);
+    return sale ? { success: true, data: sale } : { success: false, error: 'Order not found' };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
+/** Admin rejects an order with remarks. */
+export async function adminRejectICSaleAction(
+  id: string,
+  remarks: string,
+): Promise<DbActionResult<ICSale>> {
+  const { enteredBy } = await resolveEnteredBy();
+  if (!remarks.trim()) {
+    return { success: false, error: 'Rejection reason is required' };
+  }
+  try {
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'admin_rejected',
+           rejection_remarks = $1,
+           warehouse_id = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3
+         AND order_status IN ('pending', 'wh_rejected', 'da_rejected')
+       RETURNING id`,
+      [remarks.trim(), enteredBy, id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order cannot be rejected in its current status' };
+    }
+    const sale = await fetchICSaleById(id);
+    return sale ? { success: true, data: sale } : { success: false, error: 'Order not found' };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
+/** Admin reassigns warehouse after WH or delivery agent rejection. */
+export async function adminReassignICSaleWarehouseAction(
+  id: string,
+  warehouseId: string,
+): Promise<DbActionResult<ICSale>> {
+  const { enteredBy } = await resolveEnteredBy();
+  try {
+    const res = await query(
+      `UPDATE ic_sales
+       SET warehouse_id = $1,
+           order_status = 'accepted',
+           rejection_remarks = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3
+         AND order_status IN ('wh_rejected', 'da_rejected')
+       RETURNING id`,
+      [warehouseId, enteredBy, id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order cannot be reassigned in its current status' };
+    }
+    const sale = await fetchICSaleById(id);
+    return sale ? { success: true, data: sale } : { success: false, error: 'Order not found' };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
+/** Branch updates a rejected order and resubmits it to admin review. */
+export async function branchResubmitICSaleAction(
+  id: string,
+  updates: ICSaleContentFields,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  const auth = await assertBranchOwnsSale(id, branchSlug);
+  if ('error' in auth) {
+    return { success: false, error: auth.error };
+  }
+
+  const { sale, updatedBy } = auth;
+  if (normalizeOrderStatus(sale.orderStatus) !== 'admin_rejected') {
+    return { success: false, error: 'Only admin-rejected orders can be resubmitted' };
+  }
+
+  if (!hasICSaleContentChanged(sale, updates)) {
+    return { success: false, error: 'Update at least one field before resubmitting the order' };
+  }
+
+  try {
+    const res = await query(
+      `UPDATE ic_sales
+       SET transaction_type = $1,
+           units = $2,
+           converted_amount = $3,
+           aed_amount = $4,
+           address = $5,
+           image_url = $6,
+           service_charge = $7,
+           order_status = 'pending',
+           rejection_remarks = NULL,
+           warehouse_id = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $8
+       WHERE id = $9 AND order_status = 'admin_rejected'
+       RETURNING id`,
+      [
+        updates.transactionType || null,
+        updates.units,
+        updates.convertedAmount ?? null,
+        updates.aedAmount ?? null,
+        updates.address || null,
+        updates.imageUrl || null,
+        updates.serviceCharge ?? 0,
+        updatedBy,
+        id,
+      ],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or no longer rejected' };
+    }
+    const updated = await fetchICSaleById(id);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (error: unknown) {
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   }

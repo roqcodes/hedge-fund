@@ -3,14 +3,26 @@
 export type DeliveryStatus = 'Pending' | 'Partial' | 'Completed' | 'Cancelled';
 export type OrderPriority = 'High' | 'Normal' | 'Low';
 
+export type ICOrderStatus =
+  | 'pending'
+  | 'accepted'
+  | 'admin_rejected'
+  | 'wh_rejected'
+  | 'wh_processing'
+  | 'da_rejected'
+  | 'completed';
+
 export interface WarehouseOrder {
   id: string;
   customer_name: string;
   units: number;
+  collected_units: number | null;
+  derived_from_sale_id: string | null;
+  converted_amount: number | null;
   unit_rate: number;
   aed_amount: number;
-  collected_amount: number | null;
-  delivery_status: DeliveryStatus | null;
+  order_status: ICOrderStatus | null;
+  rejection_remarks: string | null;
   priority: OrderPriority | null;
   delivery_agent_id: string | null;
   delivery_agent_name: string | null;
