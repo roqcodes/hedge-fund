@@ -7,6 +7,7 @@ import PageHeader from '@/components/ic-transfer/ui/PageHeader';
 import { dataTable, tableWrap, filterSelect, btnPrimary, btnSecondary, tabBtn, tabBtnActive } from '@/lib/ui';
 import {
   fetchWarehouseOrders,
+  fetchWarehouseUndeliveredOrders,
   fetchDeliveryAgents,
   warehouseRejectOrder,
 } from '@/app/actions/warehouseActions';
@@ -20,14 +21,19 @@ import RejectRemarkModal from '@/components/ic-transfer/shared/RejectRemarkModal
 import { isWarehouseRejected } from '@/lib/icTransfer/orderStatus';
 import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
 import { formatUnits, getDeliveredUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
+import { getFormattedTxnId } from '@/lib/icTransferMappers';
+import WarehouseKpiGrid from '@/components/warehouse/WarehouseKpiGrid';
+import { computeWarehouseSettlementKpis } from '@/lib/warehouse/kpiMetrics';
+import { warehouseOrderMatchesSearch } from '@/lib/warehouse/orderSearch';
 import { resolveDateRange } from '@/lib/warehouseDateUtils';
+
 import type { WarehouseOrder, DeliveryAgent } from '@/types/warehouse';
 
 type TabKey = 'Pending' | 'Completed' | 'Rejected';
 
 type SortField =
   | 'Date'
-  | 'Customer'
+  | 'Order ID'
   | 'Units'
   | 'Delivered'
   | 'Remaining'
@@ -37,9 +43,10 @@ type SortField =
   | 'Agent';
 
 export default function SettlementClient({ branchSlug }: { branchSlug: string }) {
-  const { user, showToast, icWarehouses } = useApp();
+  const { user, showToast, icWarehouses, refetchData, branches } = useApp();
 
   const [orders, setOrders]   = useState<WarehouseOrder[]>([]);
+  const [undeliveredOrders, setUndeliveredOrders] = useState<WarehouseOrder[]>([]);
   const [agents, setAgents]   = useState<DeliveryAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState<TabKey>('Pending');
@@ -47,8 +54,8 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
 
   // Date filter (default = today)
   const [dateFilter, setDateFilter]         = useState('today');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate]     = useState('');
+  const [customStartDate, setCustomStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customEndDate, setCustomEndDate]     = useState(() => new Date().toISOString().slice(0, 10));
 
   // Column filters
   const [filterAgent,    setFilterAgent]    = useState('All');
@@ -81,13 +88,18 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
     }
     setLoading(true);
     const { dateFrom, dateTo } = resolveDateRange(dateFilter, customStartDate, customEndDate);
-    const [ordersRes, agentsRes] = await Promise.all([
+    const [ordersRes, undeliveredRes, agentsRes] = await Promise.all([
       fetchWarehouseOrders(warehouseId, { dateFrom, dateTo }),
+      fetchWarehouseUndeliveredOrders(warehouseId),
       fetchDeliveryAgents(warehouseId),
     ]);
 
     if (ordersRes.success && ordersRes.data) setOrders(ordersRes.data as WarehouseOrder[]);
     else showToast(ordersRes.error || 'Failed to fetch orders', 'error');
+
+    if (undeliveredRes.success && undeliveredRes.data) {
+      setUndeliveredOrders(undeliveredRes.data as WarehouseOrder[]);
+    }
 
     if (agentsRes.success && agentsRes.data) setAgents(agentsRes.data as DeliveryAgent[]);
 
@@ -155,18 +167,15 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
         if (filterPriority !== 'All') return (o.priority || 'Normal') === filterPriority;
         return true;
       })
-      .filter(o =>
-        o.id.toLowerCase().includes(search.toLowerCase()) ||
-        o.customer_name.toLowerCase().includes(search.toLowerCase()),
-      );
-  }, [orders, tab, search, filterAgent, filterStatus, filterPriority]);
+      .filter(o => warehouseOrderMatchesSearch(o, search, { branches }));
+  }, [orders, tab, search, filterAgent, filterStatus, filterPriority, branches]);
 
   /* ─── sorting ────────────────────────────────────────────── */
   const sortedOrders = useMemo<WarehouseOrder[]>(() => {
     return [...filteredOrders].sort((a, b) => {
       let vA: any, vB: any;
       switch (sortField) {
-        case 'Customer':          vA = a.customer_name || '';        vB = b.customer_name || '';        break;
+        case 'Order ID':          vA = getFormattedTxnId(a.id, 'sale', a, branches); vB = getFormattedTxnId(b.id, 'sale', b, branches); break;
         case 'Units':             vA = Number(a.units);              vB = Number(b.units);              break;
         case 'Delivered':         vA = getDeliveredUnits(Number(a.units), a.collected_units, a.order_status);
                                   vB = getDeliveredUnits(Number(b.units), b.collected_units, b.order_status); break;
@@ -184,7 +193,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
       if (priDiff !== 0) return priDiff;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [filteredOrders, sortField, sortOrder]);
+  }, [filteredOrders, sortField, sortOrder, branches]);
   const pendingCount = orders.filter(
     o => !isSaleCompleted(o.order_status) && !isWarehouseRejected(o.order_status),
   ).length;
@@ -196,7 +205,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
 
   const COLS: { label: SortField; align: 'left' | 'right' | 'center' }[] = [
     { label: 'Date',       align: 'left'   },
-    { label: 'Customer',   align: 'left'   },
+    { label: 'Order ID',   align: 'left'   },
     { label: 'Units',      align: 'right'  },
     { label: 'Delivered',  align: 'right'  },
     { label: 'Remaining',  align: 'right'  },
@@ -206,11 +215,21 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
     { label: 'Actions',    align: 'center' },
   ];
 
+  const warehouseStock = useMemo(() => {
+    if (!warehouseId) return null;
+    const warehouse = icWarehouses.find(w => w.id === warehouseId);
+    return warehouse?.currentStock ?? 0;
+  }, [warehouseId, icWarehouses]);
+
+  const kpiMetrics = useMemo(
+    () => computeWarehouseSettlementKpis(orders, warehouseStock, undeliveredOrders),
+    [orders, warehouseStock, undeliveredOrders],
+  );
+
   return (
     <PageShell>
-      <PageHeader title="Order Settlement" subtitle="Warehouse Portal / Order Settlement" />
 
-      {/* Date Filter */}
+
       <DateFilterBar
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
@@ -219,6 +238,8 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
         customEndDate={customEndDate}
         setCustomEndDate={setCustomEndDate}
       />
+
+      <WarehouseKpiGrid metrics={kpiMetrics} />
 
       <div className="flex flex-col gap-6">
         {/* Tabs */}
@@ -246,16 +267,16 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
         {/* Table Card */}
         <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
           {/* Toolbar */}
-          <div className="flex flex-col gap-3 px-4 pb-4 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-col gap-3 px-4 pb-4 max-sm:px-0 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:gap-4">
             <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">Orders</h3>
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-              <input
-                type="text"
-                placeholder="Search orders..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full sm:max-w-[200px] rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none"
-              />
+            <input
+              type="text"
+              placeholder="Search date, ID, units, agent, status..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="min-w-0 max-sm:w-full flex-1 rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2 max-sm:-mx-1 max-sm:overflow-x-auto max-sm:px-1 max-sm:pb-0.5 max-sm:scrollbar-none">
               <select value={filterAgent}    onChange={e => setFilterAgent(e.target.value)}    className={filterSelect}>
                 <option value="All">All Agents</option>
                 <option value="Unassigned">Unassigned</option>
@@ -319,8 +340,8 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                         data-interactive-row
                       >
                         <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm font-semibold first:rounded-l-2xl sm:px-5 sm:py-4 text-slate-900">{formatDateTime(order.created_at)}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium sm:px-5 sm:py-4 text-slate-900">
-                          {order.customer_name}
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-mono font-medium sm:px-5 sm:py-4 text-slate-900">
+                          {getFormattedTxnId(order.id, 'sale', order, branches)}
                           {order.derived_from_sale_id && (
                             <span className="ml-1.5 text-[10px] font-semibold text-indigo-600">(split)</span>
                           )}
@@ -352,7 +373,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
           </div>
 
           {/* Mobile card view */}
-          <div className="flex md:hidden flex-col gap-3 py-4 px-4">
+          <div className="flex md:hidden flex-col gap-3 py-4 max-sm:px-0 px-4">
             {loading ? (
               <div className="flex flex-col gap-3">
                 {[...Array(4)].map((_, i) => (
@@ -373,8 +394,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-semibold text-slate-900">{order.customer_name}</span>
-                        <span className="text-xs font-mono text-slate-500">{order.id.slice(0, 8)}</span>
+                        <span className="text-sm font-mono font-semibold text-slate-900">{getFormattedTxnId(order.id, 'sale', order, branches)}</span>
                         <span className="text-xs text-slate-400">{formatDateTime(order.created_at)}</span>
                       </div>
                       <div className="flex flex-col items-end gap-1.5">
@@ -389,21 +409,23 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                       <span>Delivered: <strong className="text-emerald-600">{formatUnits(delivered)}</strong></span>
                       <span>Remaining: <strong className="text-amber-600">{formatUnits(remaining)}</strong></span>
                     </div>
-                    <div className="flex justify-end items-end gap-2 pt-2 border-t border-slate-50">
-                      <div onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>
+                      <WarehouseOrderWorkflowActions
+                        order={order}
+                        canAssignAgents={canAssignAgents}
+                        onReject={e => { e.stopPropagation(); setRejectOrder(order); }}
+                        onAssign={e => { e.stopPropagation(); openAssignModal(order); }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-slate-50 pt-2">
+                      <div className="min-w-0" onClick={e => e.stopPropagation()}>
                         <WarehouseOrderStatusCard order={order} />
                       </div>
-                      <div onClick={e => e.stopPropagation()}>
-                        <WarehouseOrderWorkflowActions
-                          order={order}
-                          canAssignAgents={canAssignAgents}
-                          onReject={e => { e.stopPropagation(); setRejectOrder(order); }}
-                          onAssign={e => { e.stopPropagation(); openAssignModal(order); }}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-end items-center">
-                      <button onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }} className="text-xs font-bold text-slate-500 hover:text-slate-700">
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); setSelectedOrder(order); setDetailsModalOpen(true); }}
+                        className="shrink-0 text-xs font-bold text-slate-500 hover:text-slate-700"
+                      >
                         View Details
                       </button>
                     </div>
@@ -429,7 +451,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
           order={selectedOrder}
           isDeliveryView={isDeliveryRole ?? false}
           onClose={() => setDetailsModalOpen(false)}
-          onSuccess={() => { setDetailsModalOpen(false); loadData(); }}
+          onSuccess={() => { setDetailsModalOpen(false); loadData(); refetchData(); }}
         />
       )}
       <RejectRemarkModal

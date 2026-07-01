@@ -21,6 +21,78 @@ type Props = {
   onSuccess: () => void;
 };
 
+function MetricCell({
+  label,
+  value,
+  valueClassName = 'text-slate-900',
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+      <p className={`mt-1 text-base font-bold tabular-nums leading-none sm:text-lg md:text-xl ${valueClassName}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ImagePanel({
+  title,
+  imageUrl,
+  emptyLabel,
+  editable,
+  isUploading,
+  onUpload,
+  onClear,
+}: {
+  title: string;
+  imageUrl?: string | null;
+  emptyLabel: string;
+  editable?: boolean;
+  isUploading?: boolean;
+  onUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClear?: () => void;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{title}</p>
+      {imageUrl ? (
+        <div className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageUrl} alt={title} className="absolute inset-0 h-full w-full object-contain" />
+          {editable && onClear ? (
+            <button
+              type="button"
+              className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-xs font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"
+              onClick={onClear}
+            >
+              Replace image
+            </button>
+          ) : null}
+        </div>
+      ) : editable && onUpload ? (
+        <label className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/80 text-slate-400 transition-colors hover:border-slate-300 hover:bg-slate-50">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mb-1.5 opacity-70" aria-hidden>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <span className="text-xs font-semibold">{isUploading ? 'Uploading…' : 'Upload image'}</span>
+          <input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={isUploading} />
+        </label>
+      ) : (
+        <div className="flex aspect-[4/3] items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-xs font-medium text-slate-400">
+          {emptyLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrderDetailsModal({ order, isDeliveryView = false, onClose, onSuccess }: Props) {
   const { showToast, user, branches } = useApp();
   const [loading, setLoading] = useState(false);
@@ -34,9 +106,22 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
   if (!order) return null;
 
   const isEditable = isDeliveryView && !isSaleCompleted(order.order_status) && canDeliveryAgentAct(order.order_status);
+
+  const deliveredUnits = isEditable
+    ? Math.min(totalUnits, Math.max(0, parseFloat(collectedUnits) || 0))
+    : Number(order.collected_units || (order.order_status === 'completed' ? totalUnits : 0));
+
   const remainingUnits = isEditable
-    ? Math.max(0, totalUnits - (parseFloat(collectedUnits) || 0))
+    ? Math.max(0, totalUnits - deliveredUnits)
     : getRemainingUnits(totalUnits, order.collected_units, order.order_status);
+
+  const deliveryPct =
+    totalUnits <= 0 ? 0 : Math.min(100, Math.round((deliveredUnits / totalUnits) * 100));
+
+  const formattedId = getFormattedTxnId(order.id, 'sale', order, branches);
+  const parentId = order.derived_from_sale_id
+    ? getFormattedTxnId(order.derived_from_sale_id, 'sale', null, branches)
+    : null;
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,15 +196,15 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
         open={true}
         onClose={onClose}
         title={isEditable ? 'Record Delivery' : 'Order Details'}
-        maxWidth="max-w-4xl"
+        maxWidth="max-w-3xl"
         footer={
-          <div className="flex justify-between gap-3 w-full">
+          <div className="flex w-full justify-between gap-3">
             {isEditable ? (
               <button
                 type="button"
                 onClick={() => setRejectOpen(true)}
                 disabled={loading}
-                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
               >
                 Reject Order
               </button>
@@ -127,65 +212,102 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
               <span />
             )}
             <div className="flex gap-3">
-              <button type="button" className={btnSecondary} onClick={onClose} disabled={loading}>Close</button>
+              <button type="button" className={btnSecondary} onClick={onClose} disabled={loading}>
+                Close
+              </button>
               {isEditable && (
-                <button type="submit" form="complete-order-form" disabled={loading || isUploading} className={btnPrimary}>
-                  {loading ? 'Processing...' : 'Accept & Complete'}
+                <button
+                  type="submit"
+                  form="complete-order-form"
+                  disabled={loading || isUploading}
+                  className={btnPrimary}
+                >
+                  {loading ? 'Processing…' : 'Accept & Complete'}
                 </button>
               )}
             </div>
           </div>
         }
       >
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Order ID</p>
-                <p className="font-mono text-sm font-semibold text-slate-900 mt-0.5">{getFormattedTxnId(order.id, 'sale', order, branches)}</p>
+        <div className="space-y-5">
+          <section className="overflow-hidden rounded-2xl border border-slate-200/90">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Order</p>
+                <p className="mt-0.5 truncate font-mono text-sm font-semibold text-slate-900">{formattedId}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {new Date(order.created_at).toLocaleString()}
+                </p>
               </div>
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Date</p>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5">{new Date(order.created_at).toLocaleString()}</p>
-              </div>
-            </div>
-
-            {order.derived_from_sale_id && (
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-800">
-                <span className="font-bold">Derived from order: </span>
-                <span className="font-mono">{getFormattedTxnId(order.derived_from_sale_id, 'sale', null, branches)}</span>
-                <span className="text-indigo-600"> — remainder from a partial delivery</span>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer</p>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5">{order.customer_name}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Priority</p>
-                <div className="mt-0.5"><PriorityBadge priority={order.priority} /></div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <PriorityBadge priority={order.priority} />
+                <AdminOrderStatusBadge status={order.order_status} />
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-100 p-4 bg-slate-50/55">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Units</p>
-              <p className="text-lg font-bold text-slate-900 mt-0.5">{formatUnits(totalUnits)}</p>
-            </div>
-
-            {order.address && (
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Delivery Address</p>
-                <p className="text-sm text-slate-700 mt-0.5 bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap">{order.address}</p>
+            {parentId ? (
+              <div className="border-b border-indigo-100 bg-indigo-50/50 px-4 py-2 text-xs text-indigo-800 sm:px-5">
+                <span className="font-semibold">Split order</span>
+                <span className="text-indigo-600"> · remainder from </span>
+                <span className="font-mono font-medium">{parentId}</span>
               </div>
-            )}
+            ) : null}
 
-            {isEditable ? (
-              <form id="complete-order-form" onSubmit={handleUpdateOrder} className="pt-4 border-t border-slate-100 space-y-4">
+            <div className="px-4 py-4 sm:px-5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Delivery progress</p>
+
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-4">
+                <MetricCell label="Total" value={formatUnits(totalUnits)} />
+                <MetricCell
+                  label="Delivered"
+                  value={formatUnits(deliveredUnits)}
+                  valueClassName="text-emerald-700"
+                />
+                <MetricCell
+                  label="Remaining"
+                  value={formatUnits(remainingUnits)}
+                  valueClassName={remainingUnits > 0 ? 'text-amber-700' : 'text-slate-500'}
+                />
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                  <span>Units delivered</span>
+                  <span className="tabular-nums">{deliveryPct}%</span>
+                </div>
+                <div
+                  className="relative h-2 overflow-hidden rounded-full bg-slate-100"
+                  role="progressbar"
+                  aria-valuenow={deliveryPct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Share of order units delivered"
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-[width] duration-300 ease-out"
+                    style={{ width: `${deliveryPct}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                  {formatUnits(deliveredUnits)} delivered
+                  {remainingUnits > 0
+                    ? ` · ${formatUnits(remainingUnits)} will stay on a new linked order`
+                    : ' · full delivery'}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {isEditable ? (
+            <section className="rounded-2xl border border-slate-200/90 px-4 py-4 sm:px-5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Record delivery</p>
+              <form id="complete-order-form" onSubmit={handleUpdateOrder} className="mt-3 space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-900">Delivered Units</label>
+                  <label htmlFor="delivered-units" className="mb-1.5 block text-sm font-semibold text-slate-900">
+                    Delivered units
+                  </label>
                   <input
+                    id="delivered-units"
                     type="number"
                     step="0.01"
                     min="0.01"
@@ -193,95 +315,35 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
                     required
                     value={collectedUnits}
                     onChange={e => setCollectedUnits(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent font-semibold"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
                     placeholder="Enter units delivered"
                   />
-                  <div className="flex justify-between items-center mt-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <span className="text-xs font-semibold text-slate-500">Remaining units:</span>
-                    <span className={`text-xs font-bold ${remainingUnits > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                      {formatUnits(remainingUnits)}
-                    </span>
-                  </div>
-                  {remainingUnits > 0 && (
-                    <p className="mt-2 text-xs text-slate-500 leading-relaxed">
-                      Remaining {formatUnits(remainingUnits)} units will be created as a new independent order linked to this one.
+                  {remainingUnits > 0 ? (
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                      Remaining {formatUnits(remainingUnits)} units will be created as a new order linked to this one.
                     </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-900">Upload Delivery Proof</label>
-                  <div className="flex items-center gap-3">
-                    {deliveryImageUrl ? (
-                      <div className="relative w-20 h-20 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden group shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={deliveryImageUrl} alt="Delivery proof" className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          className="absolute inset-0 bg-black/60 text-white text-[10px] font-semibold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={handleDeleteImage}
-                        >
-                          Change
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="w-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 text-slate-400 hover:bg-slate-100/50 cursor-pointer transition-colors">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mb-1 opacity-70" aria-hidden>
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                          <polyline points="17 8 12 3 7 8" />
-                          <line x1="12" y1="3" x2="12" y2="15" />
-                        </svg>
-                        <span className="text-xs font-semibold">{isUploading ? 'Uploading...' : 'Upload Image'}</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isUploading} />
-                      </label>
-                    )}
-                  </div>
+                  ) : null}
                 </div>
               </form>
-            ) : (
-              <div className="pt-4 border-t border-slate-100 space-y-3">
-                <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <span className="text-xs font-semibold text-slate-500">Delivered Units:</span>
-                  <span className="text-sm font-bold text-emerald-700">
-                    {formatUnits(order.collected_units || (order.order_status === 'completed' ? totalUnits : 0))}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <span className="text-xs font-semibold text-slate-500">Remaining Units:</span>
-                  <span className="text-sm font-bold text-slate-700">{formatUnits(remainingUnits)}</span>
-                </div>
-              </div>
-            )}
-          </div>
+            </section>
+          ) : null}
 
-          <div className="flex flex-col gap-6 lg:border-l lg:pl-8 lg:border-slate-100">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Original Order Image</p>
-              {order.image_url ? (
-                <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={order.image_url} alt="Order proof" className="absolute inset-0 h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-slate-400 text-xs font-medium">
-                  No original image uploaded
-                </div>
-              )}
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Delivery Proof</p>
-              {deliveryImageUrl ? (
-                <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={deliveryImageUrl} alt="Delivery proof" className="absolute inset-0 h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-slate-400 text-xs font-medium">
-                  No delivery proof uploaded
-                </div>
-              )}
-            </div>
-          </div>
+          <section className="grid gap-4 sm:grid-cols-2">
+            <ImagePanel
+              title="Original order"
+              imageUrl={order.image_url}
+              emptyLabel="No original image"
+            />
+            <ImagePanel
+              title="Delivery proof"
+              imageUrl={deliveryImageUrl}
+              emptyLabel="No delivery proof"
+              editable={isEditable}
+              isUploading={isUploading}
+              onUpload={isEditable ? handleImageUpload : undefined}
+              onClear={isEditable ? handleDeleteImage : undefined}
+            />
+          </section>
         </div>
       </Modal>
 

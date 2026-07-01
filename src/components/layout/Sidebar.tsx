@@ -3,6 +3,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import AppLogo from '@/components/layout/AppLogo';
 import { isBranchPageEnabled } from '@/lib/branchPages';
 import { canReadPage, isBranchPortalRole } from '@/lib/rbac';
 
@@ -37,21 +38,14 @@ export default function Sidebar() {
     sidebarOpen,
     sidebarCollapsed,
     toggleSidebar,
-    toggleSidebarCollapsed,
     user,
     branches,
     logout,
     currentSlug,
-    isICTransferRoute,
-    icTransferMainMenuOpen,
-    showICTransferSubNav,
-    isWarehouseRoute,
-    warehouseMainMenuOpen,
-    showWarehouseSubNav,
   } = useApp();
   const pathname = usePathname();
 
-  const effectivelyCollapsed = (isICTransferRoute ? !icTransferMainMenuOpen : false) || (isWarehouseRoute ? !warehouseMainMenuOpen : false) || sidebarCollapsed;
+  const effectivelyCollapsed = sidebarCollapsed;
 
   const isBranchUser = user ? isBranchPortalRole(user.role) : false;
   const branch = isBranchUser && user?.branchId
@@ -82,27 +76,7 @@ export default function Sidebar() {
         data-collapsed={effectivelyCollapsed ? 'true' : 'false'}
         className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:translate-x-0 ${sidebarOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-[105%]'} ${effectivelyCollapsed ? 'lg:w-[80px]' : 'lg:w-[240px]'}`}
       >
-        <div
-          className={`flex flex-col items-center gap-2.5 px-4 py-8 sm:px-5 ${effectivelyCollapsed ? 'lg:gap-1 lg:px-2 lg:py-4' : ''}`}
-        >
-          <div
-            className={`flex shrink-0 items-center justify-center transition-transform duration-300 motion-safe:hover:scale-105 ${effectivelyCollapsed ? 'lg:h-8' : 'h-14 sm:h-16'}`}
-          >
-            <img
-              src={isBranchUser && branch?.logo_url ? branch.logo_url : '/logo.png'}
-              alt="Branch Logo"
-              className={`h-full w-auto object-contain ${effectivelyCollapsed ? 'lg:max-h-8 lg:max-w-[28px]' : 'max-w-[160px]'}`}
-            />
-          </div>
-          <div className={`min-w-0 text-center ${effectivelyCollapsed ? 'lg:hidden' : ''}`}>
-            <h1 className="text-xl font-black uppercase tracking-[0.05em] text-slate-900 sm:text-2xl">
-              {isBranchUser && branch ? branch.name : 'AIBAK'}
-            </h1>
-            <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.25em] text-slate-400">
-              {isBranchUser ? (user?.role === 'staff' ? 'Staff Portal' : 'Branch Portal') : 'Capital Management'}
-            </span>
-          </div>
-        </div>
+        <AppLogo collapsed={effectivelyCollapsed} />
 
         <div className="px-4 pb-2 lg:data-[collapsed=true]:hidden sm:px-5">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Main menu</p>
@@ -161,15 +135,7 @@ export default function Sidebar() {
                   href={itemHref}
                   id={`nav-${item.id}`}
                   title={item.label}
-                  onClick={() => {
-                    if (item.id === 'ic-transfer' && isICTransferRoute) {
-                      showICTransferSubNav();
-                    }
-                    if (item.id === 'warehouse' && isWarehouseRoute) {
-                      showWarehouseSubNav();
-                    }
-                    closeMobile();
-                  }}
+                  onClick={closeMobile}
                   className={`relative flex w-full items-center gap-3 rounded-xl py-2.5 pl-3 pr-3 text-left text-[13px] font-medium no-underline transition-[background-color,color,transform,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:active:scale-[0.99] lg:data-[collapsed=true]:justify-center lg:data-[collapsed=true]:px-2 sm:text-sm ${isActive
                     ? 'border-l-[3px] border-accent bg-gradient-to-r from-accent/[0.08] to-transparent font-semibold text-accent lg:data-[collapsed=true]:border-l-0 lg:data-[collapsed=true]:bg-accent/12'
                     : 'border-l-[3px] border-transparent text-slate-600 motion-safe:hover:bg-slate-50 motion-safe:hover:text-slate-900 lg:data-[collapsed=true]:border-l-0'
@@ -216,33 +182,6 @@ export default function Sidebar() {
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
             </svg>
             <span className="truncate">Sign Out</span>
-          </button>
-        </div>
-
-        {/* Desktop collapse toggle — hidden during IC Transfer/Warehouse (secondary sidebar is active) */}
-        <div className={`mt-auto hidden border-t border-slate-100 p-2 lg:block ${((isICTransferRoute && !icTransferMainMenuOpen) || (isWarehouseRoute && !warehouseMainMenuOpen)) ? 'lg:hidden' : ''}`}>
-          <button
-            type="button"
-            onClick={toggleSidebarCollapsed}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 ${effectivelyCollapsed ? 'px-0' : ''}`}
-            aria-label={effectivelyCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={effectivelyCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <svg
-              className={`size-4 shrink-0 transition-transform duration-300 ${effectivelyCollapsed ? 'rotate-180' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            <span className={effectivelyCollapsed ? 'sr-only' : 'truncate'}>
-              {effectivelyCollapsed ? 'Expand' : 'Collapse'}
-            </span>
           </button>
         </div>
 

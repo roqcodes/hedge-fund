@@ -2,6 +2,7 @@
 
 import { query, pool } from '@/lib/db';
 import { scaleSaleFinancials } from '@/lib/icTransfer/saleUnits';
+import { adjustWarehouseStock, logWarehouseStockTransaction } from '@/lib/warehouse/stockDb';
 import { getSessionUser } from '@/lib/auth';
 import { createCognitoUserAction, deleteCognitoUserAction } from './cognitoActions';
 
@@ -44,6 +45,31 @@ export async function fetchWarehouseOrders(
         s.created_at DESC
       `,
       [warehouseId, dateFrom, dateToStr],
+    );
+    return { success: true, data: result.rows };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+/** All non-delivered, non-WH-rejected orders — used for reserved stock KPIs. */
+export async function fetchWarehouseUndeliveredOrders(warehouseId: string) {
+  try {
+    const result = await query(
+      `
+      SELECT
+        s.*,
+        a.name            AS delivery_agent_name,
+        a.account_id      AS delivery_agent_account_id,
+        a.email           AS delivery_agent_email
+      FROM ic_sales s
+      LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
+      WHERE s.warehouse_id = $1
+        AND s.order_status <> 'completed'
+        AND s.order_status <> 'wh_rejected'
+      ORDER BY s.created_at DESC
+      `,
+      [warehouseId],
     );
     return { success: true, data: result.rows };
   } catch (error: any) {
@@ -355,12 +381,15 @@ export async function completeDeliveryWithUnits(
     const totalUnits = Number(order.units);
     const delivered = Number(collectedUnits);
     if (!Number.isFinite(delivered) || delivered <= 0 || delivered > totalUnits) {
-      throw new Error(`Delivered units must be between 1 and ${totalUnits}`);
+      throw new Error('Delivered units must be between 1 and ' + totalUnits);
     }
+
+    const conversionRate = order.conversion_rate != null ? Number(order.conversion_rate) : 1;
+    const orderCurrency = order.currency || 'AED';
 
     const unitRate = Number(order.unit_rate);
     const serviceCharge = Number(order.service_charge || 0);
-    const deliveredFinancials = scaleSaleFinancials(totalUnits, delivered, unitRate, serviceCharge);
+    const deliveredFinancials = scaleSaleFinancials(totalUnits, delivered, unitRate, serviceCharge, conversionRate);
     const remaining = totalUnits - delivered;
     const isFullDelivery = remaining <= 0.0001;
 
@@ -391,7 +420,7 @@ export async function completeDeliveryWithUnits(
     let remainderSaleId: string | null = null;
     const agentId = order.delivery_agent_id as string | null;
     if (!isFullDelivery) {
-      const remainderFinancials = scaleSaleFinancials(totalUnits, remaining, unitRate, serviceCharge);
+      const remainderFinancials = scaleSaleFinancials(totalUnits, remaining, unitRate, serviceCharge, conversionRate);
       const remainderStatus = agentId ? 'wh_processing' : 'accepted';
       const insertRes = await client.query(
         `INSERT INTO ic_sales (
@@ -399,8 +428,8 @@ export async function completeDeliveryWithUnits(
           warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
           address, image_url, service_charge, priority, delivery_agent_id, order_status,
           payment_status, derived_from_sale_id, collected_units,
-          status_updated_at, status_updated_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CURRENT_TIMESTAMP, $20)
+          status_updated_at, status_updated_by, conversion_rate, currency
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, CURRENT_TIMESTAMP, $20, $21, $22)
         RETURNING id`,
         [
           order.customer_name,
@@ -423,9 +452,24 @@ export async function completeDeliveryWithUnits(
           orderId,
           0,
           updatedBy || 'delivery_agent',
+          conversionRate,
+          orderCurrency,
         ],
       );
       remainderSaleId = insertRes.rows[0].id;
+    }
+
+    const warehouseId = order.warehouse_id as string | null;
+    if (warehouseId) {
+      await logWarehouseStockTransaction(
+        client,
+        warehouseId,
+        'clear',
+        delivered,
+        'sale',
+        orderId,
+      );
+      await adjustWarehouseStock(client, warehouseId, -delivered);
     }
 
     await client.query('COMMIT');

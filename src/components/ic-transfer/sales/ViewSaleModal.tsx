@@ -11,6 +11,7 @@ import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { isBranchScopedUser } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
+import { dbGetCustomerCurrencyAction } from '@/app/actions/icTransferActions';
 
 type Props = {
   open: boolean;
@@ -26,9 +27,24 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  if (!sale) return null;
+  const liveSale = sale ? (icSales.find(s => s.id === sale.id) ?? sale) : null;
+  const [currency, setCurrency] = useState(liveSale?.currency || 'Currency');
 
-  const liveSale = icSales.find(s => s.id === sale.id) ?? sale;
+  const customerName = liveSale?.customerName;
+
+  React.useEffect(() => {
+    if (liveSale?.currency) {
+      setCurrency(liveSale.currency);
+    } else if (open && customerName) {
+      dbGetCustomerCurrencyAction(customerName).then(res => {
+        if (res.success && res.data) {
+          setCurrency(res.data);
+        }
+      });
+    }
+  }, [open, customerName, liveSale?.currency]);
+
+  if (!sale || !liveSale) return null;
 
   const handleTogglePaid = async () => {
     const newStatus = liveSale.paymentStatus === 'paid' ? 'pending' : 'paid';
@@ -154,11 +170,19 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                 </div>
               </div>
 
-              {/* Row 2: Total INR, Total AED */}
-              <div className="grid grid-cols-2 gap-4 rounded-2xl border border-slate-100 p-4 bg-slate-50/55">
+              {/* Row 2: Total INR, Total Currency, Total AED */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-2xl border border-slate-100 p-4 bg-slate-50/55">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total INR</p>
                   <p className="text-sm font-bold text-slate-900 mt-0.5">{(Number(liveSale.units) * 1000).toLocaleString()} INR</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total {currency}</p>
+                  <p className="text-sm font-bold text-indigo-700 mt-0.5">
+                    {liveSale.convertedAmount != null 
+                      ? `${Number(liveSale.convertedAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+                      : '—'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total AED</p>

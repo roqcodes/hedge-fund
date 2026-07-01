@@ -519,6 +519,7 @@ export interface ICWarehouse {
   regionId?: string;
   email?: string;
   address?: string;
+  currentStock?: number;
   createdAt?: string;
 }
 
@@ -580,6 +581,9 @@ export interface ICSale {
   address?: string;
   imageUrl?: string;
   serviceCharge?: number;
+  bank?: string;
+  conversionRate?: number;
+  currency?: string;
   deliveryAgentId?: string;
   deliveryAgentName?: string;
   collectedUnits?: number;

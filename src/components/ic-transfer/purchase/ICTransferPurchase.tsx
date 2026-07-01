@@ -1,21 +1,22 @@
 'use client';
 
 import React, { useState } from 'react';
-import DateFilterBar from '@/components/ui/DateFilterBar';
+import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
+import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
+import { matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import { useApp } from '@/context/AppContext';
 import {
   AddButton,
   DataTableSection,
   ExportButtons,
-  FilterChips,
   PageHeader,
   PageShell,
   SectionCard,
   useICTransferFilters,
 } from '../ui';
 import KPICard from '@/components/ui/KPICard';
-import { kpiGrid } from '@/lib/ui';
+import { portalKpiGrid, portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
 import AddPurchaseModal from './AddPurchaseModal';
 import ViewPurchaseModal from './ViewPurchaseModal';
 import { ICPurchase } from '@/types';
@@ -30,7 +31,7 @@ const PURCHASE_COLUMNS = [
 
 export default function ICTransferPurchase() {
   const { icPurchases, icSuppliers, icWarehouses, icRegions, updateICPurchase } = useApp();
-  const [cityFilter, setCityFilter] = useState('All');
+  const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<ICPurchase | null>(null);
@@ -54,7 +55,7 @@ export default function ICTransferPurchase() {
         !formattedId.toLowerCase().includes(search.toLowerCase()) && 
         !p.id.toLowerCase().includes(search.toLowerCase()) && 
         !getSupplierName(p.supplierId || '').toLowerCase().includes(search.toLowerCase())) return false;
-    if (cityFilter !== 'All' && getLocationName(p.locationId || '') !== cityFilter) return false;
+    if (!matchesSelectedRegions(p.locationId, selectedRegionIds)) return false;
     return true;
   });
 
@@ -103,7 +104,7 @@ export default function ICTransferPurchase() {
         actions={<AddButton label="Add Purchase" onClick={() => setModalOpen(true)} />}
       />
 
-      <DateFilterBar
+      <ICTransferDateFilterBar
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
         customStartDate={customStartDate}
@@ -112,13 +113,7 @@ export default function ICTransferPurchase() {
         setCustomEndDate={setCustomEndDate}
       />
 
-      <FilterChips
-        options={['All', ...icRegions.map(r => r.name)]}
-        value={cityFilter}
-        onChange={setCityFilter}
-      />
-
-      <div className={`${kpiGrid} grid-cols-2 lg:grid-cols-4 mb-6`}>
+      <div className={portalKpiGrid}>
         <KPICard 
           label="Total Purchases" 
           value={fmt(stats.total)} 
@@ -184,6 +179,46 @@ export default function ICTransferPurchase() {
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search purchases..."
+        mobileView={
+          filteredPurchases.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">No purchases found.</div>
+          ) : (
+            filteredPurchases.map(p => (
+              <div
+                key={p.id}
+                onClick={() => handleView(p)}
+                className="flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">{getSupplierName(p.supplierId || '')}</p>
+                  <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(p.id, 'purchase', p)}</p>
+                  <p className="mt-0.5 text-xs text-slate-400">{new Date(p.createdAt || '').toLocaleString()}</p>
+                </div>
+                <div className="flex justify-between items-center rounded-xl bg-slate-50/70 p-2.5 text-xs text-slate-500">
+                  <span>Units: <strong className="text-slate-700">{p.units.toLocaleString()}</strong></span>
+                  <span>{getLocationName(p.locationId || '')}</span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  Total: <strong className="text-slate-700">{(p.aedTotal || 0).toLocaleString()} AED</strong>
+                </div>
+                <div className={portalMobileCardFooterClass}>
+                  <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                    p.paymentStatus === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {p.paymentStatus || 'pending'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); handleView(p); }}
+                    className="shrink-0 text-xs font-bold text-slate-500 hover:text-slate-700"
+                  >
+                    View Details
+                  </button>
+                </div>
+              </div>
+            ))
+          )
+        }
       >
         {filteredPurchases.map((p) => (
           <tr key={p.id} onClick={() => handleView(p)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">

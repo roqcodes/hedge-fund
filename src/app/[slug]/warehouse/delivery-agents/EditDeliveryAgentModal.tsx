@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { updateDeliveryAgent, fetchWarehouseGroups } from '@/app/actions/warehouseActions';
+import { updateDeliveryAgent } from '@/app/actions/warehouseActions';
 import Modal from '@/components/ui/Modal';
 import { btnPrimary, btnSecondary } from '@/lib/ui';
 
@@ -14,21 +14,11 @@ type Props = {
 };
 
 export default function EditDeliveryAgentModal({ agent, warehouseId, onClose, onSuccess }: Props) {
-  const { showToast, icRegions, currentSlug } = useApp();
+  const { showToast, currentSlug } = useApp();
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState(agent.name || '');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState(agent.phone || '');
-  const [regionId, setRegionId] = useState(agent.region_id || '');
-  const [groupId, setGroupId] = useState(agent.group_id || '');
-
-  const [groups, setGroups] = useState<any[]>([]);
-
-  useEffect(() => {
-    fetchWarehouseGroups(warehouseId).then((res: any) => {
-      if (res.success && res.data) setGroups(res.data);
-    });
-  }, [warehouseId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,12 +26,10 @@ export default function EditDeliveryAgentModal({ agent, warehouseId, onClose, on
 
     const res = await updateDeliveryAgent({
       id: agent.id,
-      email: agent.email, // Can't change email easily, so pass the existing one
+      email: agent.email,
       name,
       password: password || undefined,
       phone,
-      region_id: regionId || undefined,
-      group_id: groupId || undefined,
       branchSlug: currentSlug,
     });
 
@@ -55,10 +43,10 @@ export default function EditDeliveryAgentModal({ agent, warehouseId, onClose, on
   };
 
   return (
-    <Modal 
-      open={true} 
-      onClose={onClose} 
-      title="Edit Account" 
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Edit Account"
       maxWidth="max-w-md"
       footer={
         <div className="flex justify-end gap-3 w-full">
@@ -126,34 +114,6 @@ export default function EditDeliveryAgentModal({ agent, warehouseId, onClose, on
               className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
               placeholder="+971..."
             />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Region</label>
-            <select
-              value={regionId}
-              onChange={e => setRegionId(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
-            >
-              <option value="">Select Region...</option>
-              {icRegions.map(r => (
-                <option key={r.id} value={r.id}>{r.name} - {r.country}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Group Name</label>
-            <select
-              value={groupId}
-              onChange={e => setGroupId(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
-            >
-              <option value="">Select Group...</option>
-              {groups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
           </div>
         </div>
       </form>

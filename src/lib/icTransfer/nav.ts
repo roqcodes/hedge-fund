@@ -18,10 +18,8 @@ export const IC_TRANSFER_NAV: ICTransferNavItem[] = [
     label: 'Settings',
     path: '/settings',
     children: [
-      { id: 'warehouses', label: 'Warehouse Management', path: '/settings/warehouses' },
       { id: 'suppliers', label: 'Supplier Management', path: '/settings/suppliers' },
       { id: 'rates', label: 'Rates Management', path: '/settings/rates' },
-      { id: 'commission', label: 'Commission Management', path: '/settings/commission' },
     ],
   },
 ];

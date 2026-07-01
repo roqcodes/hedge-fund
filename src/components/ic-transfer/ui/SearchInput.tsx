@@ -17,7 +17,7 @@ export default function SearchInput({
   className = '',
 }: Props) {
   return (
-    <div className={`relative min-w-[200px] flex-1 ${className}`}>
+    <div className={`relative min-w-0 w-full ${className}`}>
       <svg
         width="16"
         height="16"

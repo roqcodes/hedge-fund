@@ -786,9 +786,12 @@ CREATE TABLE IF NOT EXISTS ic_warehouses (
     region_id UUID REFERENCES ic_regions(id) ON DELETE SET NULL,
     email VARCHAR(255),
     address TEXT,
+    current_stock NUMERIC(15, 4) NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ic_warehouses_region ON ic_warehouses(region_id);
+
+ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS current_stock NUMERIC(15, 4) NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS ic_rate_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -832,6 +835,9 @@ CREATE INDEX IF NOT EXISTS idx_ic_purchases_warehouse ON ic_purchases(warehouse_
 CREATE INDEX IF NOT EXISTS idx_ic_purchases_location ON ic_purchases(location_id);
 CREATE INDEX IF NOT EXISTS idx_ic_purchases_created ON ic_purchases(created_at);
 
+ALTER TABLE ic_purchases ADD COLUMN IF NOT EXISTS converted_total NUMERIC(15, 4);
+ALTER TABLE ic_purchases ADD COLUMN IF NOT EXISTS aed_total NUMERIC(15, 4);
+
 CREATE TABLE IF NOT EXISTS ic_sales (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_name VARCHAR(255) NOT NULL,
@@ -844,8 +850,11 @@ CREATE TABLE IF NOT EXISTS ic_sales (
     unit_rate NUMERIC(15, 4) NOT NULL,
     converted_amount NUMERIC(15, 4),
     aed_amount NUMERIC(15, 4),
+    bank TEXT,
     address TEXT,
     image_url TEXT,
+    conversion_rate NUMERIC(15, 6) DEFAULT 1.0,
+    currency VARCHAR(10) DEFAULT 'AED',
     service_charge NUMERIC(15, 4) DEFAULT 0.00,
     collected_units NUMERIC(15, 4) DEFAULT 0.00,
     priority VARCHAR(20) DEFAULT 'Normal' CHECK (priority IN ('High', 'Normal', 'Low')),
@@ -914,6 +923,9 @@ ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS derived_from_sale_id UUID REFERENC
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS service_charge NUMERIC(15, 4) DEFAULT 0.00;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS bank TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS conversion_rate NUMERIC(15, 6) DEFAULT 1.0;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'AED';
 
 -- Drop legacy constraint if present, then apply expanded order_status check
 ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_order_status_check;

@@ -1,8 +1,5 @@
 /** INR display for warehouse / delivery portals — matches branch convention (units × 1000). */
 export function getSaleInrAmount(units: number, convertedAmount?: number | null): number {
-  if (convertedAmount != null && !Number.isNaN(Number(convertedAmount))) {
-    return Number(convertedAmount);
-  }
   return Number(units) * 1000;
 }
 
@@ -20,12 +17,13 @@ export function scaleSaleFinancials(
   newUnits: number,
   unitRate: number,
   serviceCharge: number = 0,
+  conversionRate: number = 1,
 ) {
   const ratio = originalUnits > 0 ? newUnits / originalUnits : 1;
   const aedBase = newUnits * unitRate;
   const scaledService = serviceCharge * ratio;
   const aedAmount = Math.max(0, aedBase - scaledService);
-  const convertedAmount = newUnits * 1000;
+  const convertedAmount = aedBase * conversionRate;
   return {
     units: newUnits,
     convertedAmount,

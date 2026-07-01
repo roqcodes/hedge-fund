@@ -9,8 +9,7 @@ import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { hasICSaleEditableFieldsChanged, type ICSaleContentFields } from '@/lib/icTransfer/saleChanges';
 import { WorkflowNotice } from '../shared/orderWorkflow';
 import RateGroupBanner from '../shared/RateGroupBanner';
-import ICSaleAmountCards from '../shared/ICSaleAmountCards';
-import { computeICSaleAmounts, resolveApplicableRateGroup } from '@/lib/icTransfer/rateCalculations';
+import { computeICSaleAmounts, resolveApplicableRateGroup, formatAmount } from '@/lib/icTransfer/rateCalculations';
 
 type Props = {
   open: boolean;
@@ -29,15 +28,15 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const { addICSale, resubmitICSale, branches, currentSlug, icRateGroups } = useApp();
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
+  const [bank, setBank] = useState(initialData?.bank || '');
   const [address, setAddress] = useState(initialData?.address || '');
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
   const [deleteToken, setDeleteToken] = useState<string>('');
-  const [serviceCharge, setServiceCharge] = useState(initialData?.serviceCharge?.toString() || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [editBaseline, setEditBaseline] = useState<Pick<
     ICSaleContentFields,
-    'units' | 'transactionType' | 'address' | 'imageUrl' | 'serviceCharge'
+    'units' | 'transactionType' | 'address' | 'imageUrl' | 'bank'
   > | null>(null);
 
   // Cloudinary credentials from env
@@ -59,10 +58,10 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     if (open) {
       setUnits(initialData?.units?.toString() || '');
       setTransactionType(initialData?.transactionType || 'transfer');
+      setBank(initialData?.bank || '');
       setAddress(initialData?.address || '');
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
-      setServiceCharge(initialData?.serviceCharge?.toString() || '');
 
       if (initialData && canBranchResubmitOrder(initialData.orderStatus)) {
         setEditBaseline({
@@ -70,7 +69,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           transactionType: initialData.transactionType || 'transfer',
           address: initialData.address,
           imageUrl: initialData.imageUrl,
-          serviceCharge: initialData.serviceCharge ?? 0,
+          bank: initialData.bank || '',
         });
       } else {
         setEditBaseline(null);
@@ -124,7 +123,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
 
   const unitNum = parseFloat(units) || 0;
   const rateNum = initialData ? initialData.unitRate : groupSaleRate;
-  const serviceChargeNum = parseFloat(serviceCharge) || 0;
+  const serviceChargeNum = 0;
 
   const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate, serviceChargeNum);
 
@@ -135,21 +134,27 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     transactionType,
     unitRate: rateNum,
     units: unitNum,
-    convertedAmount: amounts.inrTotal,
+    convertedAmount: amounts.currencyTotal,
     aedAmount: amounts.aedNetTotal,
+    bank: bank || undefined,
     address: address || undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
+    conversionRate: groupConversionRate,
+    currency: groupCurrency,
   };
 
   const contentPayload = {
     units: unitNum,
     transactionType,
-    convertedAmount: amounts.inrTotal,
+    convertedAmount: amounts.currencyTotal,
     aedAmount: amounts.aedNetTotal,
+    bank: bank || undefined,
     address: address || undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
+    conversionRate: groupConversionRate,
+    currency: groupCurrency,
   };
 
   const editableSnapshot = {
@@ -158,6 +163,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     address: address || undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
+    bank: bank || undefined,
   };
 
   const canResubmit =
@@ -236,6 +242,16 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
               />
             </InputField>
 
+            <InputField label="Bank">
+              <input 
+                type="text"
+                className={formInput} 
+                value={bank} 
+                onChange={e => setBank(e.target.value)} 
+                placeholder="Enter bank name"
+              />
+            </InputField>
+
             <InputField label="Address / Description">
               <textarea 
                 className={`${formInput} resize-none`} 
@@ -284,45 +300,33 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           <div className="space-y-4 lg:col-span-7 lg:border-l lg:pl-6 lg:border-slate-100">
             <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Transaction Details</h3>
             
+            <InputField label="Transaction Type">
+              <div className="flex rounded-xl bg-slate-100 p-1 w-full border border-slate-200/50 h-[46px] sm:h-[54px] items-stretch gap-1">
+                {[
+                  { value: 'transfer', label: 'Transfer' },
+                  { value: 'cdm', label: 'CDM' },
+                  { value: 'by_hand', label: 'By Hand' }
+                ].map(opt => {
+                  const isActive = transactionType === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setTransactionType(opt.value)}
+                      className={`flex-1 text-center text-xs font-semibold rounded-lg transition-all flex items-center justify-center ${
+                        isActive 
+                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-bold' 
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </InputField>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputField label="Transaction Type">
-                <div className="flex rounded-xl bg-slate-100 p-1 w-full border border-slate-200/50 h-[46px] sm:h-[54px] items-stretch gap-1">
-                  {[
-                    { value: 'transfer', label: 'Transfer' },
-                    { value: 'cdm', label: 'CDM' },
-                    { value: 'by_hand', label: 'By Hand' }
-                  ].map(opt => {
-                    const isActive = transactionType === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setTransactionType(opt.value)}
-                        className={`flex-1 text-center text-xs font-semibold rounded-lg transition-all flex items-center justify-center ${
-                          isActive 
-                            ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-bold' 
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </InputField>
-
-              <InputField label="Unit Rate (AED) (Locked)">
-                <input 
-                  className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`} 
-                  value={rateNum} 
-                  disabled 
-                  readOnly 
-                  type="number" 
-                />
-              </InputField>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <InputField label="Order Units">
                 <input 
                   className={formInput} 
@@ -335,27 +339,38 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                 />
               </InputField>
 
-              <InputField label="Service Charge (AED)">
+              <InputField label={`Unit Rate (${groupCurrency}) (Locked)`}>
                 <input 
-                  className={formInput} 
-                  value={serviceCharge} 
-                  onChange={e => setServiceCharge(e.target.value)} 
+                  className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`} 
+                  value={amounts.currencyUnitRate} 
+                  disabled 
+                  readOnly 
                   type="number" 
-                  step="0.01" 
-                  placeholder="0.00"
                 />
               </InputField>
             </div>
 
-            <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>
+             <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>
             
-            <ICSaleAmountCards
-              inrTotal={amounts.inrTotal}
-              currencyTotal={amounts.currencyTotal}
-              currencyCode={groupCurrency}
-              aedBaseTotal={amounts.aedBaseTotal}
-              showCurrency={!!applicableGroup}
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
+              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Units</span>
+                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
+                  {formatAmount(unitNum)}
+                </span>
+              </div>
+
+              {applicableGroup && (
+                <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Amount ({groupCurrency})
+                  </span>
+                  <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
+                    {formatAmount(amounts.currencyTotal)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </form>

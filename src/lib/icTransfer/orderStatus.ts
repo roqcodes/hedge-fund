@@ -13,7 +13,7 @@ export type ICOrderStatus =
 /** Simplified status shown to branch/customer. */
 export type ICCustomerOrderStatus =
   | 'Pending'
-  | 'Accepted'
+  | 'Admin Accepted'
   | 'Warehouse Processing'
   | 'Order Dispatched'
   | 'Partial'
@@ -32,7 +32,7 @@ export const IC_ORDER_STATUSES: ICOrderStatus[] = [
 
 export const ADMIN_STATUS_LABELS: Record<ICOrderStatus, string> = {
   pending: 'Pending',
-  accepted: 'Accepted',
+  accepted: 'Admin Accepted',
   admin_rejected: 'Admin Rejected',
   wh_rejected: 'WH Rejected',
   wh_processing: 'WH Processing',
@@ -52,7 +52,7 @@ export const ADMIN_STATUS_STYLES: Record<ICOrderStatus, string> = {
 
 export const CUSTOMER_STATUS_STYLES: Record<ICCustomerOrderStatus, string> = {
   Pending: 'bg-slate-50 text-slate-600 border-slate-200',
-  Accepted: 'bg-blue-50 text-blue-700 border-blue-200',
+  'Admin Accepted': 'bg-blue-50 text-blue-700 border-blue-200',
   'Warehouse Processing': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Order Dispatched': 'bg-violet-50 text-violet-700 border-violet-200',
   Partial: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -75,9 +75,9 @@ export function getCustomerOrderStatus(
 
   if (status === 'admin_rejected') return 'Rejected';
   if (status === 'pending') return 'Pending';
-  if (status === 'accepted') return 'Accepted';
+  if (status === 'accepted') return 'Admin Accepted';
 
-  if (status === 'wh_rejected') return 'Accepted';
+  if (status === 'wh_rejected') return 'Admin Accepted';
   if (status === 'da_rejected') return 'Warehouse Processing';
 
   if (status === 'wh_processing') {

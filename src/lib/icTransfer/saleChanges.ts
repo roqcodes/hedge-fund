@@ -2,7 +2,7 @@ import type { ICSale } from '@/types';
 
 export type ICSaleContentFields = Pick<
   ICSale,
-  'units' | 'transactionType' | 'address' | 'imageUrl' | 'serviceCharge' | 'convertedAmount' | 'aedAmount'
+  'units' | 'transactionType' | 'address' | 'imageUrl' | 'serviceCharge' | 'convertedAmount' | 'aedAmount' | 'bank' | 'conversionRate' | 'currency'
 >;
 
 function normStr(v?: string | null): string {
@@ -15,7 +15,7 @@ function normNum(v?: number | null): number {
 
 type ICSaleEditableFields = Pick<
   ICSaleContentFields,
-  'units' | 'transactionType' | 'address' | 'imageUrl' | 'serviceCharge'
+  'units' | 'transactionType' | 'address' | 'imageUrl' | 'serviceCharge' | 'bank'
 >;
 
 function normTransactionType(v?: string | null): string {
@@ -33,6 +33,7 @@ export function hasICSaleEditableFieldsChanged(
   if (normStr(updates.address) !== normStr(original.address)) return true;
   if (normStr(updates.imageUrl) !== normStr(original.imageUrl)) return true;
   if (Math.abs(normNum(updates.serviceCharge) - normNum(original.serviceCharge)) > 0.0001) return true;
+  if (normStr(updates.bank) !== normStr(original.bank)) return true;
   return false;
 }
 

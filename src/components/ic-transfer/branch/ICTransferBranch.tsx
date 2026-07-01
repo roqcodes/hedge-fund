@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import DateFilterBar from '@/components/ui/DateFilterBar';
+import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
+import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
+import { getWarehouseRegionId, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
 import { useApp } from '@/context/AppContext';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import {
   DataTableSection,
-  FilterChips,
   PageHeader,
   PageShell,
   useICTransferFilters,
@@ -16,7 +17,7 @@ import AddICBranchOrderModal from './AddICBranchOrderModal';
 import ViewSaleModal from '../sales/ViewSaleModal';
 import { ICSale } from '@/types';
 import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
-import { kpiGrid } from '@/lib/ui';
+import { portalKpiGrid, portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
 import { BranchOrderStatusCell, BranchOrderWorkflowActions } from '../shared/BranchOrderStatusCell';
 import { getCustomerOrderStatus, canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits } from '@/lib/icTransfer/saleUnits';
@@ -30,8 +31,8 @@ const ORDER_COLUMNS = [
 ];
 
 export default function ICTransferBranch() {
-  const { icSales, icRegions, icWarehouses, currentSlug, branches } = useApp();
-  const [location, setLocation] = useState('All');
+  const { icSales, icWarehouses, currentSlug, branches } = useApp();
+  const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<ICSale | null>(null);
@@ -49,10 +50,6 @@ export default function ICTransferBranch() {
   const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || 'Branch Customer';
 
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || 'None';
-  const getRegionNameByWarehouseId = (id?: string) => {
-    const warehouse = icWarehouses.find(w => w.id === id);
-    return warehouse ? icRegions.find(r => r.id === warehouse.regionId)?.name || 'Unknown' : 'Unknown';
-  };
 
   // Filter sales to only include those where customerName equals our branchName
   const filteredSales = icSales.filter(s => {
@@ -64,7 +61,9 @@ export default function ICTransferBranch() {
         !formattedId.toLowerCase().includes(search.toLowerCase()) && 
         !s.id.toLowerCase().includes(search.toLowerCase()) && 
         !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
-    if (location !== 'All' && getRegionNameByWarehouseId(s.warehouseId) !== location) return false;
+    if (!matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds)) {
+      return false;
+    }
     return true;
   });
 
@@ -124,7 +123,7 @@ export default function ICTransferBranch() {
         }
       />
 
-      <DateFilterBar
+      <ICTransferDateFilterBar
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
         customStartDate={customStartDate}
@@ -133,13 +132,7 @@ export default function ICTransferBranch() {
         setCustomEndDate={setCustomEndDate}
       />
 
-      <FilterChips
-        options={['All', ...icRegions.map(r => r.name)]}
-        value={location}
-        onChange={setLocation}
-      />
-
-      <div className={kpiGrid}>
+      <div className={portalKpiGrid}>
         <PhysicalSplitKPICard
           top={{ label: 'Total Orders', value: `${stats.totalOrders} Orders` }}
           bottom={{ label: 'Total Value', value: fmt(stats.totalValue) }}
@@ -193,6 +186,45 @@ export default function ICTransferBranch() {
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search orders..."
+        mobileView={
+          filteredSales.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">No orders found.</div>
+          ) : (
+            filteredSales.map(s => (
+              <div
+                key={s.id}
+                onClick={() => handleView(s)}
+                className="flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">{s.customerName}</p>
+                  <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</p>
+                  <p className="mt-0.5 text-xs text-slate-400">{new Date(s.createdAt || '').toLocaleString()}</p>
+                </div>
+                <div className="flex justify-between items-center rounded-xl bg-slate-50/70 p-2.5 text-xs text-slate-500">
+                  <span>Units: <strong className="text-slate-700">{s.units.toLocaleString()}</strong></span>
+                  <span>Total: <strong className="text-slate-700">{(s.aedAmount || 0).toLocaleString()} AED</strong></span>
+                </div>
+                <div className="text-xs text-slate-500 truncate">{s.address || 'No address'}</div>
+                <div onClick={e => e.stopPropagation()}>
+                  <BranchOrderWorkflowActions sale={s} onResubmit={handleEdit} />
+                </div>
+                <div className={portalMobileCardFooterClass}>
+                  <div className="min-w-0">
+                    <BranchOrderStatusCell sale={s} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); handleView(s); }}
+                    className="shrink-0 text-xs font-bold text-accent hover:text-accent/80"
+                  >
+                    View Details
+                  </button>
+                </div>
+              </div>
+            ))
+          )
+        }
       >
         {filteredSales.map((s) => (
           <tr key={s.id} onClick={() => handleView(s)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">

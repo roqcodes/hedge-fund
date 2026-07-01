@@ -13,6 +13,7 @@ import {
   SectionCard,
 } from '../ui';
 import AddUserModal from './AddUserModal';
+import { portalMobileToolbarClass } from '@/lib/icTransfer/layoutConstants';
 
 type Props = {
   title: string;
@@ -64,9 +65,9 @@ export default function ICTransferSettingsUsersPage({
       />
 
       <SectionCard>
-        <div className="flex flex-col gap-3 px-4 pb-3 sm:flex-row sm:items-center sm:justify-between md:border-b md:border-slate-100 md:px-6 md:py-4">
-          <h3 className="text-base font-bold text-slate-900 sm:text-lg">All Settings</h3>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search settings..." className="sm:max-w-xs" />
+        <div className={`${portalMobileToolbarClass} md:border-b md:border-slate-100 md:px-6 md:py-4 md:pb-3`}>
+          <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">All Settings</h3>
+          <SearchInput value={search} onChange={setSearch} placeholder="Search settings..." className="min-w-0 max-sm:w-full flex-1" />
         </div>
         <div className="p-0 pb-3 md:pb-5">
           <div className={tableWrap}>

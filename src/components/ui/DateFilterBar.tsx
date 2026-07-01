@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
-import { filterSelect } from '@/lib/ui';
+'use client';
+
+import React, { useMemo, useState } from 'react';
+import DateRangeField from '@/components/ui/DateRangeField';
+import {
+  ALL_TIME_START,
+  resolveDisplayDates,
+  todayISO,
+  type DateStepUnit,
+} from '@/lib/dateFilterPresets';
 
 interface DateFilterBarProps {
   dateFilter: string;
@@ -11,6 +19,22 @@ interface DateFilterBarProps {
   children?: React.ReactNode;
 }
 
+const presetClass = (active: boolean) =>
+  `rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+    active
+      ? 'bg-red-600 text-white shadow-md'
+      : 'bg-transparent text-slate-500 hover:bg-red-50 hover:text-red-600'
+  }`;
+
+const stepUnitClass = (active: boolean) =>
+  `flex size-7 items-center justify-center rounded-md text-[11px] font-bold transition-colors ${
+    active
+      ? 'bg-accent text-white shadow-sm'
+      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+  }`;
+
+const STEP_UNITS: DateStepUnit[] = ['Y', 'M', 'D'];
+
 export default function DateFilterBar({
   dateFilter,
   setDateFilter,
@@ -18,248 +42,91 @@ export default function DateFilterBar({
   setCustomStartDate,
   customEndDate,
   setCustomEndDate,
-  children
+  children,
 }: DateFilterBarProps) {
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [tempStartDate, setTempStartDate] = useState(customStartDate);
-  const [tempEndDate, setTempEndDate] = useState(customEndDate);
+  const today = useMemo(() => todayISO(), []);
+  const [stepUnit, setStepUnit] = useState<DateStepUnit>('D');
+
+  const { from, to } = useMemo(
+    () => resolveDisplayDates(dateFilter, customStartDate, customEndDate, today),
+    [dateFilter, customStartDate, customEndDate, today],
+  );
+
+  const applyCustomRange = (nextFrom: string, nextTo: string) => {
+    const start = nextFrom || today;
+    const end = nextTo || start;
+    setDateFilter('custom');
+    setCustomStartDate(start <= end ? start : end);
+    setCustomEndDate(start <= end ? end : start);
+  };
+
+  const handleAllTime = () => {
+    setDateFilter('all-time');
+    setCustomStartDate(ALL_TIME_START);
+    setCustomEndDate(today);
+  };
+
+  const handleToday = () => {
+    setDateFilter('today');
+    setCustomStartDate(today);
+    setCustomEndDate(today);
+  };
+
+  const handleFromChange = (value: string) => {
+    if (!value) return;
+    applyCustomRange(value, to);
+  };
+
+  const handleToChange = (value: string) => {
+    if (!value) return;
+    applyCustomRange(from, value);
+  };
 
   return (
-    <div className="mb-4">
-      {/* Mobile View */}
-      <div className="flex sm:hidden flex-col gap-3">
-        <div className="flex w-full items-center gap-4">
-          <div className="relative flex-1 min-w-0">
-            <select
-              value={dateFilter === 'custom' ? 'custom' : dateFilter}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === 'custom') {
-                  setShowDropdown(true);
-                } else {
-                  setDateFilter(val);
-                  setShowDropdown(false);
-                }
-              }}
-              className={`${filterSelect} w-full`}
-              aria-label="Select Time Range"
-            >
-              <option value="all-time">All Time</option>
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="this-week">This Week</option>
-              <option value="last-week">Last Week</option>
-              <option value="this-month">This Month</option>
-              <option value="last-month">Last Month</option>
-              <option value="custom">
-                {dateFilter === 'custom' && (customStartDate || customEndDate)
-                  ? `${customStartDate || '...'} to ${customEndDate || '...'}`
-                  : 'Custom Range...'}
-              </option>
-            </select>
-
-            {/* Floating Dropdown for Custom Range (Mobile) */}
-            {showDropdown && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setShowDropdown(false)}></div>
-                <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-100 bg-white p-3 shadow-xl z-40 animate-[fade-in_0.15s_ease-out] flex flex-col gap-1">
-                  <div className="px-2">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Custom Date Range</p>
-                    <div className="flex flex-col gap-2">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase">From</label>
-                        <input
-                          type="date"
-                          value={tempStartDate}
-                          onChange={(e) => setTempStartDate(e.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-accent focus:bg-white"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase">To</label>
-                        <input
-                          type="date"
-                          value={tempEndDate}
-                          onChange={(e) => setTempEndDate(e.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-accent focus:bg-white"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomStartDate(tempStartDate);
-                          setCustomEndDate(tempEndDate);
-                          setDateFilter('custom');
-                          setShowDropdown(false);
-                        }}
-                        className="mt-2 w-full rounded-xl bg-accent py-2 text-center text-xs font-bold text-white shadow-md shadow-accent/15 transition-all hover:bg-accent/90 active:scale-95"
-                      >
-                        Apply Custom Range
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            {children}
-          </div>
-        </div>
-
-        {/* Custom Date Inputs Summary (appears below if active) */}
-        {dateFilter === 'custom' && (customStartDate || customEndDate) && (
-          <div className="flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/10 px-3 py-1 text-xs font-bold text-accent animate-[fade-in_0.25s_ease-out] w-fit">
-            <span className="font-semibold text-slate-600 mr-1">Active Range:</span>
-            <span className="font-mono">{customStartDate || '...'}</span>
-            <span className="text-[10px] text-slate-400 font-normal">to</span>
-            <span className="font-mono">{customEndDate || '...'}</span>
-            <button
-              type="button"
-              onClick={() => {
-                setCustomStartDate('');
-                setCustomEndDate('');
-                setTempStartDate('');
-                setTempEndDate('');
-                setDateFilter('all-time');
-              }}
-              className="ml-1 flex size-4 items-center justify-center rounded-full bg-accent/20 text-[10px] font-black text-accent hover:bg-accent hover:text-white transition-colors"
-              aria-label="Clear filter"
-            >
-              &times;
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Desktop View */}
-      <div className="hidden sm:flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {(
-            [
-              { id: 'all-time', label: 'All Time' },
-              { id: 'today', label: 'Today' },
-              { id: 'yesterday', label: 'Yesterday' },
-              { id: 'this-week', label: 'This Week' },
-              { id: 'last-week', label: 'Last Week' },
-              { id: 'this-month', label: 'This Month' },
-              { id: 'last-month', label: 'Last Month' },
-            ] as const
-          ).map(opt => {
-            const isActive = dateFilter === opt.id;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => {
-                  setDateFilter(opt.id);
-                  setShowDropdown(false);
-                }}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                  isActive
-                    ? 'bg-red-600 text-white shadow-md'
-                    : 'bg-transparent text-slate-500 hover:bg-red-50 hover:text-red-600'
-                }`}
-              >
-                {opt.label}
+    <div className="mb-4 max-sm:rounded-2xl max-sm:border max-sm:border-slate-200/90 max-sm:bg-white max-sm:p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-wrap items-center justify-between gap-2 max-sm:w-full sm:contents">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button type="button" onClick={handleAllTime} className={presetClass(dateFilter === 'all-time')}>
+                All Time
               </button>
-            );
-          })}
-
-          {/* Custom Range Trigger */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowDropdown(!showDropdown)}
-              className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider outline-none transition-colors ${
-                dateFilter === 'custom'
-                  ? 'bg-red-600 text-white shadow-md'
-                  : 'bg-transparent text-slate-500 hover:bg-red-50 hover:text-red-600'
-              }`}
-            >
-              <span>
-                {dateFilter === 'custom' && (customStartDate || customEndDate)
-                  ? `${customStartDate || '...'} to ${customEndDate || '...'}`
-                  : 'Custom Range'}
-              </span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`}>
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-
-            {/* Floating Dropdown for Custom Range (Desktop) */}
-            {showDropdown && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setShowDropdown(false)}></div>
-                <div className="absolute left-0 mt-2 w-64 rounded-2xl border border-slate-100 bg-white p-3 shadow-xl z-40 animate-[fade-in_0.15s_ease-out] flex flex-col gap-1">
-                  <div className="px-2">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Custom Date Range</p>
-                    <div className="flex flex-col gap-2">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase">From</label>
-                        <input
-                          type="date"
-                          value={tempStartDate}
-                          onChange={(e) => setTempStartDate(e.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-accent focus:bg-white"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase">To</label>
-                        <input
-                          type="date"
-                          value={tempEndDate}
-                          onChange={(e) => setTempEndDate(e.target.value)}
-                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-accent focus:bg-white"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomStartDate(tempStartDate);
-                          setCustomEndDate(tempEndDate);
-                          setDateFilter('custom');
-                          setShowDropdown(false);
-                        }}
-                        className="mt-2 w-full rounded-xl bg-accent py-2 text-center text-xs font-bold text-white shadow-md shadow-accent/15 transition-all hover:bg-accent/90 active:scale-95"
-                      >
-                        Apply Custom Range
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-3">
-          {/* Custom Date Inputs Summary */}
-          {dateFilter === 'custom' && (customStartDate || customEndDate) && (
-            <div className="flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/10 px-3 py-1 text-xs font-bold text-accent animate-[fade-in_0.25s_ease-out]">
-              <span className="font-semibold text-slate-600 mr-1">Active Range:</span>
-              <span className="font-mono">{customStartDate || '...'}</span>
-              <span className="text-[10px] text-slate-400 font-normal">to</span>
-              <span className="font-mono">{customEndDate || '...'}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomStartDate('');
-                  setCustomEndDate('');
-                  setTempStartDate('');
-                  setTempEndDate('');
-                  setDateFilter('all-time');
-                }}
-                className="ml-1 flex size-4 items-center justify-center rounded-full bg-accent/20 text-[10px] font-black text-accent hover:bg-accent hover:text-white transition-colors"
-                aria-label="Clear filter"
-              >
-                &times;
+              <button type="button" onClick={handleToday} className={presetClass(dateFilter === 'today')}>
+                Today
               </button>
             </div>
-          )}
-          {children}
+
+            <div
+              className="flex w-fit shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50/80 p-0.5"
+              role="group"
+              aria-label="Date step unit"
+            >
+              {STEP_UNITS.map(unit => (
+                <button
+                  key={unit}
+                  type="button"
+                  onClick={() => setStepUnit(unit)}
+                  className={stepUnitClass(stepUnit === unit)}
+                  aria-pressed={stepUnit === unit}
+                  title={unit === 'D' ? 'Day' : unit === 'M' ? 'Month' : 'Year'}
+                >
+                  {unit}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 max-sm:min-w-0 sm:flex sm:flex-row sm:items-center sm:gap-3">
+            <DateRangeField label="From" value={from} stepUnit={stepUnit} onChange={handleFromChange} />
+            <DateRangeField label="To" value={to} stepUnit={stepUnit} onChange={handleToChange} />
+          </div>
         </div>
+
+        {children ? (
+          <div className="flex w-full min-w-0 shrink-0 items-center lg:ml-auto lg:w-auto lg:min-w-[200px] lg:max-w-[280px]">
+            {children}
+          </div>
+        ) : null}
       </div>
     </div>
   );

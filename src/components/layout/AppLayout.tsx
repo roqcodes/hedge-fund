@@ -1,15 +1,13 @@
 'use client';
-import React, { useLayoutEffect } from 'react';
+import React from 'react';
 import { useApp } from '@/context/AppContext';
 import LoginPage from '@/components/auth/LoginPage';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
+import PortalSubNav from '@/components/layout/PortalSubNav';
 import BranchPageGuard from '@/components/layout/BranchPageGuard';
 import ReadOnlyPageBanner from '@/components/rbac/ReadOnlyPageBanner';
 import { RbacWriteProvider } from '@/context/RbacWriteContext';
-import ICTransferSecondarySidebar from '@/components/ic-transfer/ICTransferSecondarySidebar';
-import ICTransferMobileNav from '@/components/ic-transfer/ICTransferMobileNav';
-import WarehouseSecondarySidebar from '@/components/warehouse/WarehouseSecondarySidebar';
 import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,24 +16,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     isInitialLoading,
     toasts,
     sidebarCollapsed,
-    isICTransferRoute,
-    showICTransferSecondarySidebar,
-    icTransferMainMenuOpen,
     isWarehouseRoute,
-    showWarehouseSecondarySidebar,
-    warehouseMainMenuOpen,
-    setSidebarCollapsed,
   } = useApp();
   const pathname = usePathname();
-
-  useLayoutEffect(() => {
-    if (isICTransferRoute && !icTransferMainMenuOpen) {
-      setSidebarCollapsed(true);
-    }
-    if (showWarehouseSecondarySidebar) {
-      setSidebarCollapsed(true);
-    }
-  }, [isICTransferRoute, icTransferMainMenuOpen, showWarehouseSecondarySidebar, setSidebarCollapsed]);
 
   if (isInitialLoading) return null;
   if (!isAuthenticated) {
@@ -43,8 +26,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <LoginPage branchSlug={slug} />;
   }
 
-  const contentMargin = showICTransferSecondarySidebar || showWarehouseSecondarySidebar
-    ? 'lg:ml-[300px] xl:ml-[320px]'
+  const contentMargin = isWarehouseRoute
+    ? 'lg:ml-0'
     : sidebarCollapsed
       ? 'lg:ml-[80px]'
       : 'lg:ml-[240px]';
@@ -52,16 +35,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       <BranchPageGuard />
-      <Sidebar />
-      {showICTransferSecondarySidebar && <ICTransferSecondarySidebar />}
-      {showWarehouseSecondarySidebar && <WarehouseSecondarySidebar />}
+      {!isWarehouseRoute && <Sidebar />}
       <div
         className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:ml-0 ${contentMargin}`}
       >
-        <Topbar />
+        <div className="sticky top-0 z-50 shrink-0">
+          <Topbar />
+          <PortalSubNav />
+        </div>
         <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
           <RbacWriteProvider>
-            {showICTransferSecondarySidebar && <ICTransferMobileNav />}
             <ReadOnlyPageBanner />
             {children}
           </RbacWriteProvider>

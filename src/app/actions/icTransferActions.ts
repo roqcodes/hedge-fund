@@ -19,6 +19,7 @@ import {
   mapICPurchaseRow,
   mapICSaleRow,
 } from '@/lib/icTransferMappers';
+import { adjustWarehouseStock, logWarehouseStockTransaction } from '@/lib/warehouse/stockDb';
 import {
   hasICSaleEditableFieldsChanged,
   type ICSaleContentFields,
@@ -176,6 +177,29 @@ export async function dbUpdateICRateGroupAction(
   }
 }
 
+export async function dbBulkUpdateICRateGroupRatesAction(
+  groupIds: string[],
+  saleRate: number,
+  conversionRate: number,
+): Promise<DbActionResult<import('@/types').ICRateGroup[]>> {
+  if (groupIds.length === 0) {
+    return { success: false, error: 'Select at least one group' };
+  }
+  try {
+    const res = await query(
+      `UPDATE ic_rate_groups
+       SET sale_rate = $1, conversion_rate = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ANY($3::text[])
+       RETURNING *`,
+      [saleRate, conversionRate, groupIds],
+    );
+    if (res.rowCount === 0) return { success: false, error: 'No groups were updated' };
+    return { success: true, data: res.rows.map(mapICRateGroupRow) };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
 export async function dbDeleteICRateGroupAction(id: string): Promise<DbActionResult<void>> {
   try {
     const res = await query(`DELETE FROM ic_rate_groups WHERE id=$1`, [id]);
@@ -276,13 +300,17 @@ export async function dbAddICPurchaseAction(
       ]
     );
 
-    // Also log the transaction to ic_warehouse_transactions
+    // Log receive transaction and increment warehouse stock
     if (purchase.warehouseId) {
-      await client.query(
-        `INSERT INTO ic_warehouse_transactions (warehouse_id, transaction_type, units, reference_type, reference_id)
-         VALUES ($1, 'receive', $2, 'purchase', $3)`,
-        [purchase.warehouseId, purchase.units, res.rows[0].id]
+      await logWarehouseStockTransaction(
+        client,
+        purchase.warehouseId,
+        'receive',
+        purchase.units,
+        'purchase',
+        res.rows[0].id,
       );
+      await adjustWarehouseStock(client, purchase.warehouseId, purchase.units);
     }
 
     await client.query('COMMIT');
@@ -304,8 +332,8 @@ export async function dbAddICSaleAction(
     const res = await query(
       `INSERT INTO ic_sales (
         customer_name, warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
-        entered_by, entered_by_name, entered_by_user_id, address, image_url, service_charge, order_status, priority
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+        entered_by, entered_by_name, entered_by_user_id, address, image_url, service_charge, order_status, priority, bank, conversion_rate, currency
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING *`,
       [
         sale.customerName,
         sale.warehouseId || null,
@@ -322,6 +350,9 @@ export async function dbAddICSaleAction(
         sale.serviceCharge || 0.00,
         initialOrderStatus,
         sale.priority || 'Normal',
+        sale.bank || null,
+        sale.conversionRate ?? 1.0,
+        sale.currency || 'AED',
       ]
     );
     return { success: true, data: mapICSaleRow(res.rows[0]) };
@@ -619,13 +650,16 @@ export async function branchResubmitICSaleAction(
            address = $5,
            image_url = $6,
            service_charge = $7,
+           bank = $8,
+           conversion_rate = $9,
+           currency = $10,
            order_status = 'pending',
            rejection_remarks = NULL,
            warehouse_id = NULL,
            delivery_agent_id = NULL,
            status_updated_at = CURRENT_TIMESTAMP,
-           status_updated_by = $8
-       WHERE id = $9 AND order_status = 'admin_rejected'
+           status_updated_by = $11
+       WHERE id = $12 AND order_status = 'admin_rejected'
        RETURNING id`,
       [
         updates.transactionType || null,
@@ -635,6 +669,9 @@ export async function branchResubmitICSaleAction(
         updates.address || null,
         updates.imageUrl || null,
         updates.serviceCharge ?? 0,
+        updates.bank || null,
+        updates.conversionRate ?? 1.0,
+        updates.currency || 'AED',
         updatedBy,
         id,
       ],
@@ -644,6 +681,32 @@ export async function branchResubmitICSaleAction(
     }
     const updated = await fetchICSaleById(id);
     return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (error: unknown) {
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
+export async function dbGetCustomerCurrencyAction(customerName: string): Promise<DbActionResult<string>> {
+  try {
+    const res = await query(
+      `SELECT g.currency
+       FROM ic_rate_groups g
+       WHERE g.id = (
+         SELECT group_id FROM ic_rate_group_customers c
+         JOIN customers cust ON c.customer_id = cust.id
+         WHERE LOWER(cust.name) = LOWER($1)
+         LIMIT 1
+       ) OR g.id = (
+         SELECT group_id FROM ic_rate_group_branches b
+         JOIN branches br ON b.branch_id = br.id
+         WHERE LOWER(br.name) = LOWER($1)
+         LIMIT 1
+       )
+       LIMIT 1`,
+      [customerName]
+    );
+    const currency = res.rows.length > 0 ? res.rows[0].currency : 'Currency';
+    return { success: true, data: currency };
   } catch (error: unknown) {
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   }

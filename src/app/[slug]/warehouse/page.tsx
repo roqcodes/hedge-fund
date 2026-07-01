@@ -1,10 +1,10 @@
 import React from 'react';
 import { getSessionUser } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import WarehouseDashboardClient from './WarehouseDashboardClient';
+import SettlementClient from './settlement/SettlementClient';
 
-export default async function WarehouseDashboardPage(
-  props: { params: Promise<{ slug: string }> }
+export default async function WarehousePortalPage(
+  props: { params: Promise<{ slug: string }> },
 ) {
   const params = await props.params;
   const user = await getSessionUser(params.slug);
@@ -14,5 +14,5 @@ export default async function WarehouseDashboardPage(
     redirect(`/${params.slug}/warehouse/order-settlement`);
   }
 
-  return <WarehouseDashboardClient branchSlug={params.slug} />;
+  return <SettlementClient branchSlug={params.slug} />;
 }

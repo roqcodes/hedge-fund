@@ -1,26 +1,28 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import DateFilterBar from '@/components/ui/DateFilterBar';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { resolveDateFilterRange, getDateFilterLabel } from '@/lib/dateFilterRange';
+import {
+  computeWarehouseMatrix,
+  matrixRowToCells,
+  WAREHOUSE_MATRIX_COLUMNS,
+} from '@/lib/icTransfer/warehouseMatrixMetrics';
+import WarehouseKpiGrid from '@/components/warehouse/WarehouseKpiGrid';
+import AddRegionModal from '@/components/ic-transfer/settings/AddRegionModal';
+import ManageWarehousesModal from '@/components/ic-transfer/warehouse/ManageWarehousesModal';
+import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
+import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
 import {
   DataTableSection,
-  ExportButtons,
-  FilterChips,
   PageHeader,
   PageShell,
   useICTransferFilters,
-  SectionCard,
+  AddButton,
 } from '../ui';
 
-import KPICard from '@/components/ui/KPICard';
-import { kpiGrid } from '@/lib/ui';
-
-const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDigits: 2 })}`;
-const fmtNum = (n: number) => n.toLocaleString('en-US');
-
 export default function ICTransferWarehouse() {
-  const { icPurchases, icWarehouseTransactions, icRegions, icWarehouses } = useApp();
+  const { icRegions, icWarehouses, icSales, addICRegion } = useApp();
   const {
     dateFilter,
     setDateFilter,
@@ -29,108 +31,73 @@ export default function ICTransferWarehouse() {
     customEndDate,
     setCustomEndDate,
   } = useICTransferFilters();
-  const [location, setLocation] = React.useState('All');
+  const [regionModalOpen, setRegionModalOpen] = useState(false);
+  const [warehouseModalOpen, setWarehouseModalOpen] = useState(false);
+  const { selectedRegionIds } = useICTransferRegionFilter();
 
-  const selectedRegionId = useMemo(() => {
-    if (location === 'All') return '';
-    return icRegions.find(r => r.name === location)?.id || '';
-  }, [location, icRegions]);
+  const handleAddRegion = async (name: string, country: string) => {
+    await addICRegion(name, country);
+  };
 
-  const { columns, rows, cities, kpis } = useMemo(() => {
-    const metricsCols = [
-      'Purchase Unit', 'Received Unit', 'Cleared Unit', 'Processing Unit',
-      'Pending', 'Balance Unit', 'Service Charge', 'Due'
-    ];
+  const range = useMemo(
+    () => resolveDateFilterRange(dateFilter, customStartDate, customEndDate),
+    [dateFilter, customStartDate, customEndDate],
+  );
 
-    const filteredWarehouses = selectedRegionId 
-      ? icWarehouses.filter(w => w.regionId === selectedRegionId)
-      : icWarehouses;
-    const warehouseIds = new Set(filteredWarehouses.map(w => w.id));
+  const rangeLabel = useMemo(
+    () => getDateFilterLabel(dateFilter, customStartDate, customEndDate),
+    [dateFilter, customStartDate, customEndDate],
+  );
 
-    let totalVolume = 0;
-    let numOrders = 0;
-    let totalRate = 0;
+  const { rows, totals, regionRows } = useMemo(
+    () =>
+      computeWarehouseMatrix({
+        warehouses: icWarehouses,
+        regions: icRegions,
+        sales: icSales,
+        range,
+        regionIds: selectedRegionIds.length > 0 ? selectedRegionIds : undefined,
+      }),
+    [icWarehouses, icRegions, icSales, range, selectedRegionIds],
+  );
 
-    icPurchases.forEach(p => {
-      if (p.warehouseId && warehouseIds.has(p.warehouseId)) {
-        totalVolume += p.units;
-        totalRate += p.unitRate;
-        numOrders++;
-      }
-    });
-
-    const avgRate = numOrders > 0 ? totalRate / numOrders : 0;
-
-    let receivedUnitTotal = 0;
-    icWarehouseTransactions.forEach(t => {
-      if (warehouseIds.has(t.warehouseId) && t.transactionType === 'receive') {
-        receivedUnitTotal += t.units;
-      }
-    });
-
-    const pendingOrders = totalVolume - receivedUnitTotal;
-    const fulfilledOrders = receivedUnitTotal;
-
-    const mRows = filteredWarehouses.map(w => {
-      let purchaseUnit = 0;
-      let receivedUnit = 0;
-      let clearedUnit = 0;
-      let processingUnit = 0;
-      let serviceCharge = 0;
-
-      icPurchases.filter(p => p.warehouseId === w.id).forEach(p => purchaseUnit += p.units);
-      icWarehouseTransactions.filter(t => t.warehouseId === w.id).forEach(t => {
-        if (t.transactionType === 'receive') receivedUnit += t.units;
-        if (t.transactionType === 'clear') clearedUnit += t.units;
-        if (t.transactionType === 'processing') processingUnit += t.units;
-      });
-
-      const pending = purchaseUnit - receivedUnit;
-      const balanceUnit = receivedUnit - clearedUnit - processingUnit;
-      const due = serviceCharge; // proxy
-
-      return {
-        label: w.name,
-        metrics: [
-          { label: 'Purchase Unit', value: purchaseUnit },
-          { label: 'Received Unit', value: receivedUnit },
-          { label: 'Cleared Unit', value: clearedUnit },
-          { label: 'Processing Unit', value: processingUnit },
-          { label: 'Pending', value: pending },
-          { label: 'Balance Unit', value: balanceUnit },
-          { label: 'Service Charge', value: serviceCharge },
-          { label: 'Due', value: due },
-        ]
-      };
-    });
-
-    const cityRows = icRegions.map(r => ({
-      label: r.name,
-      values: [0, 0] as [number, number],
-    }));
-
-    return { 
-      columns: metricsCols, 
-      rows: mRows, 
-      cities: cityRows,
-      kpis: {
-        numOrders,
-        totalVolume,
-        avgRate,
-        pendingOrders,
-        fulfilledOrders
-      }
-    };
-  }, [icPurchases, icWarehouseTransactions, icRegions, icWarehouses, selectedRegionId]);
+  const kpiMetrics = useMemo(
+    () => ({
+      currentStock: totals.currentStock,
+      reserved: totals.reserved,
+      remaining: totals.remaining,
+      totalOrders: totals.totalOrders,
+      totalCompleted: totals.totalCompleted,
+      totalPending: totals.totalPending,
+      splitOrders: totals.splitOrders,
+    }),
+    [totals],
+  );
 
   return (
     <PageShell>
       <PageHeader
         title="Warehouse"
-        subtitle="Weekly warehouse volumes and allocation"
+        subtitle="Stock, orders, and delivery performance by warehouse"
+        actions={
+          <div className="flex gap-2">
+            <AddButton
+              label="Manage Regions"
+              onClick={() => setRegionModalOpen(true)}
+              icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="sm:h-[18px] sm:w-[18px]">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+              }
+            />
+            <AddButton label="Manage Warehouses" onClick={() => setWarehouseModalOpen(true)} />
+          </div>
+        }
       />
 
-      <DateFilterBar
+      <ICTransferDateFilterBar
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
         customStartDate={customStartDate}
@@ -139,80 +106,51 @@ export default function ICTransferWarehouse() {
         setCustomEndDate={setCustomEndDate}
       />
 
-      <div className="mb-4">
-        <FilterChips
-          options={['All', ...icRegions.map(r => r.name)]}
-          value={location}
-          onChange={setLocation}
-        />
-      </div>
+      <WarehouseKpiGrid
+        metrics={kpiMetrics}
+        showSplit={false}
+        showCompleted={false}
+        deliveredUnits={totals.deliveredUnits}
+        remainingUnits={totals.remainingUnits}
+      />
 
-      <div className={`${kpiGrid} grid-cols-2 lg:grid-cols-4 mb-6`}>
-        <KPICard 
-          label="Number of Orders" 
-          value={fmtNum(kpis.numOrders)} 
-          color="var(--info)" 
-          bgColor="var(--info-light)" 
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z" />
-            </svg>
-          } 
-        />
-        <KPICard 
-          label="Total Volume" 
-          value={fmtNum(kpis.totalVolume)} 
-          color="var(--profit)" 
-          bgColor="var(--profit-light)" 
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M20 7h-9M14 3v8M3 17h18M3 21h18" />
-            </svg>
-          } 
-        />
-        <KPICard 
-          label="Average Rate" 
-          value={fmt(kpis.avgRate)} 
-          color="var(--warning)" 
-          bgColor="var(--warning-light)" 
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-            </svg>
-          } 
-        />
-        <KPICard 
-          label="Pending / Fulfilled" 
-          value={`${fmtNum(kpis.pendingOrders)} / ${fmtNum(kpis.fulfilledOrders)}`} 
-          color="var(--loss)" 
-          bgColor="var(--loss-light)" 
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-              <path d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-          } 
+      <div className="mb-5">
+        <DataTableSection
+          title={`Warehouse Matrix · ${rangeLabel}`}
+          columns={['Warehouse', 'Region', ...WAREHOUSE_MATRIX_COLUMNS]}
+          data={
+            rows.length
+              ? rows.map(row => [row.warehouseName, row.regionName, ...matrixRowToCells(row)])
+              : [['No warehouses', '—', ...WAREHOUSE_MATRIX_COLUMNS.map(() => '—')]]
+          }
+          emptyMessage="No warehouses match the selected regions."
+          minWidth="960px"
         />
       </div>
 
       <div className="mb-5">
         <DataTableSection
-          title="Warehouse Matrix"
-          columns={['Warehouse', ...columns]}
-          data={rows.map(r => [
-            r.label,
-            ...r.metrics.map(m => typeof m.value === 'number' ? m.value.toLocaleString() : m.value)
-          ])}
+          title={`Region Summary · ${rangeLabel}`}
+          columns={['Region', 'Warehouses', 'Orders', 'Pending', 'Delivered', 'Remaining']}
+          data={
+            regionRows.length
+              ? regionRows.map(row => [
+                  row.regionName,
+                  row.warehouseCount.toLocaleString(),
+                  row.totalOrders.toLocaleString(),
+                  row.pendingOrders.toLocaleString(),
+                  row.deliveredUnits.toLocaleString('en-US', { maximumFractionDigits: 4 }),
+                  row.remainingUnits.toLocaleString('en-US', { maximumFractionDigits: 4 }),
+                ])
+              : [['No regions', '0', '0', '0', '0', '0']]
+          }
+          emptyMessage="No region data for the selected filters."
+          minWidth="720px"
         />
       </div>
 
-      <div className="mb-5">
-        <DataTableSection
-          title="Allocation Table"
-          columns={['Region', 'Sale · 0', 'SC · 0']}
-          data={cities.length ? cities.map(c => [c.label, ...c.values]) : [['None', 0, 0]]}
-        />
-      </div>
-
+      <AddRegionModal open={regionModalOpen} onClose={() => setRegionModalOpen(false)} onAdd={handleAddRegion} />
+      <ManageWarehousesModal open={warehouseModalOpen} onClose={() => setWarehouseModalOpen(false)} />
     </PageShell>
   );
 }

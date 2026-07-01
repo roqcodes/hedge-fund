@@ -4,13 +4,11 @@
  * Default = today (so the initial page load never fetches the full history).
  */
 
+import { ALL_TIME_START, todayISO } from '@/lib/dateFilterPresets';
+
 export interface DateRange {
   dateFrom: string; // ISO date string e.g. '2026-06-28'
   dateTo: string;   // ISO date string e.g. '2026-06-28'
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function addDays(iso: string, days: number): string {
@@ -77,7 +75,7 @@ export function resolveDateRange(
     }
 
     case 'all-time':
-      return { dateFrom: '2000-01-01', dateTo: addDays(today, 1) };
+      return { dateFrom: ALL_TIME_START, dateTo: addDays(today, 1) };
 
     case 'custom': {
       const from = customStartDate || today;

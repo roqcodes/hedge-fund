@@ -33,7 +33,6 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
   const [customerName, setCustomerName] = useState(initialData?.customerName || '');
   const [warehouseId, setWarehouseId] = useState(initialData?.warehouseId || '');
   const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
-  const [serviceCharge, setServiceCharge] = useState(initialData?.serviceCharge?.toString() || '');
   const [priority, setPriority] = useState<OrderPriority>(initialData?.priority || 'Normal');
   const [address, setAddress] = useState(initialData?.address || '');
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
@@ -64,7 +63,6 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
       setCustomerName(initialData?.customerName || '');
       setWarehouseId(initialData?.warehouseId || '');
       setTransactionType(initialData?.transactionType || 'transfer');
-      setServiceCharge(initialData?.serviceCharge?.toString() || '');
       setPriority(initialData?.priority || 'Normal');
       setAddress(initialData?.address || '');
       setImageUrl(initialData?.imageUrl || '');
@@ -133,7 +131,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
 
   const unitNum = parseFloat(units) || 0;
   const rateNum = parseFloat(rate) || groupSaleRate;
-  const serviceChargeNum = parseFloat(serviceCharge) || 0;
+  const serviceChargeNum = initialData?.serviceCharge ?? 0;
 
   const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate, serviceChargeNum);
 
@@ -148,12 +146,14 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
       transactionType,
       unitRate: rateNum,
       units: unitNum,
-      convertedAmount: amounts.inrTotal,
+      convertedAmount: amounts.currencyTotal,
       aedAmount: amounts.aedNetTotal,
       serviceCharge: serviceChargeNum,
       priority,
       address: address || undefined,
       imageUrl: imageUrl || undefined,
+      conversionRate: groupConversionRate,
+      currency: groupCurrency,
     };
 
     if (initialData) {
@@ -286,17 +286,13 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
               </InputField>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <InputField label="Units">
                 <input className={formInput} value={units} onChange={e => setUnits(e.target.value)} type="number" step="0.01" required />
               </InputField>
 
               <InputField label="Unit Rate (AED)">
                 <input className={formInput} value={rate} onChange={e => setRate(e.target.value)} type="number" step="0.01" required />
-              </InputField>
-
-              <InputField label="Service Charge">
-                <input className={formInput} value={serviceCharge} onChange={e => setServiceCharge(e.target.value)} type="number" step="0.01" placeholder="0.00" />
               </InputField>
             </div>
 

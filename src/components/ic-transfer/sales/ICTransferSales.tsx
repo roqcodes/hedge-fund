@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import DateFilterBar from '@/components/ui/DateFilterBar';
+import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
+import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
+import { getWarehouseRegionId, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
 import { useApp } from '@/context/AppContext';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
+import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
+import { toBusinessDate } from '@/lib/businessTime';
 import {
   DataTableSection,
   ExportButtons,
-  FilterChips,
   PageHeader,
   PageShell,
   useICTransferFilters,
@@ -17,12 +20,15 @@ import AddSaleModal from './AddSaleModal';
 import ViewSaleModal from './ViewSaleModal';
 import { ICSale } from '@/types';
 import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
+import { portalKpiGrid } from '@/lib/icTransfer/layoutConstants';
 import { ConfirmModal } from '@/components/warehouse/shared';
 import { AdminOrderStatusCard, AdminOrderWorkflowActions } from '../shared/AdminOrderWorkflowPanel';
 import SalePriorityControl from '../shared/SalePriorityControl';
 import { IC_ORDER_STATUSES, getAdminStatusLabel, normalizeOrderStatus, canAdminAccept, getCustomerOrderStatus } from '@/lib/icTransfer/orderStatus';
-import { comparePriority, highPriorityRowClass } from '@/lib/icTransfer/orderPriority';
+import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
+import { PriorityBadge } from '@/components/warehouse/shared';
+import { portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
 
 const icCompactTd = (align: 'left'|'center'|'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
@@ -33,8 +39,8 @@ const SALE_COLUMNS = [
 ];
 
 export default function ICTransferSales() {
-  const { icSales, icRegions, icWarehouses, deleteICSale, branches } = useApp();
-  const [location, setLocation] = useState('All');
+  const { icSales, icWarehouses, deleteICSale, branches } = useApp();
+  const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<ICSale | null>(null);
@@ -61,40 +67,13 @@ export default function ICTransferSales() {
   } = useICTransferFilters();
 
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || 'None';
-  const getRegionNameByWarehouseId = (id?: string) => {
-    const warehouse = icWarehouses.find(w => w.id === id);
-    return warehouse ? icRegions.find(r => r.id === warehouse.regionId)?.name || 'Unknown' : 'Unknown';
-  };
 
   const filteredSales = useMemo<ICSale[]>(() => {
-    return icSales.filter((s: ICSale) => {
-      // ── Date filter ──────────────────
-      const createdAt = s.createdAt ? new Date(s.createdAt) : null;
-      if (createdAt && dateFilter !== 'all-time') {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-        const startOfWeek = new Date(today); startOfWeek.setDate(today.getDate() - today.getDay());
-        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const range = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);
 
-        if (dateFilter === 'today') {
-          if (createdAt < today) return false;
-        } else if (dateFilter === 'yesterday') {
-          if (createdAt < yesterday || createdAt >= today) return false;
-        } else if (dateFilter === 'this-week') {
-          if (createdAt < startOfWeek) return false;
-        } else if (dateFilter === 'this-month') {
-          if (createdAt < startOfMonth) return false;
-        } else if (dateFilter === 'custom' && (customStartDate || customEndDate)) {
-          if (customStartDate) {
-            const from = new Date(customStartDate); from.setHours(0, 0, 0, 0);
-            if (createdAt < from) return false;
-          }
-          if (customEndDate) {
-            const to = new Date(customEndDate); to.setHours(23, 59, 59, 999);
-            if (createdAt > to) return false;
-          }
-        }
+    return icSales.filter((s: ICSale) => {
+      if (s.createdAt && !isDateInRange(toBusinessDate(s.createdAt, 'Asia/Dubai'), range)) {
+        return false;
       }
 
       const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
@@ -102,7 +81,9 @@ export default function ICTransferSales() {
           !formattedId.toLowerCase().includes(search.toLowerCase()) && 
           !s.id.toLowerCase().includes(search.toLowerCase()) && 
           !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
-      if (location !== 'All' && getRegionNameByWarehouseId(s.warehouseId) !== location) return false;
+      if (!matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds)) {
+        return false;
+      }
 
       if (filterStatus !== 'All') {
         if (filterStatus === 'paid') return s.paymentStatus === 'paid';
@@ -118,7 +99,7 @@ export default function ICTransferSales() {
       }
       return true;
     });
-  }, [icSales, search, location, filterStatus, filterWarehouse, dateFilter, customStartDate, customEndDate]);
+  }, [icSales, search, selectedRegionIds, icWarehouses, filterStatus, filterWarehouse, dateFilter, customStartDate, customEndDate, branches]);
 
   const handleHeaderClick = (colName: string) => {
     const map: Record<string, string> = {
@@ -246,22 +227,27 @@ export default function ICTransferSales() {
 
   const { salesColumns, matrixRows } = React.useMemo(() => {
     const columns = ['Sales Vol', 'Sales Rate', 'Status'];
-    const mRows = icRegions.map(r => {
-      const regionWarehouses = new Set(icWarehouses.filter(w => w.regionId === r.id).map(w => w.id));
-      const regionSales = icSales.filter(s => s.warehouseId && regionWarehouses.has(s.warehouseId));
-      const vol = regionSales.reduce((acc, s) => acc + s.units, 0);
-      const rate = regionSales.length > 0 ? regionSales[0].unitRate : 0;
+    const uniqueCustomers = Array.from(new Set(icSales.map(s => s.customerName).filter(Boolean)));
+    uniqueCustomers.sort((a, b) => a.localeCompare(b));
+
+    const mRows = uniqueCustomers.map(custName => {
+      const customerSales = icSales.filter(s => s.customerName === custName);
+      const vol = customerSales.reduce((acc, s) => acc + s.units, 0);
+      const rate = customerSales.length > 0 ? customerSales[0].unitRate : 0;
+      const hasActive = customerSales.some(s => normalizeOrderStatus(s.orderStatus) !== 'completed');
+      const statusValue = hasActive ? 'Processing' : 'Completed';
+
       return {
-        label: r.name,
+        label: custName,
         metrics: [
           { label: 'Sales Vol', value: vol },
           { label: 'Sales Rate', value: rate.toLocaleString() },
-          { label: 'Status', value: 'Processing' },
+          { label: 'Status', value: statusValue },
         ]
       };
     });
     return { salesColumns: columns, matrixRows: mRows };
-  }, [icRegions, icSales]);
+  }, [icSales]);
 
   return (
     <PageShell>
@@ -275,7 +261,7 @@ export default function ICTransferSales() {
         }
       />
 
-      <DateFilterBar
+      <ICTransferDateFilterBar
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
         customStartDate={customStartDate}
@@ -284,13 +270,7 @@ export default function ICTransferSales() {
         setCustomEndDate={setCustomEndDate}
       />
 
-      <FilterChips
-        options={['All', ...icRegions.map(r => r.name)]}
-        value={location}
-        onChange={setLocation}
-      />
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={portalKpiGrid}>
         <PhysicalSplitKPICard 
           top={{ label: 'Total Orders', value: `${stats.totalOrders} Orders` }}
           bottom={{ label: 'Total Value', value: fmt(stats.totalValue) }}
@@ -385,6 +365,53 @@ export default function ICTransferSales() {
               ))}
             </select>
           </div>
+        }
+        mobileView={
+          sortedSales.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">No sales found.</div>
+          ) : (
+            sortedSales.map((s: ICSale) => {
+              const delivered = getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus);
+              const remaining = getRemainingUnits(s.units, s.collectedUnits, s.orderStatus);
+              const warehouseName = getWarehouseName(s.warehouseId);
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => handleView(s)}
+                  className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors ${highPriorityCardClass(s.priority)}`}
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{s.customerName}</p>
+                      <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{new Date(s.createdAt || '').toLocaleString()}</p>
+                    </div>
+                    <PriorityBadge priority={s.priority} />
+                  </div>
+                  <div className="flex justify-between items-center rounded-xl bg-slate-50/70 p-2.5 text-xs text-slate-500">
+                    <span>Units: <strong className="text-slate-700">{s.units.toLocaleString()}</strong></span>
+                    <span className="truncate pl-2">{warehouseName}</span>
+                  </div>
+                  <div className="flex justify-between items-center rounded-xl bg-slate-50/70 p-2.5 text-xs text-slate-500">
+                    <span>Delivered: <strong className="text-emerald-600">{delivered.toLocaleString()}</strong></span>
+                    <span>Remaining: <strong className="text-amber-600">{remaining.toLocaleString()}</strong></span>
+                  </div>
+                  <div className={portalMobileCardFooterClass}>
+                    <div className="min-w-0" onClick={e => e.stopPropagation()}>
+                      <AdminOrderStatusCard sale={s} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); handleView(s); }}
+                      className="shrink-0 text-xs font-bold text-slate-500 hover:text-slate-700"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )
         }
       >
         {sortedSales.map((s: ICSale) => {

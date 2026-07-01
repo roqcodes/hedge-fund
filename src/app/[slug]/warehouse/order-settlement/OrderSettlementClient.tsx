@@ -4,9 +4,10 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { PageShell } from '@/components/ic-transfer/ui';
 import PageHeader from '@/components/ic-transfer/ui/PageHeader';
-import { dataTable, tableWrap, tabBtn, tabBtnActive } from '@/lib/ui';
+import { dataTable, tableWrap, tabBtn, tabBtnActive, filterSelect } from '@/lib/ui';
 import { fetchDeliveryAgentOrders } from '@/app/actions/warehouseActions';
 import { formatDateTime } from '@/data/mockData';
+import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import OrderDetailsModal from '../settlement/OrderDetailsModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { normalizeOrderStatus, isDeliveryAgentRejected } from '@/lib/icTransfer/orderStatus';
@@ -15,24 +16,27 @@ import { PriorityBadge, SkeletonRows } from '@/components/warehouse/shared';
 import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
 import { formatUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
 import { resolveDateRange } from '@/lib/warehouseDateUtils';
-import DeliveryAgentKpiGrid from '@/components/warehouse/DeliveryAgentKpiGrid';
+import WarehouseKpiGrid from '@/components/warehouse/WarehouseKpiGrid';
+import { computeDeliveryAgentKpis } from '@/lib/warehouse/kpiMetrics';
+import { warehouseOrderMatchesSearch } from '@/lib/warehouse/orderSearch';
 import type { WarehouseOrder } from '@/types/warehouse';
 
 type TabKey = 'Pending' | 'Completed' | 'Rejected';
-type SortField = 'Date' | 'Customer' | 'Units' | 'Remaining' | 'Priority' | 'Status';
+type SortField = 'Date' | 'Order ID' | 'Units' | 'Remaining' | 'Priority' | 'Status';
 
 export default function OrderSettlementClient({ branchSlug }: { branchSlug: string }) {
-  const { user, showToast } = useApp();
+  const { user, showToast, branches, refetchData } = useApp();
 
   const [orders, setOrders]   = useState<WarehouseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab]         = useState<TabKey>('Pending');
   const [search, setSearch]   = useState('');
+  const [filterPriority, setFilterPriority] = useState('All');
 
   // Date filter (default = today)
   const [dateFilter, setDateFilter]           = useState('today');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate]     = useState('');
+  const [customStartDate, setCustomStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customEndDate, setCustomEndDate]     = useState(() => new Date().toISOString().slice(0, 10));
 
   // Sort
   const [sortField, setSortField] = useState<SortField>('Priority');
@@ -76,18 +80,21 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
           : tab === 'Completed'
             ? isSaleCompleted(o.order_status)
             : isDeliveryAgentRejected(o.order_status);
-      const matchSearch =
-        o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-        o.id.toLowerCase().includes(search.toLowerCase());
-      return matchTab && matchSearch;
+      const matchSearch = warehouseOrderMatchesSearch(o, search, {
+        branches,
+        includeAgent: false,
+        includeDelivered: false,
+      });
+      const matchPriority = filterPriority === 'All' || (o.priority || 'Normal') === filterPriority;
+      return matchTab && matchSearch && matchPriority;
     });
-  }, [orders, tab, search]);
+  }, [orders, tab, search, filterPriority, branches]);
 
   const sortedOrders = useMemo<WarehouseOrder[]>(() => {
     return [...filteredOrders].sort((a, b) => {
       let vA: any, vB: any;
       switch (sortField) {
-        case 'Customer': vA = a.customer_name;                                 vB = b.customer_name;                                 break;
+        case 'Order ID': vA = getFormattedTxnId(a.id, 'sale', a, branches); vB = getFormattedTxnId(b.id, 'sale', b, branches); break;
         case 'Units':    vA = Number(a.units);                                 vB = Number(b.units);                                 break;
         case 'Remaining': vA = getRemainingUnits(Number(a.units), a.collected_units, a.order_status);
                           vB = getRemainingUnits(Number(b.units), b.collected_units, b.order_status); break;
@@ -101,15 +108,17 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
       if (priDiff !== 0) return priDiff;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [filteredOrders, sortField, sortOrder]);
+  }, [filteredOrders, sortField, sortOrder, branches]);
 
   const pendingCount   = orders.filter(o => normalizeOrderStatus(o.order_status) === 'wh_processing').length;
   const completedCount = orders.filter(o => isSaleCompleted(o.order_status)).length;
   const rejectedCount  = orders.filter(o => isDeliveryAgentRejected(o.order_status)).length;
 
+  const kpiMetrics = useMemo(() => computeDeliveryAgentKpis(orders), [orders]);
+
   const COLS: { label: SortField; align: 'left' | 'right' | 'center' }[] = [
     { label: 'Date',      align: 'left'   },
-    { label: 'Customer',  align: 'left'   },
+    { label: 'Order ID',  align: 'left'   },
     { label: 'Units',      align: 'right'  },
     { label: 'Remaining',  align: 'right'  },
     { label: 'Priority',  align: 'center' },
@@ -130,7 +139,7 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
         setCustomEndDate={setCustomEndDate}
       />
 
-      <DeliveryAgentKpiGrid orders={orders} />
+      <WarehouseKpiGrid metrics={kpiMetrics} variant="delivery" />
 
       <div className="flex flex-col gap-6 mt-2">
         {/* Tabs */}
@@ -151,15 +160,23 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
 
         {/* Table card */}
         <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface">
-          <div className="flex flex-col gap-3 px-4 pb-4 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 px-4 pb-4 max-sm:px-0 md:border-b md:border-slate-100 md:px-5 md:py-4 sm:flex-row sm:items-center sm:gap-4">
             <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">My Orders</h3>
             <input
               type="text"
-              placeholder="Search orders..."
+              placeholder="Search date, ID, units, status..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full sm:max-w-xs rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+              className="min-w-0 max-sm:w-full flex-1 rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none"
             />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className={filterSelect}>
+                <option value="All">All Priorities</option>
+                <option value="High">High</option>
+                <option value="Normal">Normal</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
           </div>
 
           {/* Desktop table */}
@@ -204,8 +221,8 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
                         onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }}
                       >
                         <td className="border-y border-l border-black/5 bg-white px-3 py-3.5 text-sm font-semibold first:rounded-l-2xl sm:px-5 sm:py-4 text-slate-900">{formatDateTime(order.created_at)}</td>
-                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-medium sm:px-5 sm:py-4 text-slate-900">
-                          {order.customer_name}
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-sm font-mono font-medium sm:px-5 sm:py-4 text-slate-900">
+                          {getFormattedTxnId(order.id, 'sale', order, branches)}
                           {order.derived_from_sale_id && (
                             <span className="ml-1.5 text-[10px] font-semibold text-indigo-600">(split)</span>
                           )}
@@ -225,7 +242,7 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
           </div>
 
           {/* Mobile card view */}
-          <div className="flex md:hidden flex-col gap-3 py-4 px-4">
+          <div className="flex md:hidden flex-col gap-3 py-4 max-sm:px-0 px-4">
             {loading ? (
               <div className="flex flex-col gap-3">{[...Array(4)].map((_, i) => <div key={i} className="h-28 rounded-2xl bg-slate-100 animate-pulse" />)}</div>
             ) : sortedOrders.length === 0 ? (
@@ -241,21 +258,26 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">{order.customer_name}</p>
-                        <p className="text-xs font-mono text-slate-500">{order.id.slice(0, 8)}</p>
+                        <p className="text-sm font-mono font-semibold text-slate-900">{getFormattedTxnId(order.id, 'sale', order, branches)}</p>
                         <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(order.created_at)}</p>
                       </div>
-                      <div className="flex flex-col items-end gap-1.5" onClick={e => e.stopPropagation()}>
-                        <WarehouseOrderStatusCard order={order} />
-                        <PriorityBadge priority={order.priority} />
-                      </div>
+                      <PriorityBadge priority={order.priority} />
                     </div>
                     <div className="grid grid-cols-1 gap-2 text-xs text-slate-500 bg-slate-50/70 p-2.5 rounded-xl">
                       <span>Units: <strong className="text-slate-700">{formatUnits(order.units)}</strong></span>
                       <span>To deliver: <strong className="text-amber-600">{formatUnits(remaining)}</strong></span>
                     </div>
-                    <div className="flex justify-end pt-1 border-t border-slate-50">
-                      <button className="text-xs font-bold text-accent hover:text-accent/80" onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }}>Update / View Details →</button>
+                    <div className="flex items-center justify-between gap-3 border-t border-slate-50 pt-2">
+                      <div className="min-w-0" onClick={e => e.stopPropagation()}>
+                        <WarehouseOrderStatusCard order={order} />
+                      </div>
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs font-bold text-accent hover:text-accent/80"
+                        onClick={e => { e.stopPropagation(); setSelectedOrder(order); setDetailsModalOpen(true); }}
+                      >
+                        Update / View Details →
+                      </button>
                     </div>
                   </div>
                 );
@@ -270,7 +292,7 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
           order={selectedOrder}
           isDeliveryView={true}
           onClose={() => setDetailsModalOpen(false)}
-          onSuccess={() => { setDetailsModalOpen(false); loadData(); }}
+          onSuccess={() => { setDetailsModalOpen(false); loadData(); refetchData(); }}
         />
       )}
     </PageShell>

@@ -2,11 +2,14 @@
 
 import React, { useMemo, useState } from 'react';
 import KPICard from '@/components/ui/KPICard';
-import { kpiGrid, pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
+import { portalKpiGrid } from '@/lib/icTransfer/layoutConstants';
+import { pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
 import { ChartCard, PageShell } from '../ui';
 import { useApp } from '@/context/AppContext';
 import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
-import DateFilterBar from '@/components/ui/DateFilterBar';
+import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
+import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
+import { getWarehouseRegionId, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
 import { formatAEDStr } from '@/data/mockData';
 import Card from '@/components/ui/Card';
 
@@ -74,20 +77,29 @@ function RankingList({ title, data, colorClass = "bg-accent" }: { title: string,
 
 export default function ICTransferDashboard() {
   const { icPurchases, icSales, icSuppliers, icRegions, icWarehouses } = useApp();
+  const { selectedRegionIds } = useICTransferRegionFilter();
 
-  const [dateFilter, setDateFilter] = useState('this-month');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
+  const [dateFilter, setDateFilter] = useState('today');
+  const [customStartDate, setCustomStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customEndDate, setCustomEndDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const range = useMemo(() => resolveDateFilterRange(dateFilter, customStartDate, customEndDate), [dateFilter, customStartDate, customEndDate]);
 
   const { filteredPurchases, filteredSales } = useMemo(() => {
     const isFiltered = (dateStr: string) => !range.startDate && !range.endDate ? true : isDateInRange(dateStr, range);
     return {
-      filteredPurchases: icPurchases.filter(p => isFiltered(p.createdAt || '')),
-      filteredSales: icSales.filter(s => isFiltered(s.createdAt || ''))
+      filteredPurchases: icPurchases.filter(
+        p =>
+          isFiltered(p.createdAt || '') &&
+          matchesSelectedRegions(p.locationId, selectedRegionIds),
+      ),
+      filteredSales: icSales.filter(
+        s =>
+          isFiltered(s.createdAt || '') &&
+          matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds),
+      ),
     };
-  }, [icPurchases, icSales, range]);
+  }, [icPurchases, icSales, icWarehouses, range, selectedRegionIds]);
 
   const { kpis, trendData, supplierData, regionData } = useMemo(() => {
     let totalPurchaseVol = 0;
@@ -192,7 +204,7 @@ export default function ICTransferDashboard() {
         </div>
       </div>
 
-      <DateFilterBar
+      <ICTransferDateFilterBar
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
         customStartDate={customStartDate}
@@ -201,7 +213,7 @@ export default function ICTransferDashboard() {
         setCustomEndDate={setCustomEndDate}
       />
 
-      <div className={kpiGrid}>
+      <div className={portalKpiGrid}>
         <KPICard
           label="Purchase Volume (AED)"
           value={formatAEDStr(kpis.totalPurchaseVol)}

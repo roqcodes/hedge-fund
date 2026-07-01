@@ -22,10 +22,6 @@ export default function ViewOrderModal({ open, onClose, order }: ViewOrderModalP
             <p className="mt-1 text-sm font-mono text-slate-900">{order.id}</p>
           </div>
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Customer</h4>
-            <p className="mt-1 text-sm font-semibold text-slate-900">{order.customer_name}</p>
-          </div>
-          <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Amount</h4>
             <p className="mt-1 text-xl font-bold text-accent">{formatAED(order.aed_amount || 0)}</p>
           </div>
@@ -43,12 +39,6 @@ export default function ViewOrderModal({ open, onClose, order }: ViewOrderModalP
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Agent</h4>
             <p className="mt-1 text-sm font-medium text-slate-900">{order.delivery_agent_name || 'Unassigned'}</p>
           </div>
-          {order.address && (
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Address</h4>
-              <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{order.address}</p>
-            </div>
-          )}
         </div>
 
         {/* Right Side: Image */}

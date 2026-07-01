@@ -11,6 +11,12 @@ import { useApp } from '@/context/AppContext';
 import { formatDateTime } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import { btnPrimary, btnGhost, btnSm, pageHeader, pageTitle, pageSubtitle, tableWrap, dataTable, formInput } from '@/lib/ui';
+import {
+  portalMobileToolbarMdClass,
+  portalMobileCardListClass,
+  portalMobileCardFooterClass,
+} from '@/lib/icTransfer/layoutConstants';
+import { AddButton, SectionCard } from '@/components/ic-transfer/ui';
 import { CreateUserModal, EditUserModal } from '@/components/users/UserModals';
 
 interface WarehouseUsersManagementProps {
@@ -18,6 +24,8 @@ interface WarehouseUsersManagementProps {
   error?: string;
   warehouseId: string;
   branchSlug: string;
+  /** When true, omits standalone page header — for warehouse detail page. */
+  embedded?: boolean;
 }
 
 export default function WarehouseUsersManagement({
@@ -25,6 +33,7 @@ export default function WarehouseUsersManagement({
   error,
   warehouseId,
   branchSlug,
+  embedded = false,
 }: WarehouseUsersManagementProps) {
   const { showToast, user: currentUser } = useApp();
   const [users, setUsers] = useState<CognitoUser[]>(initialUsers);
@@ -32,8 +41,6 @@ export default function WarehouseUsersManagement({
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<CognitoUser | null>(null);
 
-  const roleName = `warehouse_${warehouseId}`;
-  
   // Use current user's branch as the branchId for these users so branch managers can delete/manage them
   const currentUserBranchId = currentUser?.branchId || '';
 
@@ -115,22 +122,20 @@ export default function WarehouseUsersManagement({
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [users, searchTerm]);
 
-  return (
+  const tableSection = (
     <>
-      <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
-        {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
-            <h3 className="text-sm font-bold text-red-800">Configuration Error</h3>
-            <p className="mt-1 text-sm text-red-700">{error}</p>
-          </div>
-        )}
+      {error ? (
+        <div className={`${embedded ? 'px-4 pt-4 md:px-6' : 'mb-6'} rounded-xl border border-red-200 bg-red-50 p-4`}>
+          <h3 className="text-sm font-bold text-red-800">Configuration Error</h3>
+          <p className="mt-1 text-sm text-red-700">{error}</p>
+        </div>
+      ) : null}
 
+      {!embedded ? (
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Warehouse Users</h2>
-            <p className={pageSubtitle}>
-              Manage users who have access to this specific warehouse.
-            </p>
+            <p className={pageSubtitle}>Manage users who have access to this specific warehouse.</p>
           </div>
           <button type="button" className={`${btnPrimary} w-full sm:w-auto`} onClick={() => setShowCreate(true)}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -139,29 +144,31 @@ export default function WarehouseUsersManagement({
             Add Warehouse User
           </button>
         </div>
+      ) : null}
 
-        <div className="md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
-          <div className="flex flex-col gap-4 px-4 pb-4 md:border-b md:border-slate-100 md:px-8 md:py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6">
-            <h3 className="text-lg font-bold text-slate-900">
-              Users
-            </h3>
-            <div className="relative flex-1 sm:max-w-xs">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                <circle cx="11" cy="11" r="8" />
-                <path d="M21 21l-4.3-4.3" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search users..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm`}
-              />
-            </div>
+      <SectionCard>
+        <div className={portalMobileToolbarMdClass}>
+          <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">Users</h3>
+          <div className="relative min-w-0 flex-1">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden>
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search users…"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className={`${formInput} !py-2 !pl-10 !pr-4 !text-sm`}
+            />
           </div>
+          {embedded ? (
+            <AddButton label="Add User" onClick={() => setShowCreate(true)} ariaLabel="Add warehouse user" />
+          ) : null}
+        </div>
 
-          <div className="p-0">
-            <div className={tableWrap}>
+        <div className="p-0 pb-3 md:pb-5">
+          <div className={tableWrap}>
               <table className={`${dataTable} min-w-[600px] hidden md:table`}>
                 <thead>
                   <tr>
@@ -215,17 +222,22 @@ export default function WarehouseUsersManagement({
                 </tbody>
               </table>
 
-              <div className="flex flex-col gap-4 py-4 md:hidden">
+              <div className={portalMobileCardListClass}>
                 {filteredUsers.map(u => (
                   <div key={u.username} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)]">
-                    <div className="flex items-center justify-between">
+                    <div>
                       <span className="text-sm font-bold text-slate-900">{u.name}</span>
-                      <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
+                      <p className="text-xs text-slate-500 mt-0.5">{u.email}</p>
                     </div>
-                    <p className="text-xs text-slate-500">{u.email}</p>
-                    <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span>Role: <strong className="font-semibold text-slate-700">{u.role?.startsWith('delivery_') ? 'Delivery Agent' : 'Warehouse Manager'}</strong></span>
-                      <div className="flex items-center gap-3">
+                    <div className="text-xs text-slate-500">
+                      Role:{' '}
+                      <strong className="font-semibold text-slate-700">
+                        {u.role?.startsWith('delivery_') ? 'Delivery Agent' : 'Warehouse Manager'}
+                      </strong>
+                    </div>
+                    <div className={portalMobileCardFooterClass}>
+                      <span className={badgeClass(u.status === 'CONFIRMED' ? 'completed' : 'processing')}>{u.status}</span>
+                      <div className="flex items-center gap-3 shrink-0">
                         <button onClick={() => setEditingUser(u)} className="text-xs font-bold text-slate-600">Edit</button>
                         {u.email !== currentUser?.email && (
                           <button onClick={() => handleDelete(u.email)} className="text-xs font-bold text-red-600">Delete</button>
@@ -236,9 +248,16 @@ export default function WarehouseUsersManagement({
                 ))}
               </div>
             </div>
-          </div>
         </div>
-      </div>
+      </SectionCard>
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? tableSection : (
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">{tableSection}</div>
+      )}
 
       {showCreate && (
         <CreateUserModal

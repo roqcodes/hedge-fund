@@ -71,6 +71,7 @@ import {
   dbAddICWarehouseAction,
   dbAddICRateGroupAction,
   dbUpdateICRateGroupAction,
+  dbBulkUpdateICRateGroupRatesAction,
   dbDeleteICRateGroupAction,
   dbSetICRateGroupCustomersAction,
   dbSetICRateGroupBranchesAction,
@@ -184,15 +185,8 @@ interface AppContextType extends AppState {
   toggleSidebarCollapsed: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   isICTransferRoute: boolean;
-  icTransferMainMenuOpen: boolean;
-  showICTransferSecondarySidebar: boolean;
-  openICTransferMainMenu: () => void;
-  showICTransferSubNav: () => void;
+  isICTransferBranchRoute: boolean;
   isWarehouseRoute: boolean;
-  warehouseMainMenuOpen: boolean;
-  showWarehouseSecondarySidebar: boolean;
-  openWarehouseMainMenu: () => void;
-  showWarehouseSubNav: () => void;
   selectBranch: (id: string | null) => void;
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
@@ -236,6 +230,7 @@ interface AppContextType extends AppState {
   deleteICWarehouse: (id: string) => Promise<boolean>;
   addICRateGroup: (name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => Promise<string | null>;
   updateICRateGroup: (id: string, name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => Promise<boolean>;
+  bulkUpdateICRateGroupRates: (groupIds: string[], saleRate: number, conversionRate: number) => Promise<boolean>;
   deleteICRateGroup: (id: string) => Promise<boolean>;
   setICRateGroupCustomers: (groupId: string, customerIds: string[]) => Promise<boolean>;
   setICRateGroupBranches: (groupId: string, branchIds: string[]) => Promise<boolean>;
@@ -280,14 +275,6 @@ const findBranchBySlug = (branches: Branch[], slug: string) =>
 export function AppProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const currentSlug = useMemo(() => getSlugFromPath(pathname), [pathname]);
-  const [icTransferMainMenuOpen, setICTransferMainMenuOpen] = useState(false);
-  const [warehouseMainMenuOpen, setWarehouseMainMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (!pathname.includes('/ic-transfer')) {
-      setICTransferMainMenuOpen(false);
-    }
-  }, [pathname]);
 
   const [state, setState] = useState<AppState>({
     user: null,
@@ -543,26 +530,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { ...s, sidebarCollapsed: collapsed };
     });
   }, []);
-
-  const openICTransferMainMenu = useCallback(() => {
-    setICTransferMainMenuOpen(true);
-    setSidebarCollapsed(false);
-  }, [setSidebarCollapsed]);
-
-  const showICTransferSubNav = useCallback(() => {
-    setICTransferMainMenuOpen(false);
-    setSidebarCollapsed(true);
-  }, [setSidebarCollapsed]);
-
-  const openWarehouseMainMenu = useCallback(() => {
-    setWarehouseMainMenuOpen(true);
-    setSidebarCollapsed(false);
-  }, [setSidebarCollapsed]);
-
-  const showWarehouseSubNav = useCallback(() => {
-    setWarehouseMainMenuOpen(false);
-    setSidebarCollapsed(true);
-  }, [setSidebarCollapsed]);
 
   useEffect(() => {
     try {
@@ -1609,6 +1576,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
+  const bulkUpdateICRateGroupRates = useCallback(async (groupIds: string[], saleRate: number, conversionRate: number) => {
+    try {
+      const res = await dbBulkUpdateICRateGroupRatesAction(groupIds, saleRate, conversionRate);
+      if (res.success && res.data) {
+        const updatedMap = new Map(res.data.map(g => [g.id, g]));
+        setState(s => ({
+          ...s,
+          icRateGroups: s.icRateGroups.map(g => {
+            const updated = updatedMap.get(g.id);
+            if (!updated) return g;
+            return {
+              ...g,
+              saleRate: updated.saleRate,
+              conversionRate: updated.conversionRate,
+              updatedAt: updated.updatedAt,
+            };
+          }),
+        }));
+        showToast(`Updated ${res.data.length} rate group${res.data.length === 1 ? '' : 's'}`);
+        return true;
+      }
+      showToast(res.error || 'Failed to update rate groups', 'error');
+      return false;
+    } catch {
+      showToast('Error updating rate groups', 'error');
+      return false;
+    }
+  }, [showToast]);
+
   const deleteICRateGroup = useCallback(async (id: string) => {
     try {
       const res = await dbDeleteICRateGroupAction(id);
@@ -1864,9 +1860,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const isBranchView = !!filterBranchId || isBranchScopedUser(filteredState.user);
     const isICTransferRoute = pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-branch');
-    const showICTransferSecondarySidebar = isICTransferRoute && !icTransferMainMenuOpen;
+    const isICTransferBranchRoute = pathname.includes('/ic-transfer-branch');
     const isWarehouseRoute = pathname.split('/').includes('warehouse') && !pathname.split('/').includes('ic-transfer');
-    const showWarehouseSecondarySidebar = isWarehouseRoute && !warehouseMainMenuOpen && filteredState.user?.role !== 'branch_manager' && filteredState.user?.role !== 'staff';
 
     const viewBranchSlug = resolveViewBranchSlug(pathname, currentSlug);
     let enabledCurrencies: CurrencyCode[] = sanitizeEnabledCurrencies(['AED', 'USD', 'INR']);
@@ -1885,23 +1880,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       allEntities: state.globalEntities,
       isBranchView,
       isICTransferRoute,
-      icTransferMainMenuOpen,
-      showICTransferSecondarySidebar,
+      isICTransferBranchRoute,
       isWarehouseRoute,
-      warehouseMainMenuOpen,
-      showWarehouseSecondarySidebar,
       currentSlug,
       enabledCurrencies,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
-      addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, openWarehouseMainMenu, showWarehouseSubNav, selectBranch, selectInvestor, addInvestor,
+      addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor,
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
-      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale,
+      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale,
       deleteICPurchase,
       deleteICSale,
     };
-  }, [state, pathname, currentSlug, icTransferMainMenuOpen, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, openICTransferMainMenu, showICTransferSubNav, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, deleteICPurchase, deleteICSale]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;
