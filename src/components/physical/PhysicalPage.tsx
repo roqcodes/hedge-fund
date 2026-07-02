@@ -372,7 +372,7 @@ export default function PhysicalPage() {
                       <div className="flex items-center justify-center gap-2">Pure Gram <SortIcon field="pureGram" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('buyValue')}>
-                      <div className="flex items-center justify-center gap-2">Buy Value <SortIcon field="buyValue" /></div>
+                      <div className="flex items-center justify-center gap-2">Buy Value (USDT) <SortIcon field="buyValue" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('remainingWeight')}>
                       <div className="flex items-center justify-center gap-2">Remaining Vol <SortIcon field="remainingWeight" /></div>
@@ -410,7 +410,7 @@ export default function PhysicalPage() {
                         {buy.pureGram.toFixed(2)}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" />
+                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" showUnit={false} />
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent text-amber-600' : 'bg-white text-slate-900'}`}>
                         {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
@@ -457,8 +457,8 @@ export default function PhysicalPage() {
                         <span className="text-[10px] text-slate-400">{new Date(buy.date).toLocaleDateString()}</span>
                       </div>
                       <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value</span>
-                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="right" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
+                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="right" showUnit={false} />
                       </div>
                     </div>
                     
@@ -539,10 +539,10 @@ export default function PhysicalPage() {
                     </th>
                     <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Payment</th>
                     <th className={getThClass('center')} onClick={() => handleSellSort('sellValue')}>
-                      <div className="flex items-center justify-center gap-2">Sell Value <SellSortIcon field="sellValue" /></div>
+                      <div className="flex items-center justify-center gap-2">Sell Value (USDT) <SellSortIcon field="sellValue" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSellSort('profit')}>
-                      <div className="flex items-center justify-center gap-2">Profit <SellSortIcon field="profit" /></div>
+                      <div className="flex items-center justify-center gap-2">Profit (USDT) <SellSortIcon field="profit" /></div>
                     </th>
                     <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
                   </tr>
@@ -597,10 +597,10 @@ export default function PhysicalPage() {
                           {paymentLabel(sell.paymentMode)}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${cellBg}`}>
-                          <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" />
+                          <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" showUnit={false} />
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${cellBg}`}>
-                          <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" />
+                          <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
                         </td>
                         <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${cellBg}`}>
                           <button
@@ -656,11 +656,14 @@ export default function PhysicalPage() {
                           <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName || 'Sale'} className="text-sm" />
                           <p className="text-[10px] text-slate-400">{new Date(sell.date).toLocaleDateString()} · {sell.txnId || sell.id.slice(0, 8)}</p>
                         </div>
-                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="right" />
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Profit (USDT)</span>
+                          <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="right" showUnit={false} />
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div><span className="text-[10px] font-bold uppercase text-slate-400">Item</span><p>{buy?.item || '—'}</p></div>
-                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value</span><PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" /></div>
+                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value (USDT)</span><PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} /></div>
                         <div className="col-span-2"><span className="text-[10px] font-bold uppercase text-slate-400">Narration</span><p>{sell.narration || '—'}</p></div>
                       </div>
                     </div>

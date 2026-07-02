@@ -14,6 +14,8 @@ interface PhysicalAmountDisplayProps {
   size?: 'sm' | 'md' | 'lg';
   align?: 'left' | 'center' | 'right';
   className?: string;
+  /** Render the inline "USDT" unit suffix. Disable when the unit lives in a column header. */
+  showUnit?: boolean;
 }
 
 const alignClass = {
@@ -24,7 +26,7 @@ const alignClass = {
 
 const primarySizeClass = {
   sm: 'text-xs font-bold',
-  md: 'text-sm font-bold',
+  md: 'text-sm font-extrabold',
   lg: 'text-base font-extrabold sm:text-lg',
 } as const;
 
@@ -44,6 +46,7 @@ export default function PhysicalAmountDisplay({
   size = 'md',
   align = 'center',
   className = '',
+  showUnit = true,
 }: PhysicalAmountDisplayProps) {
   const { fmtUsdt } = usePhysicalCurrency();
   const toneClass = resolveTone(aedAmount, profitTone);
@@ -52,7 +55,9 @@ export default function PhysicalAmountDisplay({
     <div className={`flex flex-col gap-0.5 font-mono tabular-nums ${alignClass[align]} ${className}`}>
       <span className={`${primarySizeClass[size]} ${toneClass ?? 'text-slate-900'}`}>
         {fmtUsdt(aedAmount, showPlus)}
-        <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">USDT</span>
+        {showUnit && (
+          <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">USDT</span>
+        )}
       </span>
     </div>
   );

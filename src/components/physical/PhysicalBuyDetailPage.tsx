@@ -34,20 +34,25 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
 
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const router = useRouter();
 
   const handleDeleteBuy = async () => {
+    if (isDeleting) return;
     if (sells.length > 0) {
       alert("Cannot delete buy with existing sells. Please delete the sells first.");
       return;
     }
     if (!confirm('Are you sure you want to delete this sale?')) return;
+    setIsDeleting(true);
     const res = await dbDeletePhysicalBuyAction(buyId);
     if (res.success) {
       router.push(basePath);
+      await refetchData();
     } else {
       alert(res.error);
+      setIsDeleting(false);
     }
   };
 
@@ -134,7 +139,10 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
   const getThClass = (align: 'left' | 'center' | 'right') => 
     `group cursor-pointer select-none px-3 pb-3 text-${align} text-[11px] font-bold uppercase tracking-wider text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700 sm:px-5`;
 
-  if (!buy) return <div className="p-8 text-center text-red-500">Buy record not found.</div>;
+  if (!buy) {
+    if (isDeleting) return null;
+    return <div className="p-8 text-center text-red-500">Buy record not found.</div>;
+  }
 
   const totalSaleProfit = sells.reduce((sum, s) => sum + s.profit, 0);
   const totalSellValue = sells.reduce((sum, s) => sum + s.sellValue, 0);
@@ -162,7 +170,8 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             <button
               type="button"
               onClick={handleDeleteBuy}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 transition-all hover:bg-red-100 sm:w-auto sm:px-4 sm:text-sm"
+              disabled={isDeleting}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 transition-all hover:bg-red-100 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-4 sm:text-sm"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
@@ -282,20 +291,16 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               <p className="font-semibold text-slate-800">{buy.idrToUsdt.toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">IDR Rate</p>
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">USDT / Gram</p>
               <p className="font-semibold text-slate-800">{buy.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Total</p>
-              <PhysicalAmountDisplay aedAmount={buy.total} size="md" align="left" className="!items-start !text-left" />
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy Value (USDT)</p>
+              <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="left" showUnit={false} className="!items-start !text-left" />
             </div>
             <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy Value</p>
-              <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="left" className="!items-start !text-left" />
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Cost / Gram</p>
-              <PhysicalAmountDisplay aedAmount={buy.buyValue / buy.pureGram} size="md" align="left" className="!items-start !text-left" />
+              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Cost / Gram (USDT)</p>
+              <PhysicalAmountDisplay aedAmount={buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0} size="md" align="left" showUnit={false} className="!items-start !text-left" />
             </div>
           </div>
         </div>
@@ -381,10 +386,10 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                       <div className="flex items-center justify-center gap-2">IDR/USDT <SortIcon field="idrToUsdt" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('sellValue')}>
-                      <div className="flex items-center justify-center gap-2">Sell Value <SortIcon field="sellValue" /></div>
+                      <div className="flex items-center justify-center gap-2">Sell Value (USDT) <SortIcon field="sellValue" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('profit')}>
-                      <div className="flex items-center justify-center gap-2">P&L <SortIcon field="profit" /></div>
+                      <div className="flex items-center justify-center gap-2">P&L (USDT) <SortIcon field="profit" /></div>
                     </th>
                     <th className={getThClass('center')}>
                       <div className="flex items-center justify-center gap-2">Actions</div>
@@ -419,10 +424,10 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         {sell.idrToUsdt || '0'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" />
+                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" showUnit={false} />
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" />
+                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
                         <button onClick={() => handleDeleteSell(sell.id)} className="text-red-500 hover:text-red-700 transition-colors" title="Delete Sell">
@@ -462,8 +467,8 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                             <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
                           </svg>
                         </button>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell Value</span>
-                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="right" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell Value (USDT)</span>
+                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="right" showUnit={false} />
                       </div>
                     </div>
                     
@@ -477,8 +482,8 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         <span className="text-sm font-bold text-slate-700">{sell.pureGram.toFixed(2)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">P&L</span>
-                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="left" className="!items-start !text-left" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">P&L (USDT)</span>
+                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="left" className="!items-start !text-left" showUnit={false} />
                       </div>
                     </div>
                   </div>

@@ -374,7 +374,12 @@ export async function dbDeletePhysicalBuyAction(buyId: string): Promise<DbAction
     }
 
     const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [buyId]);
-    if (buyRes.rows.length === 0) throw new Error('Buy deal not found');
+    if (buyRes.rows.length === 0) {
+      // Already deleted (e.g. a duplicate/concurrent request). Treat as success so
+      // the UI stays consistent instead of surfacing a spurious "not found" error.
+      await client.query('COMMIT');
+      return { success: true, data: null };
+    }
     const buy = buyRes.rows[0];
 
     const buyValue = parseFloat(buy.buy_value);

@@ -43,7 +43,7 @@ export default function PhysicalTxnPreview({ title = 'Transaction Preview', rows
                   return (
                     <td
                       key={col.key}
-                      className={`border-t border-slate-50 px-3 py-2 text-slate-700 text-${col.align ?? 'left'} ${col.key.includes('Value') || col.key.includes('balance') || col.key.includes('profit') ? 'font-mono font-semibold' : ''}`}
+                      className={`border-t border-slate-50 px-3 py-2 text-slate-700 text-${col.align ?? 'left'} ${col.key.includes('Value') || col.key.includes('balance') || col.key.includes('profit') || col.key === 'totalUsdt' ? 'font-mono font-semibold' : ''}`}
                     >
                       {val === undefined || val === null || val === '' ? '—' : String(val)}
                     </td>
@@ -121,11 +121,10 @@ export const BUY_PREVIEW_COLUMNS = [
   { key: 'touch', label: 'Touch', align: 'right' as const },
   { key: 'actualPurity', label: 'Actual Purity', align: 'right' as const },
   { key: 'paymentMode', label: 'Payment' },
-  { key: 'idrRateUsdt', label: 'IDR/USDT', align: 'right' as const },
+  { key: 'idr', label: 'IDR / Gram', align: 'right' as const },
+  { key: 'idrRateUsdt', label: 'IDR / USDT', align: 'right' as const },
+  { key: 'tltIdrValue', label: 'Total IDR', align: 'right' as const },
   { key: 'totalUsdt', label: 'Total USDT', align: 'right' as const },
-  { key: 'idr', label: 'IDR Rate', align: 'right' as const },
-  { key: 'tltIdrValue', label: 'TOTAL IDR', align: 'right' as const },
-  { key: 'tltAedValue', label: 'TOTAL AED', align: 'right' as const },
 ];
 
 export function buildSellPreviewRow(form: {
@@ -147,6 +146,8 @@ export function buildSellPreviewRow(form: {
   totalUsdt: number;
   sellValue: number;
   costValue: number;
+  costValueUsdt: number;
+  profitUsdt: number;
   margin: number;
   profit: number;
 }) {
@@ -165,10 +166,10 @@ export function buildSellPreviewRow(form: {
     tltIdrValue: fmtNum(calc.tltIdrValue, 0),
     tltAedValue: fmtNum(calc.tltAedValue),
     totalUsdt: fmtNum(calc.totalUsdt, 4),
-    costValue: fmtNum(calc.costValue),
+    costValue: fmtNum(calc.costValueUsdt, 4),
     margin: `${fmtNum(calc.margin)}%`,
-    profit: fmtNum(calc.profit),
-    sellValue: fmtNum(calc.sellValue),
+    profit: fmtNum(calc.profitUsdt, 4),
+    sellValue: fmtNum(calc.totalUsdt, 4),
   };
 }
 
@@ -181,10 +182,11 @@ export const SELL_PREVIEW_COLUMNS = [
   { key: 'touch', label: 'Touch', align: 'right' as const },
   { key: 'actualPurity', label: 'Actual Purity', align: 'right' as const },
   { key: 'paymentMode', label: 'Payment' },
-  { key: 'idrRateUsdt', label: 'IDR/USDT', align: 'right' as const },
-  { key: 'idr', label: 'IDR Rate', align: 'right' as const },
-  { key: 'costValue', label: 'Cost Value', align: 'right' as const },
+  { key: 'idr', label: 'IDR / Gram', align: 'right' as const },
+  { key: 'idrRateUsdt', label: 'IDR / USDT', align: 'right' as const },
+  { key: 'costValue', label: 'Buy Value (USDT)', align: 'right' as const },
   { key: 'margin', label: 'Margin', align: 'right' as const },
-  { key: 'profit', label: 'Profit', align: 'right' as const },
-  { key: 'sellValue', label: 'Sell Value', align: 'right' as const },
+  { key: 'profit', label: 'Profit (USDT)', align: 'right' as const },
+  { key: 'tltIdrValue', label: 'Total IDR', align: 'right' as const },
+  { key: 'totalUsdt', label: 'Total USDT', align: 'right' as const },
 ];

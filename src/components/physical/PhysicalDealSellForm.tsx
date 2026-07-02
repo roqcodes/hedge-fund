@@ -17,6 +17,7 @@ import {
   type PhysicalPaymentMode,
 } from '@/lib/physicalCalculations';
 import { convertFromAed } from '@/lib/currency';
+import { convertAedToUsdt } from '@/lib/physicalCurrencyDisplay';
 import { useApp } from '@/context/AppContext';
 import PhysicalTxnPreview, { buildSellPreviewRow, SELL_PREVIEW_COLUMNS } from './PhysicalTxnPreview';
 import StockMetalSelect from './StockMetalSelect';
@@ -98,7 +99,14 @@ export default function PhysicalDealSellForm({
     }
     const b = availableBuys.find(x => x.id === selectedBuyId);
     if (!b) return;
-    const { idrGramStr: _idr, ...defaults } = buildSellFormDefaultsFromBuy(b);
+    // Exclude customer fields — selecting stock must not autofill the customer.
+    const {
+      idrGramStr: _idr,
+      customerId: _cid,
+      customerName: _cname,
+      openingBalance: _ob,
+      ...defaults
+    } = buildSellFormDefaultsFromBuy(b);
     setForm(prev =>
       normalizePhysicalSellForm({
         ...prev,
@@ -119,6 +127,10 @@ export default function PhysicalDealSellForm({
     const idrToUsdt = parseFloat(form.idrToUsdtStr) || 17770;
     const base = computePhysicalTxn({ grossWeight, touch, touchLoss, idrGram, idrToUsdt });
     const metrics = computeSellMetrics(base, costPerGram);
+    // Sell value in USDT equals the deal's totalUsdt; derive cost & profit in USDT
+    // from the same rate so the trio stays internally consistent.
+    const costValueUsdt = convertAedToUsdt(metrics.costValue, currencyRates);
+    const profitUsdt = base.totalUsdt - costValueUsdt;
     return {
       grossWeight,
       touch,
@@ -132,8 +144,10 @@ export default function PhysicalDealSellForm({
       idrRate: base.idrRate,
       total: base.total,
       ...metrics,
+      costValueUsdt,
+      profitUsdt,
     };
-  }, [form, costPerGram]);
+  }, [form, costPerGram, currencyRates]);
 
   useEffect(() => {
     const sellValue = calc.sellValue;
@@ -379,13 +393,13 @@ export default function PhysicalDealSellForm({
               <span className="text-lg md:text-xl font-black text-slate-800 font-mono tracking-tight">{calc.actualPurity.toFixed(3)}<span className="text-xs font-bold text-slate-400 ml-1">g</span></span>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cost Value</span>
-              <span className="text-lg md:text-xl font-black text-slate-600 font-mono tracking-tight">{calc.costValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
+              <span className="text-lg md:text-xl font-black text-slate-600 font-mono tracking-tight">{calc.costValueUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Profit</span>
-              <span className={`text-lg md:text-xl font-black font-mono tracking-tight ${calc.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                {calc.profit >= 0 ? '+' : ''}{calc.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Profit (USDT)</span>
+              <span className={`text-lg md:text-xl font-black font-mono tracking-tight ${calc.profitUsdt >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {calc.profitUsdt >= 0 ? '+' : ''}{calc.profitUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
               </span>
             </div>
           </div>
@@ -394,10 +408,9 @@ export default function PhysicalDealSellForm({
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total IDR</span>
               <span className="text-xl md:text-2xl font-black text-slate-800 font-mono tracking-tight">{calc.tltIdrValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
             </div>
-            <div></div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell Value</span>
-              <span className="text-xl md:text-2xl font-black text-emerald-600 font-mono tracking-tight">{calc.sellValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total USDT</span>
+              <span className="text-xl md:text-2xl font-black text-emerald-600 font-mono tracking-tight">{calc.totalUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
             </div>
           </div>
         </div>

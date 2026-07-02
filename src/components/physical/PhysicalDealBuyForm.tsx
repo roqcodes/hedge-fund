@@ -372,8 +372,8 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
                 <span className="text-lg md:text-xl font-black text-slate-800 font-mono tracking-tight">{calc.actualPurity.toFixed(3)}<span className="text-xs font-bold text-slate-400 ml-1">g</span></span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total AED</span>
-                <span className="text-lg md:text-xl font-black text-emerald-600 font-mono tracking-tight">{calc.buyValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total USDT</span>
+                <span className="text-lg md:text-xl font-black text-emerald-600 font-mono tracking-tight">{calc.totalUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
               </div>
             </div>
             <div className="flex flex-col gap-1 pt-3 border-t border-slate-200/60">

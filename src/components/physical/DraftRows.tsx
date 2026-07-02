@@ -68,7 +68,7 @@ export function DraftBuyRow({
       <td className={`${draftCellBase} text-center text-sm`}>{buy.pureConversion}</td>
       <td className={`${draftCellBase} text-center text-sm font-bold`}>{buy.pureGram.toFixed(2)}</td>
       <td className={draftCellBase}>
-        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" />
+        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" showUnit={false} />
       </td>
       <td className={`${draftCellBase} text-center text-xs font-semibold text-slate-400`}>
         Not sellable
@@ -109,8 +109,8 @@ export function DraftBuyCard({
           <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(2)}</span>
         </div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value</span>
-          <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="left" className="!items-start !text-left" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
+          <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="left" className="!items-start !text-left" showUnit={false} />
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</span>
@@ -160,10 +160,10 @@ export function DraftSellRow({
       <td className={`${draftCellBase} text-center text-sm font-bold`}>{sell.pureGram.toFixed(2)}</td>
       <td className={`${draftCellBase} text-center text-xs`}>{paymentLabel(sell.paymentMode)}</td>
       <td className={draftCellBase}>
-        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" />
+        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" showUnit={false} />
       </td>
       <td className={draftCellBase}>
-        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" />
+        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
       </td>
       <td className={`border-r ${draftCellBase} rounded-r-2xl text-center`}>
         <DiscardButton onClick={() => onDiscard(sell.draftId)} label="Discard draft sell" />
@@ -201,12 +201,12 @@ export function DraftSellCard({
           <p>{sourceBuy?.item || sourceBuy?.particulars || '—'}</p>
         </div>
         <div>
-          <span className="text-[10px] font-bold uppercase text-slate-400">Sell Value</span>
-          <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" />
+          <span className="text-[10px] font-bold uppercase text-slate-400">Sell Value (USDT)</span>
+          <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} />
         </div>
         <div>
-          <span className="text-[10px] font-bold uppercase text-slate-400">Profit</span>
-          <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="left" className="!items-start !text-left" />
+          <span className="text-[10px] font-bold uppercase text-slate-400">Profit (USDT)</span>
+          <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="left" className="!items-start !text-left" showUnit={false} />
         </div>
         <div className="col-span-2">
           <span className="text-[10px] font-bold uppercase text-slate-400">Narration</span>
