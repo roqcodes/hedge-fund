@@ -15,6 +15,7 @@ import { useDateFilter } from '@/hooks/useDateFilter';
 import PhysicalSellModal from './PhysicalSellModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import CustomerLink from '@/components/customers/CustomerLink';
+import PhysicalAmountDisplay, { PhysicalAmountKpiValue } from './PhysicalAmountDisplay';
 
 type SortField = 'date' | 'id' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'sellValue' | 'profit';
 type SortDirection = 'asc' | 'desc';
@@ -185,7 +186,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
         <div className={`${kpiGrid} grid-cols-2 md:grid-cols-4 mb-6`}>
           <KPICard
             label="Sell Value"
-            value={totalSellValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            value={<PhysicalAmountKpiValue aedAmount={totalSellValue} />}
             subValue="Total amount sold"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -197,7 +198,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           />
           <KPICard
             label="P&L"
-            value={totalSaleProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            value={<PhysicalAmountKpiValue aedAmount={totalSaleProfit} showPlus profitTone="auto" />}
             subValue="Total Profit/Loss"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -286,15 +287,15 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Total</p>
-              <p className="font-semibold text-slate-800">{buy.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+              <PhysicalAmountDisplay aedAmount={buy.total} size="md" align="left" className="!items-start !text-left" />
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy Value</p>
-              <p className="font-bold text-slate-900">{buy.buyValue.toLocaleString()} AED</p>
+              <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="left" className="!items-start !text-left" />
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Cost / Gram</p>
-              <p className="font-semibold text-slate-800">{(buy.buyValue / buy.pureGram).toFixed(2)} AED</p>
+              <PhysicalAmountDisplay aedAmount={buy.buyValue / buy.pureGram} size="md" align="left" className="!items-start !text-left" />
             </div>
           </div>
         </div>
@@ -383,7 +384,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                       <div className="flex items-center justify-center gap-2">Sell Value <SortIcon field="sellValue" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('profit')}>
-                      <div className="flex items-center justify-center gap-2">Profit (AED) <SortIcon field="profit" /></div>
+                      <div className="flex items-center justify-center gap-2">P&L <SortIcon field="profit" /></div>
                     </th>
                     <th className={getThClass('center')}>
                       <div className="flex items-center justify-center gap-2">Actions</div>
@@ -417,11 +418,11 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
                         {sell.idrToUsdt || '0'}
                       </td>
-                      <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4">
-                        {sell.sellValue.toLocaleString()}
+                      <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" />
                       </td>
-                      <td className={`border-y border-r border-black/5 bg-white px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${sell.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {sell.profit > 0 ? '+' : ''}{sell.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
+                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" />
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
                         <button onClick={() => handleDeleteSell(sell.id)} className="text-red-500 hover:text-red-700 transition-colors" title="Delete Sell">
@@ -462,7 +463,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                           </svg>
                         </button>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell Value</span>
-                        <span className="font-mono text-sm font-bold text-slate-900">{sell.sellValue.toLocaleString()}</span>
+                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="right" />
                       </div>
                     </div>
                     
@@ -476,10 +477,8 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         <span className="text-sm font-bold text-slate-700">{sell.pureGram.toFixed(2)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Profit</span>
-                        <span className={`text-sm font-bold ${sell.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {sell.profit > 0 ? '+' : ''}{sell.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">P&L</span>
+                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="left" className="!items-start !text-left" />
                       </div>
                     </div>
                   </div>

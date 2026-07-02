@@ -7,18 +7,20 @@ import {
   dbUpdatePhysicalBalanceAction, 
 } from '@/app/actions/physicalActions';
 import { useApp } from '@/context/AppContext';
-import { formatMoneyValue } from '@/data/mockData';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import PhysicalExportModal from './PhysicalExportModal';
 import PhysicalDealModal from './PhysicalDealModal';
-import PhysicalSplitKPICard, { PhysicalSingleKPICard } from './PhysicalSplitKPICard';
+import PhysicalKpiGrid from './PhysicalKpiGrid';
+import PhysicalAmountDisplay from './PhysicalAmountDisplay';
+import { DraftBuyRow, DraftBuyCard, DraftSellRow, DraftSellCard } from './DraftRows';
+import { computePhysicalKpiMetrics } from '@/lib/physical/kpiMetrics';
+import { usePhysicalDrafts } from '@/hooks/usePhysicalDrafts';
 import CustomerLink from '@/components/customers/CustomerLink';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import {
   btnPrimary, btnSecondary,
-  kpiGrid,
   pageHeader,
   pageSubtitle,
   pageTitle,
@@ -39,11 +41,20 @@ function isFixedDeal(buy: PhysicalBuy) {
 }
 
 export default function PhysicalPage() {
-  const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, refetchData, activeCurrency } = useApp();
+  const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, refetchData, currencyRates } = useApp();
   const { canWrite, buttonProps: wp } = useWriteAccess();
   const router = useRouter();
   const branchSlug = currentSlug;
   const branchId = branches.find(b => b.slug === currentSlug)?.id;
+
+  const {
+    draftBuys,
+    draftSells,
+    saveDraftBuy,
+    saveDraftSell,
+    discardDraftBuy,
+    discardDraftSell,
+  } = usePhysicalDrafts(branchSlug);
 
   const balance = physicalBalances.find(b => b.branchId === branchId) || null;
   const buys = physicalBuys.filter(b => b.branchId === branchId);
@@ -79,6 +90,11 @@ export default function PhysicalPage() {
     if (!range.startDate && !range.endDate) return branchSells;
     return branchSells.filter(item => isDateInRange(item.date, range));
   }, [branchSells, dateFilter, customStartDate, customEndDate]);
+
+  const kpiMetrics = useMemo(
+    () => computePhysicalKpiMetrics(buys, filteredBuys, filteredSells, isFixedDeal, currencyRates),
+    [buys, filteredBuys, filteredSells, currencyRates],
+  );
 
   useEffect(() => {
     if (balance && balance.initialCapital === 0 && balance.initialVolume === 0 && buys.length === 0) {
@@ -216,17 +232,6 @@ export default function PhysicalPage() {
 
   if (!branchId) return <div className="p-8 text-center text-red-500">Branch not found.</div>;
 
-  const fmtG = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g';
-  const fmtAed = (n: number) => formatMoneyValue(n, activeCurrency);
-
-  const totalBoughtVolume = filteredBuys.reduce((sum, b) => sum + b.pureGram, 0);
-  const totalBoughtAmount = filteredBuys.reduce((sum, b) => sum + b.buyValue, 0);
-  const totalSoldVolume = filteredSells.reduce((sum, s) => sum + s.pureGram, 0);
-  const totalSoldAmount = filteredSells.reduce((sum, s) => sum + s.sellValue, 0);
-  const fixNumber = filteredBuys.filter(isFixedDeal).length;
-  const unfixNumber = filteredBuys.filter(b => !isFixedDeal(b)).length;
-  const totalPL = filteredSells.reduce((sum, s) => sum + s.profit, 0);
-
   const SellSortIcon = ({ field }: { field: SellSortField }) => {
     if (sellSortField !== field) {
       return (
@@ -299,53 +304,7 @@ export default function PhysicalPage() {
           customEndDate={customEndDate}
           setCustomEndDate={setCustomEndDate}
         />
-        <div className={`${kpiGrid} mb-6 grid-cols-2 md:grid-cols-4`}>
-          <PhysicalSplitKPICard
-            top={{ label: 'Total Bought Volume', value: fmtG(totalBoughtVolume) }}
-            bottom={{ label: 'Total Bought Amount', value: fmtAed(totalBoughtAmount) }}
-            color="var(--accent)"
-            bgColor="var(--accent-light)"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
-            }
-          />
-          <PhysicalSplitKPICard
-            top={{ label: 'Total Sold Volume', value: fmtG(totalSoldVolume) }}
-            bottom={{ label: 'Total Sold Amount', value: fmtAed(totalSoldAmount) }}
-            color="var(--action)"
-            bgColor="var(--action-light)"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-              </svg>
-            }
-          />
-          <PhysicalSplitKPICard
-            top={{ label: 'Fix', value: fixNumber }}
-            bottom={{ label: 'Unfix', value: unfixNumber }}
-            color="var(--purple)"
-            bgColor="var(--purple-light)"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-          <PhysicalSingleKPICard
-            label="P&L"
-            value={fmtAed(totalPL)}
-            color={totalPL >= 0 ? 'var(--success)' : 'var(--danger)'}
-            bgColor={totalPL >= 0 ? 'var(--success-light)' : 'var(--danger-light)'}
-            valueClassName={totalPL >= 0 ? 'text-emerald-600' : 'text-red-600'}
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-        </div>
+        <PhysicalKpiGrid metrics={kpiMetrics} />
 
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover mb-6">
           <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
@@ -422,6 +381,9 @@ export default function PhysicalPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {draftBuys.map(draft => (
+                    <DraftBuyRow key={draft.draftId} buy={draft} onDiscard={discardDraftBuy} />
+                  ))}
                   {filteredAndSortedBuys.map((buy) => (
                     <tr
                       key={buy.id}
@@ -447,8 +409,8 @@ export default function PhysicalPage() {
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.pureGram.toFixed(2)}
                       </td>
-                      <td className={`border-y border-black/5 px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        {buy.buyValue.toLocaleString()}
+                      <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
+                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" />
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent text-amber-600' : 'bg-white text-slate-900'}`}>
                         {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
@@ -469,7 +431,7 @@ export default function PhysicalPage() {
                       </td>
                     </tr>
                   ))}
-                  {filteredAndSortedBuys.length === 0 && (
+                  {filteredAndSortedBuys.length === 0 && draftBuys.length === 0 && (
                     <tr>
                       <td colSpan={9} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
                         {searchTerm || dateFilter !== 'all-time' ? 'No deals found matching your filters.' : 'No gold deals yet. Create one to get started.'}
@@ -480,6 +442,9 @@ export default function PhysicalPage() {
               </table>
 
               <div className="flex md:hidden flex-col gap-4 py-4">
+                {draftBuys.map(draft => (
+                  <DraftBuyCard key={draft.draftId} buy={draft} onDiscard={discardDraftBuy} />
+                ))}
                 {filteredAndSortedBuys.map((buy) => (
                   <div 
                     key={buy.id}
@@ -493,7 +458,7 @@ export default function PhysicalPage() {
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value</span>
-                        <span className="font-mono text-sm font-bold text-slate-900">{buy.buyValue.toLocaleString()}</span>
+                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="right" />
                       </div>
                     </div>
                     
@@ -522,7 +487,7 @@ export default function PhysicalPage() {
                     </div>
                   </div>
                 ))}
-                {filteredAndSortedBuys.length === 0 && (
+                {filteredAndSortedBuys.length === 0 && draftBuys.length === 0 && (
                   <div className="p-8 text-center text-sm text-slate-500">
                     {searchTerm || dateFilter !== 'all-time' ? 'No deals found matching your filters.' : 'No gold deals yet. Create one to get started.'}
                   </div>
@@ -583,6 +548,14 @@ export default function PhysicalPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {draftSells.map(draft => (
+                    <DraftSellRow
+                      key={draft.draftId}
+                      sell={draft}
+                      sourceBuy={buyById.get(draft.buyId)}
+                      onDiscard={discardDraftSell}
+                    />
+                  ))}
                   {filteredAndSortedSells.map(sell => {
                     const buy = buyById.get(sell.buyId);
                     const isProfit = sell.profit > 0;
@@ -623,11 +596,11 @@ export default function PhysicalPage() {
                         <td className={`border-y border-black/5 px-3 py-3.5 text-center text-xs sm:px-5 sm:py-4 ${cellBg}`}>
                           {paymentLabel(sell.paymentMode)}
                         </td>
-                        <td className={`border-y border-black/5 px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${cellBg}`}>
-                          {sell.sellValue.toLocaleString()}
+                        <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${cellBg}`}>
+                          <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" />
                         </td>
-                        <td className={`border-y border-black/5 px-3 py-3.5 text-center font-mono text-sm font-bold sm:px-5 sm:py-4 ${cellBg} ${sell.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {sell.profit > 0 ? '+' : ''}{sell.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${cellBg}`}>
+                          <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" />
                         </td>
                         <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${cellBg}`}>
                           <button
@@ -646,7 +619,7 @@ export default function PhysicalPage() {
                       </tr>
                     );
                   })}
-                  {filteredAndSortedSells.length === 0 && (
+                  {filteredAndSortedSells.length === 0 && draftSells.length === 0 && (
                     <tr>
                       <td colSpan={11} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
                         {sellSearchTerm || dateFilter !== 'all-time' ? 'No sales found matching your filters.' : 'No gold sales recorded yet.'}
@@ -657,6 +630,14 @@ export default function PhysicalPage() {
               </table>
 
               <div className="flex flex-col gap-4 py-4 px-4 md:hidden">
+                {draftSells.map(draft => (
+                  <DraftSellCard
+                    key={draft.draftId}
+                    sell={draft}
+                    sourceBuy={buyById.get(draft.buyId)}
+                    onDiscard={discardDraftSell}
+                  />
+                ))}
                 {filteredAndSortedSells.map(sell => {
                   const buy = buyById.get(sell.buyId);
                   const cardGradient = sell.profit > 0
@@ -675,19 +656,17 @@ export default function PhysicalPage() {
                           <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName || 'Sale'} className="text-sm" />
                           <p className="text-[10px] text-slate-400">{new Date(sell.date).toLocaleDateString()} · {sell.txnId || sell.id.slice(0, 8)}</p>
                         </div>
-                        <span className={`font-mono text-sm font-bold ${sell.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {sell.profit > 0 ? '+' : ''}{sell.profit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                        </span>
+                        <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="right" />
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div><span className="text-[10px] font-bold uppercase text-slate-400">Item</span><p>{buy?.item || '—'}</p></div>
-                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value</span><p className="font-bold">{sell.sellValue.toLocaleString()}</p></div>
+                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value</span><PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" /></div>
                         <div className="col-span-2"><span className="text-[10px] font-bold uppercase text-slate-400">Narration</span><p>{sell.narration || '—'}</p></div>
                       </div>
                     </div>
                   );
                 })}
-                {filteredAndSortedSells.length === 0 && (
+                {filteredAndSortedSells.length === 0 && draftSells.length === 0 && (
                   <div className="p-8 text-center text-sm text-slate-500">No gold sales recorded yet.</div>
                 )}
               </div>
@@ -741,6 +720,8 @@ export default function PhysicalPage() {
           availableBuys={availableStock}
           onClose={() => setIsDealModalOpen(false)}
           onSuccess={refetchData}
+          onSaveDraftBuy={saveDraftBuy}
+          onSaveDraftSell={saveDraftSell}
         />
       )}
 

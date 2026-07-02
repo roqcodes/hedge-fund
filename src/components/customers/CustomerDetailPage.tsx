@@ -376,7 +376,6 @@ export default function CustomerDetailPage() {
                 slug={slug}
                 buys={customerBuys}
                 sells={customerSells}
-                activeCurrency={activeCurrency}
               />
             )}
             {activeTab === 'marketplace' && (

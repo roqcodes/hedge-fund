@@ -3,21 +3,19 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PhysicalBuy, PhysicalSell } from '@/types';
-import { formatDateTime, formatMoneyValue } from '@/data/mockData';
+import { formatDateTime } from '@/data/mockData';
 import { tableWrap, dataTable } from '@/lib/ui';
 import CustomerSubTabs from './CustomerSubTabs';
+import PhysicalAmountDisplay from '@/components/physical/PhysicalAmountDisplay';
 
 interface Props {
   slug: string;
   buys: PhysicalBuy[];
   sells: PhysicalSell[];
-  activeCurrency: string;
 }
 
-export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurrency }: Props) {
+export default function CustomerPhysicalSalesTab({ slug, buys, sells }: Props) {
   const router = useRouter();
-  const fmtAed = (n: number) => formatMoneyValue(n, activeCurrency as 'AED');
-
   const tabs = useMemo(
     () => [
       { id: 'sold', label: 'Sold to Branch', count: buys.length },
@@ -50,7 +48,7 @@ export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurr
                   <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Date</th>
                   <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Item</th>
                   <th className="px-3 pb-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Pure Gram</th>
-                  <th className="px-3 pb-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">AED Received</th>
+                  <th className="px-3 pb-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount Received</th>
                 </tr>
               </thead>
               <tbody>
@@ -63,7 +61,9 @@ export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurr
                     <td className="border-y border-l border-black/5 bg-white px-3 py-3 text-xs first:rounded-l-2xl">{formatDateTime(buy.date).split(',')[0]}</td>
                     <td className="border-y border-black/5 bg-white px-3 py-3 text-sm font-medium">{buy.item || buy.particulars || '—'}</td>
                     <td className="border-y border-black/5 bg-white px-3 py-3 text-center text-sm font-bold">{buy.pureGram.toFixed(2)} g</td>
-                    <td className="border-y border-r border-black/5 bg-white px-3 py-3 text-center font-mono text-sm font-bold last:rounded-r-2xl">{fmtAed(buy.buyValue)}</td>
+                    <td className="border-y border-r border-black/5 bg-white px-3 py-3 last:rounded-r-2xl">
+                      <PhysicalAmountDisplay aedAmount={buy.buyValue} size="sm" />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -82,7 +82,7 @@ export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurr
                 <tr>
                   <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Date</th>
                   <th className="px-3 pb-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Narration</th>
-                  <th className="px-3 pb-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">AED Paid</th>
+                  <th className="px-3 pb-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount Paid</th>
                 </tr>
               </thead>
               <tbody>
@@ -94,7 +94,9 @@ export default function CustomerPhysicalSalesTab({ slug, buys, sells, activeCurr
                   >
                     <td className="border-y border-l border-black/5 bg-white px-3 py-3 text-xs first:rounded-l-2xl">{formatDateTime(sell.date).split(',')[0]}</td>
                     <td className="border-y border-black/5 bg-white px-3 py-3 text-sm">{sell.narration || sell.particulars || '—'}</td>
-                    <td className="border-y border-r border-black/5 bg-white px-3 py-3 text-center font-mono text-sm font-bold last:rounded-r-2xl">{fmtAed(sell.sellValue)}</td>
+                    <td className="border-y border-r border-black/5 bg-white px-3 py-3 last:rounded-r-2xl">
+                      <PhysicalAmountDisplay aedAmount={sell.sellValue} size="sm" />
+                    </td>
                   </tr>
                 ))}
               </tbody>

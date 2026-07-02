@@ -15,6 +15,7 @@ import {
 import { convertFromAed } from '@/lib/currency';
 import { useApp } from '@/context/AppContext';
 import PhysicalTxnPreview, { buildBuyPreviewRow, BUY_PREVIEW_COLUMNS } from './PhysicalTxnPreview';
+import { buildDraftBuy, type PhysicalDraftBuy } from '@/lib/physical/drafts';
 
 const InputField = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1">
@@ -55,9 +56,10 @@ interface PhysicalBuyModalProps {
   branchId: string;
   onClose: () => void;
   onSuccess: () => void;
+  onSaveDraft?: (draft: PhysicalDraftBuy) => void;
 }
 
-export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess }: Omit<PhysicalBuyModalProps, 'open'>) {
+export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess, onSaveDraft }: Omit<PhysicalBuyModalProps, 'open'>) {
   const { currencyRates } = useApp();
   const [form, setForm] = useState(defaultForm());
   const [customers, setCustomers] = useState<{ id: string; name: string; balance: string | number }[]>([]);
@@ -138,15 +140,9 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
     label: `${p.name}${p.sku ? ` · ${p.sku}` : ''}`,
   }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.item.trim()) {
-      alert('Item is required');
-      return;
-    }
-    setIsSaving(true);
+  const buildBuyPayload = () => {
     const dateTime = `${form.date}T${form.time}:00`;
-    const res = await dbAddPhysicalBuyAction({
+    return {
       branchId,
       date: dateTime,
       particulars: form.item.trim(),
@@ -178,7 +174,17 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
       tltIdrValue: calc.tltIdrValue,
       tltAedValue: calc.tltAedValue,
       totalUsdt: calc.totalUsdt,
-    });
+    };
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.item.trim()) {
+      alert('Item is required');
+      return;
+    }
+    setIsSaving(true);
+    const res = await dbAddPhysicalBuyAction(buildBuyPayload());
     setIsSaving(false);
     if (res.success) {
       onSuccess();
@@ -186,6 +192,15 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
     } else {
       alert(res.error);
     }
+  };
+
+  const handleSaveDraft = () => {
+    if (!form.item.trim()) {
+      alert('Item is required to save a draft');
+      return;
+    }
+    onSaveDraft?.(buildDraftBuy(buildBuyPayload()));
+    onClose();
   };
 
   const previewRow = buildBuyPreviewRow(form, calc);
@@ -375,6 +390,20 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-500 transition-colors rounded-xl hover:bg-slate-100 hover:text-slate-900">
             Cancel
           </button>
+          {onSaveDraft && (
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={isSaving}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-100 disabled:opacity-50"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+              </svg>
+              Save as Draft
+            </button>
+          )}
           <button type="submit" disabled={isSaving} className={`${btnPrimary} ${isSaving ? 'opacity-50' : ''}`}>
             {isSaving ? 'Saving...' : 'Create Deal'}
           </button>

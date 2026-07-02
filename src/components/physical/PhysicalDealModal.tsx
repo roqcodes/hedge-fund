@@ -5,6 +5,7 @@ import Modal from '@/components/ui/Modal';
 import PhysicalDealBuyForm from './PhysicalDealBuyForm';
 import PhysicalDealSellForm from './PhysicalDealSellForm';
 import { PhysicalBuy } from '@/types';
+import type { PhysicalDraftBuy, PhysicalDraftSell } from '@/lib/physical/drafts';
 
 interface PhysicalDealModalProps {
   open: boolean;
@@ -13,6 +14,8 @@ interface PhysicalDealModalProps {
   availableBuys?: PhysicalBuy[];
   onClose: () => void;
   onSuccess: () => void;
+  onSaveDraftBuy?: (draft: PhysicalDraftBuy) => void;
+  onSaveDraftSell?: (draft: PhysicalDraftSell) => void;
 }
 
 export default function PhysicalDealModal({
@@ -22,6 +25,8 @@ export default function PhysicalDealModal({
   availableBuys = [],
   onClose,
   onSuccess,
+  onSaveDraftBuy,
+  onSaveDraftSell,
 }: PhysicalDealModalProps) {
   const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
 
@@ -76,6 +81,7 @@ export default function PhysicalDealModal({
             branchId={branchId}
             onClose={onClose}
             onSuccess={onSuccess}
+            onSaveDraft={onSaveDraftBuy}
           />
         ) : (
           <PhysicalDealSellForm
@@ -83,6 +89,7 @@ export default function PhysicalDealModal({
             availableBuys={availableBuys}
             onClose={onClose}
             onSuccess={onSuccess}
+            onSaveDraft={onSaveDraftSell}
           />
         )}
       </div>

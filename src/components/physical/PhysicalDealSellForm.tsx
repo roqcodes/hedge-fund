@@ -21,6 +21,7 @@ import { useApp } from '@/context/AppContext';
 import PhysicalTxnPreview, { buildSellPreviewRow, SELL_PREVIEW_COLUMNS } from './PhysicalTxnPreview';
 import StockMetalSelect from './StockMetalSelect';
 import { PhysicalBuy } from '@/types';
+import { buildDraftSell, type PhysicalDraftSell } from '@/lib/physical/drafts';
 
 const InputField = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1">
@@ -40,6 +41,7 @@ interface PhysicalStockSellModalProps {
   initialBuyId?: string;
   onClose: () => void;
   onSuccess: () => void;
+  onSaveDraft?: (draft: PhysicalDraftSell) => void;
 }
 
 export default function PhysicalDealSellForm({
@@ -48,6 +50,7 @@ export default function PhysicalDealSellForm({
   initialBuyId,
   onClose,
   onSuccess,
+  onSaveDraft,
 }: PhysicalStockSellModalProps) {
   const { currencyRates } = useApp();
   const [selectedBuyId, setSelectedBuyId] = useState('');
@@ -163,22 +166,12 @@ export default function PhysicalDealSellForm({
   const maxRemaining = selectedBuy?.remainingWeight ?? 0;
   const overLimit = calc.pureGram > maxRemaining;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedBuy) {
-      alert('Please select a stock metal');
-      return;
-    }
-    if (overLimit) {
-      alert(`Cannot sell more than remaining weight (${maxRemaining.toFixed(3)}g)`);
-      return;
-    }
-    setIsSaving(true);
+  const buildSellPayload = (buy: PhysicalBuy) => {
     const dateTime = `${form.date}T${form.time}:00`;
-    const res = await dbAddPhysicalSellAction({
-      buyId: selectedBuy.id,
+    return {
+      buyId: buy.id,
       date: dateTime,
-      particulars: form.narration.trim() || selectedBuy.item || selectedBuy.particulars,
+      particulars: form.narration.trim() || buy.item || buy.particulars,
       grossWeight: calc.grossWeight,
       pureConversion: calc.touch,
       pureGram: calc.pureGram,
@@ -207,7 +200,21 @@ export default function PhysicalDealSellForm({
       totalUsdt: calc.totalUsdt,
       costValue: calc.costValue,
       margin: calc.margin,
-    });
+    };
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBuy) {
+      alert('Please select a stock metal');
+      return;
+    }
+    if (overLimit) {
+      alert(`Cannot sell more than remaining weight (${maxRemaining.toFixed(3)}g)`);
+      return;
+    }
+    setIsSaving(true);
+    const res = await dbAddPhysicalSellAction(buildSellPayload(selectedBuy));
     setIsSaving(false);
     if (res.success) {
       onSuccess();
@@ -215,6 +222,19 @@ export default function PhysicalDealSellForm({
     } else {
       alert(res.error);
     }
+  };
+
+  const handleSaveDraft = () => {
+    if (!selectedBuy) {
+      alert('Please select a stock metal to save a draft');
+      return;
+    }
+    if (overLimit) {
+      alert(`Cannot sell more than remaining weight (${maxRemaining.toFixed(3)}g)`);
+      return;
+    }
+    onSaveDraft?.(buildDraftSell({ ...buildSellPayload(selectedBuy), profit: calc.profit }));
+    onClose();
   };
 
   const previewRow = buildSellPreviewRow(form, calc);
@@ -391,6 +411,20 @@ export default function PhysicalDealSellForm({
         <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-500 transition-colors rounded-xl hover:bg-slate-100 hover:text-slate-900">
           Cancel
         </button>
+        {onSaveDraft && (
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={isSaving || !selectedBuy || overLimit}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-100 disabled:opacity-50"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
+            Save as Draft
+          </button>
+        )}
         <button type="submit" disabled={isSaving || !selectedBuy || overLimit} className={`${btnPrimary} ${isSaving || !selectedBuy ? 'opacity-50' : ''}`}>
           {isSaving ? 'Saving...' : 'Register Sell'}
         </button>
