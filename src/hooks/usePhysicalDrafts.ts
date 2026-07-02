@@ -1,72 +1,106 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  addDraftBuy,
-  addDraftSell,
-  loadDrafts,
-  registerDraftTab,
-  removeDraftBuy,
-  removeDraftSell,
-  subscribeDrafts,
+  dbAddPhysicalDraftBuyAction,
+  dbAddPhysicalDraftSellAction,
+  dbDeletePhysicalDraftBuyAction,
+  dbDeletePhysicalDraftSellAction,
+  dbGetPhysicalDraftsAction,
+} from '@/app/actions/physicalActions';
+import {
+  EMPTY_DRAFT_STATE,
   type PhysicalDraftBuy,
   type PhysicalDraftSell,
   type PhysicalDraftState,
 } from '@/lib/physical/drafts';
 
-const EMPTY: PhysicalDraftState = { buys: [], sells: [] };
-
 /**
- * Local, per-branch draft store for physical deals. Drafts are shared across
- * open tabs of the same branch and cleared once all tabs are closed.
+ * Per-branch draft store for physical deals, persisted in the database.
+ *
+ * Drafts live in dedicated tables and never affect balances, customer
+ * ledgers/KYC, KPIs or the sellable-stock list — they simply persist across
+ * refreshes and navigation until explicitly discarded. UI updates optimistically
+ * and reconciles with the server on failure.
  */
-export function usePhysicalDrafts(slug: string | undefined) {
-  const [state, setState] = useState<PhysicalDraftState>(EMPTY);
+export function usePhysicalDrafts(branchId: string | undefined) {
+  const [state, setState] = useState<PhysicalDraftState>(EMPTY_DRAFT_STATE);
+  const branchRef = useRef(branchId);
+  branchRef.current = branchId;
 
-  useEffect(() => {
-    if (!slug) {
-      setState(EMPTY);
+  const reload = useCallback(async () => {
+    if (!branchId) {
+      setState(EMPTY_DRAFT_STATE);
       return;
     }
-    const stopTab = registerDraftTab(slug);
-    setState(loadDrafts(slug));
-    const unsubscribe = subscribeDrafts(slug, () => setState(loadDrafts(slug)));
+    const res = await dbGetPhysicalDraftsAction(branchId);
+    if (res.success && res.data && branchRef.current === branchId) {
+      setState(res.data);
+    }
+  }, [branchId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!branchId) {
+      setState(EMPTY_DRAFT_STATE);
+      return;
+    }
+    dbGetPhysicalDraftsAction(branchId).then(res => {
+      if (active && res.success && res.data) setState(res.data);
+    });
     return () => {
-      unsubscribe();
-      stopTab();
+      active = false;
     };
-  }, [slug]);
+  }, [branchId]);
 
   const saveDraftBuy = useCallback(
-    (buy: PhysicalDraftBuy) => {
-      if (!slug) return;
-      setState(addDraftBuy(slug, buy));
+    async (buy: PhysicalDraftBuy) => {
+      if (!branchId) return;
+      setState(prev => ({ ...prev, buys: [buy, ...prev.buys] }));
+      const res = await dbAddPhysicalDraftBuyAction(branchId, buy);
+      if (!res.success) {
+        alert(res.error || 'Failed to save draft');
+        reload();
+      }
     },
-    [slug],
+    [branchId, reload],
   );
 
   const saveDraftSell = useCallback(
-    (sell: PhysicalDraftSell) => {
-      if (!slug) return;
-      setState(addDraftSell(slug, sell));
+    async (sell: PhysicalDraftSell) => {
+      if (!branchId) return;
+      setState(prev => ({ ...prev, sells: [sell, ...prev.sells] }));
+      const res = await dbAddPhysicalDraftSellAction(branchId, sell);
+      if (!res.success) {
+        alert(res.error || 'Failed to save draft');
+        reload();
+      }
     },
-    [slug],
+    [branchId, reload],
   );
 
   const discardDraftBuy = useCallback(
-    (draftId: string) => {
-      if (!slug) return;
-      setState(removeDraftBuy(slug, draftId));
+    async (draftId: string) => {
+      setState(prev => ({ ...prev, buys: prev.buys.filter(b => b.draftId !== draftId) }));
+      const res = await dbDeletePhysicalDraftBuyAction(draftId);
+      if (!res.success) {
+        alert(res.error || 'Failed to discard draft');
+        reload();
+      }
     },
-    [slug],
+    [reload],
   );
 
   const discardDraftSell = useCallback(
-    (draftId: string) => {
-      if (!slug) return;
-      setState(removeDraftSell(slug, draftId));
+    async (draftId: string) => {
+      setState(prev => ({ ...prev, sells: prev.sells.filter(s => s.draftId !== draftId) }));
+      const res = await dbDeletePhysicalDraftSellAction(draftId);
+      if (!res.success) {
+        alert(res.error || 'Failed to discard draft');
+        reload();
+      }
     },
-    [slug],
+    [reload],
   );
 
   return {

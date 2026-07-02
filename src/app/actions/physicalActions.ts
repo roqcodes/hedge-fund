@@ -5,6 +5,7 @@ import { DbActionResult } from './dbActions';
 import { PhysicalBalance, PhysicalBuy, PhysicalSell } from '@/types';
 import { mapPhysicalBuyRow, mapPhysicalSellRow } from '@/lib/physicalMappers';
 import { adjustCustomerBalanceInTx } from './customerActions';
+import type { PhysicalDraftBuy, PhysicalDraftSell } from '@/lib/physical/drafts';
 
 export async function dbGetPhysicalBalanceAction(branchId: string): Promise<DbActionResult<PhysicalBalance>> {
   try {
@@ -406,5 +407,93 @@ export async function dbDeletePhysicalBuyAction(buyId: string): Promise<DbAction
     return { success: false, error: message };
   } finally {
     client.release();
+  }
+}
+
+// ─── Physical deal drafts ───────────────────────────────────────────────────
+//
+// Drafts are a per-branch scratchpad. They live in dedicated tables and are
+// intentionally NOT joined into balances, customer ledgers/KYC, KPIs, exports
+// or the sellable-stock list. They simply persist until explicitly discarded.
+
+export interface PhysicalDraftsResult {
+  buys: PhysicalDraftBuy[];
+  sells: PhysicalDraftSell[];
+}
+
+export async function dbGetPhysicalDraftsAction(
+  branchId: string,
+): Promise<DbActionResult<PhysicalDraftsResult>> {
+  try {
+    const [buysRes, sellsRes] = await Promise.all([
+      query('SELECT payload FROM physical_draft_buys WHERE branch_id = $1 ORDER BY created_at DESC', [branchId]),
+      query('SELECT payload FROM physical_draft_sells WHERE branch_id = $1 ORDER BY created_at DESC', [branchId]),
+    ]);
+    return {
+      success: true,
+      data: {
+        buys: buysRes.rows.map(r => r.payload as PhysicalDraftBuy),
+        sells: sellsRes.rows.map(r => r.payload as PhysicalDraftSell),
+      },
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  }
+}
+
+export async function dbAddPhysicalDraftBuyAction(
+  branchId: string,
+  draft: PhysicalDraftBuy,
+): Promise<DbActionResult<null>> {
+  try {
+    await query(
+      `INSERT INTO physical_draft_buys (draft_id, branch_id, payload)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (draft_id) DO UPDATE SET payload = EXCLUDED.payload`,
+      [draft.draftId, branchId, JSON.stringify(draft)],
+    );
+    return { success: true, data: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  }
+}
+
+export async function dbAddPhysicalDraftSellAction(
+  branchId: string,
+  draft: PhysicalDraftSell,
+): Promise<DbActionResult<null>> {
+  try {
+    await query(
+      `INSERT INTO physical_draft_sells (draft_id, branch_id, buy_id, payload)
+       VALUES ($1, $2, $3, $4::jsonb)
+       ON CONFLICT (draft_id) DO UPDATE SET payload = EXCLUDED.payload, buy_id = EXCLUDED.buy_id`,
+      [draft.draftId, branchId, draft.buyId ?? null, JSON.stringify(draft)],
+    );
+    return { success: true, data: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  }
+}
+
+export async function dbDeletePhysicalDraftBuyAction(draftId: string): Promise<DbActionResult<null>> {
+  try {
+    await query('DELETE FROM physical_draft_buys WHERE draft_id = $1', [draftId]);
+    return { success: true, data: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  }
+}
+
+export async function dbDeletePhysicalDraftSellAction(draftId: string): Promise<DbActionResult<null>> {
+  try {
+    await query('DELETE FROM physical_draft_sells WHERE draft_id = $1', [draftId]);
+    return { success: true, data: null };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
   }
 }

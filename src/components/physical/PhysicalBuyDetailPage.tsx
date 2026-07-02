@@ -12,6 +12,7 @@ import {
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
+import { usePhysicalDrafts } from '@/hooks/usePhysicalDrafts';
 import PhysicalSellModal from './PhysicalSellModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import CustomerLink from '@/components/customers/CustomerLink';
@@ -31,6 +32,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
 
   const buy = physicalBuys.find(b => b.id === buyId) || null;
   const sells = physicalSells.filter(s => s.buyId === buyId);
+  const { saveDraftSell } = usePhysicalDrafts(buy?.branchId);
 
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -506,6 +508,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           buy={buy}
           onClose={() => setIsSellModalOpen(false)}
           onSuccess={handleSellSuccess}
+          onSaveDraft={saveDraftSell}
         />
       )}
     </>

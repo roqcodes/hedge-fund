@@ -688,6 +688,27 @@ ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(15, 4);
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS cost_value DECIMAL(15, 2);
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS margin DECIMAL(15, 4);
 
+-- Physical deal drafts (scratchpad only).
+-- Fully isolated from physical_buys/physical_sells: drafts never affect
+-- balances, customer ledgers/KYC, KPIs or the sellable-stock list. The full
+-- draft object is stored as JSONB so the shape can evolve without migrations.
+CREATE TABLE IF NOT EXISTS physical_draft_buys (
+    draft_id   VARCHAR(64) PRIMARY KEY,
+    branch_id  VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    payload    JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_physical_draft_buys_branch ON physical_draft_buys(branch_id);
+
+CREATE TABLE IF NOT EXISTS physical_draft_sells (
+    draft_id   VARCHAR(64) PRIMARY KEY,
+    branch_id  VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    buy_id     VARCHAR(50) REFERENCES physical_buys(id) ON DELETE CASCADE,
+    payload    JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_physical_draft_sells_branch ON physical_draft_sells(branch_id);
+
 -- USDT module
 CREATE TABLE IF NOT EXISTS usdt_branch_settings (
     branch_id VARCHAR(50) PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,

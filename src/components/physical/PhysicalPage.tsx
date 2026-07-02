@@ -54,7 +54,7 @@ export default function PhysicalPage() {
     saveDraftSell,
     discardDraftBuy,
     discardDraftSell,
-  } = usePhysicalDrafts(branchSlug);
+  } = usePhysicalDrafts(branchId);
 
   const balance = physicalBalances.find(b => b.branchId === branchId) || null;
   const buys = physicalBuys.filter(b => b.branchId === branchId);
