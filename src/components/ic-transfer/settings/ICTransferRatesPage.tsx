@@ -108,7 +108,7 @@ export default function ICTransferRatesPage() {
   const handleSave = async (values: RateGroupFormValues) => {
     const { name, country, region, currency, saleRate, conversionRate, selectedCustomers, selectedBranches } = values;
 
-    if (!name || !country || !region || !currency) return;
+    if (!name || !country || !currency) return;
 
     if (!WORLD_CURRENCIES.includes(currency.toUpperCase())) {
       showToast('Please select a valid currency from the list.', 'error');
