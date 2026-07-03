@@ -496,7 +496,6 @@ export interface ICRateGroup {
   id: string;
   name: string;
   country: string;
-  region: string;
   currency: string;
   saleRate: number;
   conversionRate: number;

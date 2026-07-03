@@ -72,7 +72,6 @@ export default function ICTransferRatesPage() {
       ? icRateGroups.filter(group =>
           group.name.toLowerCase().includes(q) ||
           group.country.toLowerCase().includes(q) ||
-          group.region.toLowerCase().includes(q) ||
           group.currency.toLowerCase().includes(q),
         )
       : icRateGroups;
@@ -109,7 +108,7 @@ export default function ICTransferRatesPage() {
   };
 
   const handleSave = async (values: RateGroupFormValues) => {
-    const { name, country, region, currency } = values;
+    const { name, country, currency } = values;
 
     if (!name || !country || !currency) return;
 
@@ -126,7 +125,6 @@ export default function ICTransferRatesPage() {
         editingGroup.id,
         name,
         country,
-        region,
         currency.toUpperCase(),
         editingGroup.saleRate,
         editingGroup.conversionRate ?? 1,
@@ -135,7 +133,6 @@ export default function ICTransferRatesPage() {
       const newGroupId = await addICRateGroup(
         name,
         country,
-        region,
         currency.toUpperCase(),
         0,
         1,

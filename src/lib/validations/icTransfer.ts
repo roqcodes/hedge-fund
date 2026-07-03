@@ -3,7 +3,6 @@ import { z } from 'zod';
 const idSchema = z.string().uuid('Invalid UUID format');
 const nameSchema = z.string().min(1, 'Name is required');
 const countrySchema = z.string().min(1, 'Country is required');
-const regionSchema = z.string().min(1, 'Region is required');
 const currencySchema = z.string().min(1, 'Currency is required');
 
 export const addRegionSchema = z.object({
@@ -46,7 +45,6 @@ export const updateWarehouseSchema = addWarehouseSchema.extend({
 export const addRateGroupSchema = z.object({
   name: nameSchema,
   country: countrySchema,
-  region: regionSchema,
   currency: currencySchema,
   saleRate: z.number().nonnegative(),
   conversionRate: z.number().positive(),

@@ -29,7 +29,6 @@ const WORLD_CURRENCIES = [
 export type RateGroupFormValues = {
   name: string;
   country: string;
-  region: string;
   currency: string;
 };
 
@@ -54,7 +53,6 @@ export default function RateGroupFormModal({
 
   const [name, setName] = useState('');
   const [country, setCountry] = useState('');
-  const [region, setRegion] = useState('');
   const [currency, setCurrency] = useState('');
 
   useEffect(() => {
@@ -62,12 +60,10 @@ export default function RateGroupFormModal({
     if (initialGroup) {
       setName(initialGroup.name);
       setCountry(initialGroup.country);
-      setRegion(initialGroup.region);
       setCurrency(initialGroup.currency);
     } else {
       setName('');
       setCountry('');
-      setRegion('');
       setCurrency('');
     }
   }, [open, initialGroup]);
@@ -81,7 +77,7 @@ export default function RateGroupFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name, country, region, currency });
+    onSubmit({ name, country, currency });
   };
 
   return (

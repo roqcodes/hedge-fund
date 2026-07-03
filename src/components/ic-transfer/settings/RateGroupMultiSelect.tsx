@@ -51,7 +51,6 @@ export default function RateGroupMultiSelect({
       g =>
         g.name.toLowerCase().includes(q) ||
         g.country.toLowerCase().includes(q) ||
-        g.region.toLowerCase().includes(q) ||
         g.currency.toLowerCase().includes(q),
     );
   }, [groups, search]);
@@ -176,7 +175,7 @@ export default function RateGroupMultiSelect({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{group.name}</span>
                       <span className="block truncate text-[11px] text-slate-400">
-                        {group.region}, {group.country} · {group.currency}
+                        {group.country} · {group.currency}
                       </span>
                     </span>
                   </button>

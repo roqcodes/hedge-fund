@@ -41,7 +41,6 @@ export function mapICRateGroupRow(row: any): ICRateGroup {
     id: row.id,
     name: row.name,
     country: row.country,
-    region: row.region,
     currency: row.currency,
     saleRate: parseFloat(row.sale_rate),
     conversionRate: row.conversion_rate ? parseFloat(row.conversion_rate) : 1,

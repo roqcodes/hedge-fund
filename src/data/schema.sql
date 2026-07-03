@@ -613,7 +613,6 @@ CREATE TABLE IF NOT EXISTS ic_rate_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     country VARCHAR(255) NOT NULL,
-    region VARCHAR(255) NOT NULL,
     currency VARCHAR(10) NOT NULL,
     sale_rate DECIMAL(15, 6) NOT NULL DEFAULT 0,
     conversion_rate DECIMAL(15, 6) NOT NULL DEFAULT 1,

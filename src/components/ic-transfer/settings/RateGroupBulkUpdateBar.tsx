@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { btnPrimary, formInput, formLabel } from '@/lib/ui';
 import RateGroupMultiSelect from './RateGroupMultiSelect';
+import { getCurrencyUnitRate, formatAmount } from '@/lib/icTransfer/rateCalculations';
 import type { ICRateGroup } from '@/types';
 
 type Props = {
@@ -40,6 +41,13 @@ export default function RateGroupBulkUpdateBar({ groups, isSaving, onSave }: Pro
     Number.isFinite(parseFloat(saleRate)) &&
     Number.isFinite(parseFloat(conversionRate)) &&
     !isSaving;
+
+  const convertedRate = useMemo(() => {
+    const saleRateNum = parseFloat(saleRate);
+    const conversionRateNum = parseFloat(conversionRate);
+    if (!Number.isFinite(saleRateNum) || !Number.isFinite(conversionRateNum)) return 0;
+    return getCurrencyUnitRate(saleRateNum, conversionRateNum);
+  }, [saleRate, conversionRate]);
 
   return (
     <form
@@ -84,6 +92,13 @@ export default function RateGroupBulkUpdateBar({ groups, isSaving, onSave }: Pro
             placeholder="1.000000"
             required
           />
+        </div>
+
+        <div className={`${inlineFieldClass} w-full md:w-[132px]`}>
+          <label className={formLabel}>Converted Rate</label>
+          <div className={`${formInput} flex items-center bg-slate-50 font-semibold tabular-nums text-slate-900`}>
+            {formatAmount(convertedRate, 6)}
+          </div>
         </div>
 
         <RateGroupMultiSelect

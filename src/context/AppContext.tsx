@@ -230,8 +230,8 @@ interface AppContextType extends AppState {
   addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   updateICWarehouse: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   deleteICWarehouse: (id: string) => Promise<boolean>;
-  addICRateGroup: (name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => Promise<string | null>;
-  updateICRateGroup: (id: string, name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => Promise<boolean>;
+  addICRateGroup: (name: string, country: string, currency: string, saleRate: number, conversionRate: number) => Promise<string | null>;
+  updateICRateGroup: (id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number) => Promise<boolean>;
   bulkUpdateICRateGroupRates: (groupIds: string[], saleRate: number, conversionRate: number) => Promise<boolean>;
   deleteICRateGroup: (id: string) => Promise<boolean>;
   setICRateGroupCustomers: (groupId: string, customerIds: string[]) => Promise<boolean>;
@@ -1546,9 +1546,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const addICRateGroup = useCallback(async (name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => {
+  const addICRateGroup = useCallback(async (name: string, country: string, currency: string, saleRate: number, conversionRate: number) => {
     try {
-      const res = await dbAddICRateGroupAction(name, country, region, currency, saleRate, conversionRate);
+      const res = await dbAddICRateGroupAction(name, country, currency, saleRate, conversionRate);
       if (res.success && res.data) {
         setState(s => ({ ...s, icRateGroups: [res.data!, ...s.icRateGroups] }));
         showToast('Rate group added successfully');
@@ -1563,9 +1563,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const updateICRateGroup = useCallback(async (id: string, name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number) => {
+  const updateICRateGroup = useCallback(async (id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number) => {
     try {
-      const res = await dbUpdateICRateGroupAction(id, name, country, region, currency, saleRate, conversionRate);
+      const res = await dbUpdateICRateGroupAction(id, name, country, currency, saleRate, conversionRate);
       if (res.success && res.data) {
         setState(s => ({ ...s, icRateGroups: s.icRateGroups.map(g => g.id === id ? res.data! : g) }));
         showToast('Rate group updated successfully');

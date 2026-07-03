@@ -7,6 +7,7 @@ import {
   formatRateGroupUpdatedAt,
   isRateGroupUpdatedToday,
 } from '@/lib/icTransfer/rateGroupUtils';
+import { getCurrencyUnitRate, formatAmount } from '@/lib/icTransfer/rateCalculations';
 import type { ICRateGroup } from '@/types';
 
 type Props = {
@@ -35,16 +36,16 @@ export default function RateGroupsTable({
 
   return (
     <div className={tableWrap}>
-      <table className={`${dataTable} min-w-[1080px]`}>
+      <table className={`${dataTable} min-w-[1120px]`}>
         <thead>
           <tr>
             {[
               'Group',
               'Country',
-              'Region',
               'Currency',
               'Sale Rate',
               'Conversion',
+              'Converted Rate',
               'Last Updated',
               'Branches',
               'Customers',
@@ -84,9 +85,6 @@ export default function RateGroupsTable({
                 <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
                   {group.country}
                 </td>
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
-                  {group.region}
-                </td>
                 <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold text-slate-800 sm:px-4 sm:py-4 ${cellBg}`}>
                   {group.currency}
                 </td>
@@ -95,6 +93,12 @@ export default function RateGroupsTable({
                 </td>
                 <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold tabular-nums text-indigo-700 sm:px-4 sm:py-4 ${cellBg}`}>
                   {(group.conversionRate ?? 1).toLocaleString()}
+                </td>
+                <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-bold tabular-nums text-slate-900 sm:px-4 sm:py-4 ${cellBg}`}>
+                  <span className="inline-flex items-baseline gap-1">
+                    {formatAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1), 4)}
+                    <span className="text-[11px] font-medium text-slate-400">{group.currency}</span>
+                  </span>
                 </td>
                 <td className={`border-y border-black/5 px-3 py-3.5 text-sm sm:px-4 sm:py-4 ${cellBg} ${stale ? 'font-medium text-orange-800' : 'text-slate-500'}`}>
                   {formatRateGroupUpdatedAt(group.updatedAt)}

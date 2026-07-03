@@ -107,7 +107,7 @@ async function assertAdminRole(): Promise<{ error: string } | { enteredBy: strin
 export async function dbAddICRegionAction(name: string, country: string): Promise<DbActionResult<ICRegion>> {
   try {
     const parsed = addRegionSchema.parse({ name, country });
-    const id = `reg-${crypto.randomUUID().slice(0, 8)}`;
+    const id = crypto.randomUUID();
     const res = await query(`INSERT INTO ic_regions (id, name, country) VALUES ($1, $2, $3) RETURNING *`, [id, parsed.name, parsed.country]);
     return { success: true, data: mapICRegionRow(res.rows[0]) };
   } catch (error: unknown) {
@@ -145,7 +145,7 @@ export async function dbAddICSupplierAction(
 ): Promise<DbActionResult<ICSupplier>> {
   try {
     const parsed = addSupplierSchema.parse({ name, phone, commission, regionId, email, address });
-    const id = `sup-${crypto.randomUUID().slice(0, 8)}`;
+    const id = crypto.randomUUID();
     const res = await query(
       `INSERT INTO ic_suppliers (id, name, phone, commission, region_id, email, address) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [id, parsed.name, parsed.phone || null, parsed.commission || 0, parsed.regionId || null, parsed.email || null, parsed.address || null]
@@ -191,7 +191,7 @@ export async function dbAddICWarehouseAction(
 ): Promise<DbActionResult<ICWarehouse>> {
   try {
     const parsed = addWarehouseSchema.parse({ name, phone, commission, regionId, email, address });
-    const id = `wh-${crypto.randomUUID().slice(0, 8)}`;
+    const id = crypto.randomUUID();
     const res = await query(
       `INSERT INTO ic_warehouses (id, name, phone, commission, region_id, email, address) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [id, parsed.name, parsed.phone || null, parsed.commission || 0, parsed.regionId || null, parsed.email || null, parsed.address || null]
@@ -233,14 +233,14 @@ export async function dbDeleteICWarehouseAction(id: string): Promise<DbActionRes
 }
 
 export async function dbAddICRateGroupAction(
-  name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number
+  name: string, country: string, currency: string, saleRate: number, conversionRate: number
 ): Promise<DbActionResult<import('@/types').ICRateGroup>> {
   try {
-    const parsed = addRateGroupSchema.parse({ name, country, region, currency, saleRate, conversionRate });
-    const id = `irgp-${crypto.randomUUID().slice(0, 8)}`;
+    const parsed = addRateGroupSchema.parse({ name, country, currency, saleRate, conversionRate });
+    const id = crypto.randomUUID();
     const res = await query(
-      `INSERT INTO ic_rate_groups (id, name, country, region, currency, sale_rate, conversion_rate) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [id, parsed.name, parsed.country, parsed.region, parsed.currency, parsed.saleRate, parsed.conversionRate]
+      `INSERT INTO ic_rate_groups (id, name, country, currency, sale_rate, conversion_rate) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [id, parsed.name, parsed.country, parsed.currency, parsed.saleRate, parsed.conversionRate]
     );
     return { success: true, data: mapICRateGroupRow(res.rows[0]) };
   } catch (error: unknown) {
@@ -250,13 +250,13 @@ export async function dbAddICRateGroupAction(
 }
 
 export async function dbUpdateICRateGroupAction(
-  id: string, name: string, country: string, region: string, currency: string, saleRate: number, conversionRate: number
+  id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number
 ): Promise<DbActionResult<import('@/types').ICRateGroup>> {
   try {
-    const parsed = updateRateGroupSchema.parse({ id, name, country, region, currency, saleRate, conversionRate });
+    const parsed = updateRateGroupSchema.parse({ id, name, country, currency, saleRate, conversionRate });
     const res = await query(
-      `UPDATE ic_rate_groups SET name=$1, country=$2, region=$3, currency=$4, sale_rate=$5, conversion_rate=$6, updated_at=CURRENT_TIMESTAMP WHERE id=$7 RETURNING *`,
-      [parsed.name, parsed.country, parsed.region, parsed.currency, parsed.saleRate, parsed.conversionRate, parsed.id]
+      `UPDATE ic_rate_groups SET name=$1, country=$2, currency=$3, sale_rate=$4, conversion_rate=$5, updated_at=CURRENT_TIMESTAMP WHERE id=$6 RETURNING *`,
+      [parsed.name, parsed.country, parsed.currency, parsed.saleRate, parsed.conversionRate, parsed.id]
     );
     if (res.rowCount === 0) return { success: false, error: 'Group not found' };
     return { success: true, data: mapICRateGroupRow(res.rows[0]) };

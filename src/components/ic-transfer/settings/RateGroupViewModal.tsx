@@ -78,7 +78,6 @@ export default function RateGroupViewModal({ group, branches, customers, onClose
           <DetailRow label="Group Name" value={group.name} />
           <DetailRow label="Currency" value={group.currency} />
           <DetailRow label="Country" value={group.country} />
-          <DetailRow label="Region" value={group.region} />
           <DetailRow label="Sale Rate (AED)" value={group.saleRate.toLocaleString()} />
           <DetailRow
             label={`Conversion (AED → ${group.currency})`}
