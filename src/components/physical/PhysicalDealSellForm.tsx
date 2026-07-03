@@ -219,6 +219,10 @@ export default function PhysicalDealSellForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.customerName.trim()) {
+      alert('Customer name is required');
+      return;
+    }
     if (!selectedBuy) {
       alert('Please select a stock metal');
       return;
@@ -239,6 +243,10 @@ export default function PhysicalDealSellForm({
   };
 
   const handleSaveDraft = () => {
+    if (!form.customerName.trim()) {
+      alert('Customer name is required to save a draft');
+      return;
+    }
     if (!selectedBuy) {
       alert('Please select a stock metal to save a draft');
       return;

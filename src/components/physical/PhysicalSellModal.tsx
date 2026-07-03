@@ -178,6 +178,10 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.customerName.trim()) {
+      alert('Customer name is required');
+      return;
+    }
     if (overLimit) {
       alert(`Cannot sell more than remaining weight (${maxRemaining.toFixed(3)}g)`);
       return;
@@ -194,6 +198,10 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
   };
 
   const handleSaveDraft = () => {
+    if (!form.customerName.trim()) {
+      alert('Customer name is required to save a draft');
+      return;
+    }
     if (overLimit) {
       alert(`Cannot sell more than remaining weight (${maxRemaining.toFixed(3)}g)`);
       return;

@@ -179,6 +179,10 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.customerName.trim()) {
+      alert('Customer name is required');
+      return;
+    }
     if (!form.item.trim()) {
       alert('Item is required');
       return;
@@ -195,6 +199,10 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
   };
 
   const handleSaveDraft = () => {
+    if (!form.customerName.trim()) {
+      alert('Customer name is required to save a draft');
+      return;
+    }
     if (!form.item.trim()) {
       alert('Item is required to save a draft');
       return;

@@ -12,6 +12,8 @@ import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import PhysicalExportModal from './PhysicalExportModal';
 import PhysicalDealModal from './PhysicalDealModal';
+import PhysicalBuyEditModal from './PhysicalBuyEditModal';
+import PhysicalSellDetailModal from './PhysicalSellDetailModal';
 import PhysicalKpiGrid from './PhysicalKpiGrid';
 import PhysicalAmountDisplay from './PhysicalAmountDisplay';
 import { DraftBuyRow, DraftBuyCard, DraftSellRow, DraftSellCard } from './DraftRows';
@@ -19,6 +21,7 @@ import { computePhysicalKpiMetrics } from '@/lib/physical/kpiMetrics';
 import { usePhysicalDrafts } from '@/hooks/usePhysicalDrafts';
 import CustomerLink from '@/components/customers/CustomerLink';
 import { useWriteAccess } from '@/context/RbacWriteContext';
+import { physicalPaymentLabel } from '@/lib/physical/paymentLabel';
 import {
   btnPrimary, btnSecondary,
   pageHeader,
@@ -62,6 +65,8 @@ export default function PhysicalPage() {
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [editingBuy, setEditingBuy] = useState<PhysicalBuy | null>(null);
+  const [selectedSell, setSelectedSell] = useState<PhysicalSell | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sellSearchTerm, setSellSearchTerm] = useState('');
@@ -251,15 +256,9 @@ export default function PhysicalPage() {
     );
   };
 
-  const paymentLabel = (mode?: string) => {
-    const map: Record<string, string> = {
-      CASH: 'Cash',
-      BANK_TRANSFER: 'Bank / Transfer',
-      USDT: 'USDT',
-      MULTI_CURRENCY: 'Multy Currency',
-    };
-    return mode ? map[mode] ?? mode : '—';
-  };
+  const paymentLabel = physicalPaymentLabel;
+
+  const openSellDetails = (sell: PhysicalSell) => setSelectedSell(sell);
 
   return (
     <>
@@ -416,18 +415,37 @@ export default function PhysicalPage() {
                         {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
                       </td>
                       <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        <button
-                          type="button"
-                          className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/${branchSlug}/physical-deals/${buy.id}`);
-                          }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            title="Edit deal"
+                            className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!canWrite}
+                            {...wp()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (canWrite) setEditingBuy(buy);
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            title="View details"
+                            className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/${branchSlug}/physical-deals/${buy.id}`);
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -481,9 +499,27 @@ export default function PhysicalPage() {
                     
                     <div className="mt-1 flex items-center justify-between border-t border-slate-50 pt-3 text-sm font-bold text-accent group-hover:text-accent-hover">
                       <span>View Details</span>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14M12 5l7 7-7 7" />
-                      </svg>
+                      <div className="flex items-center gap-2">
+                        {canWrite ? (
+                          <button
+                            type="button"
+                            title="Edit deal"
+                            className="rounded-lg bg-slate-100 p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setEditingBuy(buy);
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+                            </svg>
+                          </button>
+                        ) : null}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -570,7 +606,7 @@ export default function PhysicalPage() {
                       <tr
                         key={sell.id}
                         className={`cursor-pointer hover:bg-slate-50/80 transition-colors ${rowGradient}`}
-                        onClick={() => router.push(`/${branchSlug}/physical-deals/${sell.buyId}`)}
+                        onClick={() => openSellDetails(sell)}
                       >
                         <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 ${cellBg}`}>
                           {new Date(sell.date).toLocaleDateString()}
@@ -603,18 +639,35 @@ export default function PhysicalPage() {
                           <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
                         </td>
                         <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${cellBg}`}>
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-                            onClick={e => {
-                              e.stopPropagation();
-                              router.push(`/${branchSlug}/physical-deals/${sell.buyId}`);
-                            }}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              title="View details"
+                              className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                              onClick={e => {
+                                e.stopPropagation();
+                                openSellDetails(sell);
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              title="Source buy"
+                              className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                              onClick={e => {
+                                e.stopPropagation();
+                                router.push(`/${branchSlug}/physical-deals/${sell.buyId}`);
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -648,7 +701,7 @@ export default function PhysicalPage() {
                   return (
                     <div
                       key={sell.id}
-                      onClick={() => router.push(`/${branchSlug}/physical-deals/${sell.buyId}`)}
+                      onClick={() => openSellDetails(sell)}
                       className={`flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] ${cardGradient}`}
                     >
                       <div className="flex items-start justify-between border-b border-slate-50 pb-3">
@@ -727,6 +780,28 @@ export default function PhysicalPage() {
           onSaveDraftSell={saveDraftSell}
         />
       )}
+
+      {editingBuy && branchSlug ? (
+        <PhysicalBuyEditModal
+          open={!!editingBuy}
+          slug={branchSlug}
+          buy={editingBuy}
+          onClose={() => setEditingBuy(null)}
+          onSuccess={refetchData}
+        />
+      ) : null}
+
+      {selectedSell && branchSlug ? (
+        <PhysicalSellDetailModal
+          open={!!selectedSell}
+          slug={branchSlug}
+          sell={selectedSell}
+          sourceBuy={buyById.get(selectedSell.buyId)}
+          buyDetailPath={`/${branchSlug}/physical-deals/${selectedSell.buyId}`}
+          onClose={() => setSelectedSell(null)}
+          onSuccess={refetchData}
+        />
+      ) : null}
 
       {isExportModalOpen && (
         <PhysicalExportModal

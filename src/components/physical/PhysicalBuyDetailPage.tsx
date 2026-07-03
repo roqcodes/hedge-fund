@@ -14,9 +14,12 @@ import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { usePhysicalDrafts } from '@/hooks/usePhysicalDrafts';
 import PhysicalSellModal from './PhysicalSellModal';
+import PhysicalBuyEditModal from './PhysicalBuyEditModal';
+import PhysicalSellDetailModal from './PhysicalSellDetailModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import CustomerLink from '@/components/customers/CustomerLink';
 import PhysicalAmountDisplay, { PhysicalAmountKpiValue } from './PhysicalAmountDisplay';
+import { useWriteAccess } from '@/context/RbacWriteContext';
 
 type SortField = 'date' | 'id' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'sellValue' | 'profit';
 type SortDirection = 'asc' | 'desc';
@@ -35,8 +38,11 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
   const { saveDraftSell } = usePhysicalDrafts(buy?.branchId);
 
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
+  const [isBuyEditOpen, setIsBuyEditOpen] = useState(false);
+  const [selectedSell, setSelectedSell] = useState<PhysicalSell | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const { canWrite, buttonProps: wp } = useWriteAccess();
 
   const router = useRouter();
 
@@ -169,6 +175,19 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             <p className={pageSubtitle}>Manage sells and track profits for this inventory</p>
           </div>
           <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => canWrite && setIsBuyEditOpen(true)}
+              disabled={!canWrite}
+              {...wp()}
+              className={`inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition-all hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-4 sm:text-sm`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+              </svg>
+              Edit Deal
+            </button>
             <button
               type="button"
               onClick={handleDeleteBuy}
@@ -400,7 +419,11 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredAndSortedSells.map((sell) => (
-                    <tr key={sell.id} className="group hover:bg-slate-50/80 transition-colors">
+                    <tr
+                      key={sell.id}
+                      className="group cursor-pointer hover:bg-slate-50/80 transition-colors"
+                      onClick={() => setSelectedSell(sell)}
+                    >
                       <td className="whitespace-nowrap border-y border-l border-black/5 bg-white px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 sm:text-sm">
                         {new Date(sell.date).toLocaleDateString()}
                       </td>
@@ -432,7 +455,15 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
-                        <button onClick={() => handleDeleteSell(sell.id)} className="text-red-500 hover:text-red-700 transition-colors" title="Delete Sell">
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleDeleteSell(sell.id);
+                          }}
+                          className="text-red-500 transition-colors hover:text-red-700"
+                          title="Delete Sell"
+                        >
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
                           </svg>
@@ -452,9 +483,10 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
 
               <div className="flex md:hidden flex-col gap-4 py-4">
                 {filteredAndSortedSells.map((sell) => (
-                  <div 
+                  <div
                     key={sell.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all"
+                    onClick={() => setSelectedSell(sell)}
+                    className="flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all active:scale-[0.98]"
                   >
                     <div className="flex items-center justify-between border-b border-slate-50 pb-3">
                       <div className="flex flex-col">
@@ -500,6 +532,27 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           </div>
         </div>
       </div>
+
+      {isBuyEditOpen && buy ? (
+        <PhysicalBuyEditModal
+          open={isBuyEditOpen}
+          slug={branchSlug}
+          buy={buy}
+          onClose={() => setIsBuyEditOpen(false)}
+          onSuccess={handleSellSuccess}
+        />
+      ) : null}
+
+      {selectedSell ? (
+        <PhysicalSellDetailModal
+          open={!!selectedSell}
+          slug={branchSlug}
+          sell={selectedSell}
+          sourceBuy={buy}
+          onClose={() => setSelectedSell(null)}
+          onSuccess={handleSellSuccess}
+        />
+      ) : null}
 
       {isSellModalOpen && buy && (
         <PhysicalSellModal

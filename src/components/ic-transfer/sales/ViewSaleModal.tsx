@@ -12,7 +12,7 @@ import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { isBranchScopedUser } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
-import { dbGetCustomerCurrencyAction } from '@/app/actions/icTransferActions';
+import { dbGetCustomerCurrencyAction, dbGetCustomerPhoneAction } from '@/app/actions/icTransferActions';
 
 type Props = {
   open: boolean;
@@ -30,8 +30,12 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
 
   const liveSale = sale ? (icSales.find(s => s.id === sale.id) ?? sale) : null;
   const [currency, setCurrency] = useState(liveSale?.currency || 'Currency');
+  const [customerPhone, setCustomerPhone] = useState<string | null>(null);
+  const [phoneChecked, setPhoneChecked] = useState(false);
 
   const customerName = liveSale?.customerName;
+  const orderCustomerId = liveSale?.orderCustomerId;
+  const orderCustomerName = liveSale?.orderCustomerName;
 
   React.useEffect(() => {
     if (liveSale?.currency) {
@@ -44,6 +48,22 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
       });
     }
   }, [open, customerName, liveSale?.currency]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setCustomerPhone(null);
+      setPhoneChecked(false);
+      return;
+    }
+    setPhoneChecked(false);
+    dbGetCustomerPhoneAction({
+      customerId: orderCustomerId,
+      customerName: orderCustomerName || customerName,
+    }).then(res => {
+      setCustomerPhone(res.success ? res.data ?? null : null);
+      setPhoneChecked(true);
+    });
+  }, [open, orderCustomerId, orderCustomerName, customerName]);
 
   if (!sale || !liveSale) return null;
 
@@ -294,15 +314,20 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                       <img src={liveSale.deliveryImageUrl} alt="Delivery proof" className="absolute inset-0 h-full w-full object-contain hover:opacity-90 transition-opacity" />
                     </a>
                   </div>
-                  {isBranchPortalView ? (
-                    <ProofImageActions
-                      imageUrl={liveSale.deliveryImageUrl}
-                      downloadFilename={`delivery-proof-${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}`}
-                      onCopySuccess={() => showToast('Image link copied')}
-                      onCopyError={msg => showToast(msg, 'error')}
-                      onDownloadError={msg => showToast(msg, 'error')}
-                    />
-                  ) : null}
+                  <ProofImageActions
+                    imageUrl={liveSale.deliveryImageUrl}
+                    downloadFilename={`payment-proof-${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}`}
+                    enableShare
+                    shareTitle="Payment proof"
+                    shareText={`Payment proof for order ${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}`}
+                    enableWhatsApp={phoneChecked}
+                    whatsappPhone={customerPhone ?? undefined}
+                    whatsappMessage={`Hello ${orderCustomerName || customerName || ''}, here is the payment proof for your order ${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}: ${liveSale.deliveryImageUrl}`.trim()}
+                    onCopySuccess={() => showToast('Image link copied')}
+                    onCopyError={msg => showToast(msg, 'error')}
+                    onDownloadError={msg => showToast(msg, 'error')}
+                    onShareError={msg => showToast(msg, 'error')}
+                  />
                 </>
               ) : (
                 <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-slate-400 text-xs font-medium">

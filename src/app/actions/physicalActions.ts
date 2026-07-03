@@ -86,9 +86,39 @@ export async function dbGetPhysicalBuysAction(branchId: string): Promise<DbActio
 
 type PhysicalBuyInput = Omit<PhysicalBuy, 'id' | 'remainingWeight' | 'status' | 'createdAt'>;
 
+export type PhysicalBuyMetadataInput = {
+  date: string;
+  txnId?: string;
+  customerId?: string;
+  customerName: string;
+  productId?: string;
+  item: string;
+  notes?: string;
+  fixOrUnfix?: 'fixed' | 'unfixed';
+  paymentMode?: PhysicalBuy['paymentMode'];
+};
+
+export type PhysicalSellMetadataInput = {
+  date: string;
+  txnId?: string;
+  customerId?: string;
+  customerName: string;
+  narration?: string;
+  notes?: string;
+  paymentMode?: PhysicalBuy['paymentMode'];
+};
+
+function requireCustomerName(name?: string): string {
+  const trimmed = name?.trim() ?? '';
+  if (!trimmed) throw new Error('Customer name is required');
+  return trimmed;
+}
+
 export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbActionResult<PhysicalBuy>> {
   const client = await pool.connect();
   try {
+    const customerName = requireCustomerName(buy.customerName);
+    buy = { ...buy, customerName };
     await client.query('BEGIN');
 
     const id = `pbuy-${crypto.randomUUID().slice(0, 8)}`;
@@ -194,6 +224,8 @@ type PhysicalSellInput = Omit<PhysicalSell, 'id' | 'profit' | 'createdAt'>;
 export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<DbActionResult<PhysicalSell>> {
   const client = await pool.connect();
   try {
+    const customerName = requireCustomerName(sell.customerName);
+    sell = { ...sell, customerName };
     await client.query('BEGIN');
 
     const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [sell.buyId]);
@@ -298,6 +330,143 @@ export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<
         ...sell,
       },
     };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbUpdatePhysicalBuyMetadataAction(
+  buyId: string,
+  input: PhysicalBuyMetadataInput,
+): Promise<DbActionResult<PhysicalBuy>> {
+  const client = await pool.connect();
+  try {
+    const customerName = requireCustomerName(input.customerName);
+    const item = input.item.trim();
+    if (!item) throw new Error('Item is required');
+
+    await client.query('BEGIN');
+
+    const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [buyId]);
+    if (buyRes.rows.length === 0) throw new Error('Buy deal not found');
+    const buy = buyRes.rows[0];
+
+    const oldCustomerId = buy.customer_id as string | null;
+    const newCustomerId = input.customerId ?? null;
+    const buyValue = parseFloat(buy.buy_value);
+    let openingBalance: number | null =
+      buy.opening_balance != null ? parseFloat(buy.opening_balance) : null;
+
+    if (oldCustomerId && oldCustomerId !== newCustomerId) {
+      await adjustCustomerBalanceInTx(client, oldCustomerId, -buyValue);
+      openingBalance = null;
+    }
+    if (newCustomerId && newCustomerId !== oldCustomerId) {
+      openingBalance = await adjustCustomerBalanceInTx(client, newCustomerId, buyValue);
+    }
+
+    const res = await client.query(
+      `UPDATE physical_buys SET
+        date = $1,
+        txn_id = $2,
+        customer_id = $3,
+        customer_name = $4,
+        opening_balance = $5,
+        product_id = $6,
+        item = $7,
+        particulars = $7,
+        notes = $8,
+        fix_or_unfix = $9,
+        payment_mode = $10
+      WHERE id = $11
+      RETURNING *`,
+      [
+        input.date,
+        input.txnId ?? null,
+        newCustomerId,
+        customerName,
+        openingBalance,
+        input.productId ?? null,
+        item,
+        input.notes?.trim() || null,
+        input.fixOrUnfix ?? buy.fix_or_unfix ?? 'unfixed',
+        input.paymentMode ?? buy.payment_mode ?? null,
+        buyId,
+      ],
+    );
+
+    await client.query('COMMIT');
+    return { success: true, data: mapPhysicalBuyRow(res.rows[0]) };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbUpdatePhysicalSellMetadataAction(
+  sellId: string,
+  input: PhysicalSellMetadataInput,
+): Promise<DbActionResult<PhysicalSell>> {
+  const client = await pool.connect();
+  try {
+    const customerName = requireCustomerName(input.customerName);
+
+    await client.query('BEGIN');
+
+    const sellRes = await client.query('SELECT * FROM physical_sells WHERE id = $1 FOR UPDATE', [sellId]);
+    if (sellRes.rows.length === 0) throw new Error('Sell deal not found');
+    const sell = sellRes.rows[0];
+
+    const oldCustomerId = sell.customer_id as string | null;
+    const newCustomerId = input.customerId ?? null;
+    const sellValue = parseFloat(sell.sell_value);
+    let openingBalance: number | null =
+      sell.opening_balance != null ? parseFloat(sell.opening_balance) : null;
+
+    if (oldCustomerId && oldCustomerId !== newCustomerId) {
+      await adjustCustomerBalanceInTx(client, oldCustomerId, sellValue);
+      openingBalance = null;
+    }
+    if (newCustomerId && newCustomerId !== oldCustomerId) {
+      openingBalance = await adjustCustomerBalanceInTx(client, newCustomerId, -sellValue);
+    }
+
+    const narration = input.narration?.trim() || null;
+    const res = await client.query(
+      `UPDATE physical_sells SET
+        date = $1,
+        txn_id = $2,
+        customer_id = $3,
+        customer_name = $4,
+        opening_balance = $5,
+        narration = $6,
+        particulars = COALESCE($6, particulars),
+        notes = $7,
+        payment_mode = $8
+      WHERE id = $9
+      RETURNING *`,
+      [
+        input.date,
+        input.txnId ?? null,
+        newCustomerId,
+        customerName,
+        openingBalance,
+        narration,
+        input.notes?.trim() || null,
+        input.paymentMode ?? sell.payment_mode ?? null,
+        sellId,
+      ],
+    );
+
+    await client.query('COMMIT');
+    return { success: true, data: mapPhysicalSellRow(res.rows[0]) };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = error instanceof Error ? error.message : 'Database error';

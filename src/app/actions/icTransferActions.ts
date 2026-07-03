@@ -1092,3 +1092,33 @@ export async function dbGetCustomerCurrencyAction(customerName: string): Promise
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   }
 }
+
+/**
+ * Resolves a customer's phone number for messaging, matching by customer id
+ * first (most reliable) and falling back to a case-insensitive name match.
+ */
+export async function dbGetCustomerPhoneAction(
+  opts: { customerId?: string | null; customerName?: string | null }
+): Promise<DbActionResult<string | null>> {
+  try {
+    const customerId = opts.customerId?.trim() || null;
+    const customerName = opts.customerName?.trim() || null;
+    if (!customerId && !customerName) {
+      return { success: true, data: null };
+    }
+    const res = await query(
+      `SELECT phone
+         FROM customers
+        WHERE ($1::text IS NOT NULL AND id = $1)
+           OR ($1::text IS NULL AND $2::text IS NOT NULL AND LOWER(name) = LOWER($2))
+        ORDER BY (id = $1) DESC
+        LIMIT 1`,
+      [customerId, customerName]
+    );
+    const phone = res.rows.length > 0 && res.rows[0].phone ? String(res.rows[0].phone) : null;
+    return { success: true, data: phone };
+  } catch (error: unknown) {
+    logger.error({ error, opts }, 'Error in dbGetCustomerPhoneAction');
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
