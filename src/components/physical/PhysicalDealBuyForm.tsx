@@ -212,18 +212,33 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
   };
 
   const previewRow = buildBuyPreviewRow(form, calc);
-  const formattedDate = new Date(form.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  const formattedTime = new Date(`1970-01-01T${form.time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
   return (
       <form id="physical-buy-form" onSubmit={handleSubmit} className="flex flex-col gap-8">
         
-        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 font-medium -mt-4">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 font-medium -mt-4">
           <span className="font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">#{form.txnId || 'PENDING'}</span>
           <span>•</span>
-          <span>{formattedDate}</span>
-          <span>•</span>
-          <span>{formattedTime}</span>
+          <label className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Date</span>
+            <input
+              type="date"
+              value={form.date}
+              onChange={e => set({ date: e.target.value })}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-0"
+              required
+            />
+          </label>
+          <label className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Time</span>
+            <input
+              type="time"
+              value={form.time}
+              onChange={e => set({ time: e.target.value })}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-0"
+              required
+            />
+          </label>
         </div>
 
         <div className="flex flex-col gap-8">
