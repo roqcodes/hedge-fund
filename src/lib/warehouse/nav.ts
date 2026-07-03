@@ -12,5 +12,5 @@ export type WarehouseNavPage = {
 export const WAREHOUSE_NAV: WarehouseNavPage[] = [
   { id: 'settlement', label: 'Order Settlement', path: '' },
   { id: 'delivery-agents', label: 'Delivery Agent Management', path: '/delivery-agents' },
-  { id: 'order-settlement', label: 'Order Settlement', path: '/order-settlement' },
+  { id: 'order-settlement', label: 'My Deliveries', path: '/order-settlement' },
 ];

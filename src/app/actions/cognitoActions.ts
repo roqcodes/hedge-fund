@@ -15,6 +15,7 @@ import {
   lookupCognitoUserIdByEmail,
 } from '@/app/actions/permissionActions';
 import { seedDefaultStaffPermissions } from '@/lib/userPermissions';
+import { logger } from '@/lib/logger';
 
 const cognitoClient = env.COGNITO_REGION 
   ? new CognitoIdentityProviderClient({ region: env.COGNITO_REGION })
@@ -96,7 +97,7 @@ export async function fetchCognitoUsersAction(branchSlug?: string) {
 
     return { success: true, data: users };
   } catch (error: unknown) {
-    console.error('Error fetching Cognito users:', error);
+    logger.error({ error, branchSlug }, 'Error fetching Cognito users');
     return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch users' };
   }
 }
@@ -159,7 +160,7 @@ export async function createCognitoUserAction(
 
     return { success: true };
   } catch (error: unknown) {
-    console.error('Error creating Cognito user:', error);
+    logger.error({ error, email, role, branchId, branchSlug }, 'Error creating Cognito user');
     const errName = (error as { name?: string })?.name;
     if (errName === 'UsernameExistsException') {
       return { success: false, error: 'A user with this email already exists.' };
@@ -243,7 +244,7 @@ export async function updateCognitoUserAttributesAction(
 
     return { success: true };
   } catch (error: unknown) {
-    console.error('Error updating Cognito user attributes:', error);
+    logger.error({ error, email, name, role, branchId, branchSlug }, 'Error updating Cognito user attributes');
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update user attributes' };
   }
 }
@@ -269,7 +270,7 @@ export async function resetCognitoUserPasswordAction(email: string, passwordRaw:
 
     return { success: true };
   } catch (error: unknown) {
-    console.error('Error resetting Cognito user password:', error);
+    logger.error({ error, email, branchSlug }, 'Error resetting Cognito user password');
     return { success: false, error: error instanceof Error ? error.message : 'Failed to reset password' };
   }
 }
@@ -325,7 +326,7 @@ export async function deleteCognitoUserAction(email: string, branchSlug?: string
 
     return { success: true };
   } catch (error: unknown) {
-    console.error('Error deleting Cognito user:', error);
+    logger.error({ error, email, branchSlug }, 'Error deleting Cognito user');
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete user' };
   }
 }

@@ -59,7 +59,6 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
 
   // Column filters
   const [filterAgent,    setFilterAgent]    = useState('All');
-  const [filterStatus,   setFilterStatus]   = useState('All');
   const [filterPriority, setFilterPriority] = useState('All');
 
   // Sort
@@ -155,20 +154,11 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
         return true;
       })
       .filter(o => {
-        if (filterStatus === 'All') return true;
-        if (filterStatus === 'Completed') return isSaleCompleted(o.order_status);
-        if (filterStatus === 'Rejected') return isWarehouseRejected(o.order_status);
-        if (filterStatus === 'Pending') {
-          return !isSaleCompleted(o.order_status) && !isWarehouseRejected(o.order_status);
-        }
-        return true;
-      })
-      .filter(o => {
         if (filterPriority !== 'All') return (o.priority || 'Normal') === filterPriority;
         return true;
       })
       .filter(o => warehouseOrderMatchesSearch(o, search, { branches }));
-  }, [orders, tab, search, filterAgent, filterStatus, filterPriority, branches]);
+  }, [orders, tab, search, filterAgent, filterPriority, branches]);
 
   /* ─── sorting ────────────────────────────────────────────── */
   const sortedOrders = useMemo<WarehouseOrder[]>(() => {
@@ -281,12 +271,6 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                 <option value="All">All Agents</option>
                 <option value="Unassigned">Unassigned</option>
                 {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-              <select value={filterStatus}   onChange={e => setFilterStatus(e.target.value)}   className={filterSelect}>
-                <option value="All">All Statuses</option>
-                <option value="Pending">Pending</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Completed">Completed</option>
               </select>
               <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className={filterSelect}>
                 <option value="All">All Priorities</option>

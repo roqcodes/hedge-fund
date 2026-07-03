@@ -8,16 +8,20 @@ import {
   adminAcceptICSaleAction,
   adminRejectICSaleAction,
   adminReassignICSaleWarehouseAction,
+  adminApproveCancelICSaleAction,
+  adminDeclineCancelICSaleAction,
 } from '@/app/actions/icTransferActions';
 import {
   canAdminAccept,
   canAdminReject,
   canAdminReassignWarehouse,
+  canAdminResolveCancellation,
   getAdminStatusLabel,
   getAdminStatusStyle,
   normalizeOrderStatus,
 } from '@/lib/icTransfer/orderStatus';
 import RejectRemarkModal from './RejectRemarkModal';
+import { ConfirmModal } from '@/components/warehouse/shared';
 import {
   OrderWorkflowActionStack,
   WorkflowActionButton,
@@ -26,6 +30,7 @@ import {
   IconCheck,
   IconX,
   IconRefresh,
+  IconBan,
 } from './orderWorkflow';
 import { btnPrimary, btnSecondary, formSelect } from '@/lib/ui';
 
@@ -69,6 +74,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [approveCancelOpen, setApproveCancelOpen] = useState(false);
   const [warehouseId, setWarehouseId] = useState(sale.warehouseId || '');
   const [loading, setLoading] = useState(false);
 
@@ -124,10 +130,38 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
     }
   };
 
+  const handleApproveCancel = async () => {
+    setLoading(true);
+    const res = await adminApproveCancelICSaleAction(sale.id);
+    setLoading(false);
+    if (res.success) {
+      showToast('Cancellation approved — order cancelled', 'success');
+      setApproveCancelOpen(false);
+      await refetchData();
+      onUpdated?.();
+    } else {
+      showToast(res.error || 'Failed to approve cancellation', 'error');
+    }
+  };
+
+  const handleDeclineCancel = async () => {
+    setLoading(true);
+    const res = await adminDeclineCancelICSaleAction(sale.id);
+    setLoading(false);
+    if (res.success) {
+      showToast('Cancellation declined — order restored', 'success');
+      await refetchData();
+      onUpdated?.();
+    } else {
+      showToast(res.error || 'Failed to decline cancellation', 'error');
+    }
+  };
+
   const showAccept = canAdminAccept(sale.orderStatus);
   const showReject = canAdminReject(sale.orderStatus);
   const showReassign = canAdminReassignWarehouse(sale.orderStatus);
-  const hasActions = showAccept || showReject || showReassign;
+  const showResolveCancel = canAdminResolveCancellation(sale.orderStatus);
+  const hasActions = showAccept || showReject || showReassign || showResolveCancel;
 
   if (!hasActions) return null;
 
@@ -163,6 +197,26 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
           >
             Reject
           </WorkflowActionButton>
+        )}
+        {showResolveCancel && (
+          <>
+            <WorkflowActionButton
+              variant="danger"
+              icon={<IconBan />}
+              size={compact ? 'sm' : 'md'}
+              onClick={e => { e.stopPropagation(); setApproveCancelOpen(true); }}
+            >
+              Approve Cancel
+            </WorkflowActionButton>
+            <WorkflowActionButton
+              variant="secondary"
+              icon={<IconRefresh />}
+              size={compact ? 'sm' : 'md'}
+              onClick={e => { e.stopPropagation(); handleDeclineCancel(); }}
+            >
+              Keep Order
+            </WorkflowActionButton>
+          </>
         )}
       </OrderWorkflowActionStack>
 
@@ -238,6 +292,17 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
         description="Provide a reason for rejecting this order. The branch will see the order as rejected."
         onConfirm={handleReject}
         onCancel={() => setRejectOpen(false)}
+      />
+
+      <ConfirmModal
+        open={approveCancelOpen}
+        title="Approve Cancellation"
+        message="Approve the branch's cancellation request? The order will be marked as cancelled and removed from active processing."
+        confirmLabel="Approve Cancellation"
+        variant="danger"
+        loading={loading}
+        onConfirm={handleApproveCancel}
+        onCancel={() => setApproveCancelOpen(false)}
       />
     </>
   );

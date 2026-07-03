@@ -73,6 +73,8 @@ export function mapICSaleRow(row: any): ICSale {
   return {
     id: row.id,
     customerName: row.customer_name,
+    orderCustomerName: row.order_customer_name || undefined,
+    orderCustomerId: row.order_customer_id || undefined,
     warehouseId: row.warehouse_id,
     transactionType: row.transaction_type,
     units: parseFloat(row.units),

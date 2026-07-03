@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { PageHeader, PageShell, SectionCard, AddButton, SearchInput } from '../ui';
+import { PageHeader, PageShell, SectionCard, AddButton, SearchInput, IconManageUsers, IconAddGroup } from '../ui';
 import { useApp } from '@/context/AppContext';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { portalMobileToolbarClass } from '@/lib/icTransfer/layoutConstants';
@@ -9,6 +9,7 @@ import { sortRateGroupsForTable } from '@/lib/icTransfer/rateGroupUtils';
 import RateGroupsTable from './RateGroupsTable';
 import RateGroupBulkUpdateBar from './RateGroupBulkUpdateBar';
 import RateGroupFormModal, { type RateGroupFormValues } from './RateGroupFormModal';
+import RateGroupManageUsersModal, { type RateGroupMembersPayload } from './RateGroupManageUsersModal';
 import RateGroupViewModal from './RateGroupViewModal';
 import type { ICRateGroup } from '@/types';
 
@@ -50,7 +51,9 @@ export default function ICTransferRatesPage() {
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editingGroup, setEditingGroup] = useState<ICRateGroup | null>(null);
   const [viewGroup, setViewGroup] = useState<ICRateGroup | null>(null);
+  const [manageUsersOpen, setManageUsersOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isManagingUsers, setIsManagingUsers] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
   const [branchCustomers, setBranchCustomers] = useState<{ id: string; name: string }[]>([]);
 
@@ -106,7 +109,7 @@ export default function ICTransferRatesPage() {
   };
 
   const handleSave = async (values: RateGroupFormValues) => {
-    const { name, country, region, currency, saleRate, conversionRate, selectedCustomers, selectedBranches } = values;
+    const { name, country, region, currency } = values;
 
     if (!name || !country || !currency) return;
 
@@ -115,30 +118,8 @@ export default function ICTransferRatesPage() {
       return;
     }
 
-    for (const cid of selectedCustomers) {
-      const otherGroup = icRateGroups.find(g => g.id !== editingGroup?.id && g.customerIds?.includes(cid));
-      if (otherGroup) {
-        const customer = branchCustomers.find(c => c.id === cid);
-        showToast(`Customer "${customer?.name || cid}" is already assigned to rate group "${otherGroup.name}"`, 'error');
-        return;
-      }
-    }
-
-    for (const bid of selectedBranches) {
-      const otherGroup = icRateGroups.find(g => g.id !== editingGroup?.id && g.branchIds?.includes(bid));
-      if (otherGroup) {
-        const branch = allBranches.find(b => b.id === bid);
-        showToast(`Branch "${branch?.name || bid}" is already assigned to rate group "${otherGroup.name}"`, 'error');
-        return;
-      }
-    }
-
     setIsSaving(true);
     let success = false;
-    let groupId = editingGroup?.id;
-
-    const saleRateNum = parseFloat(saleRate) || 0;
-    const conversionRateNum = parseFloat(conversionRate) || 1;
 
     if (editingGroup) {
       success = await updateICRateGroup(
@@ -147,8 +128,8 @@ export default function ICTransferRatesPage() {
         country,
         region,
         currency.toUpperCase(),
-        saleRateNum,
-        conversionRateNum,
+        editingGroup.saleRate,
+        editingGroup.conversionRate ?? 1,
       );
     } else {
       const newGroupId = await addICRateGroup(
@@ -156,19 +137,10 @@ export default function ICTransferRatesPage() {
         country,
         region,
         currency.toUpperCase(),
-        saleRateNum,
-        conversionRateNum,
+        0,
+        1,
       );
-      if (newGroupId) {
-        success = true;
-        groupId = newGroupId;
-      }
-    }
-
-    if (success && groupId && formMode === 'edit') {
-      const resCust = await setICRateGroupCustomers(groupId, selectedCustomers);
-      const resBranch = await setICRateGroupBranches(groupId, selectedBranches);
-      if (!resCust || !resBranch) success = false;
+      success = !!newGroupId;
     }
 
     setIsSaving(false);
@@ -178,12 +150,35 @@ export default function ICTransferRatesPage() {
     }
   };
 
+  const handleManageUsersSave = async ({ groupId, branchIds, customerIds }: RateGroupMembersPayload) => {
+    setIsManagingUsers(true);
+    const resBranch = await setICRateGroupBranches(groupId, branchIds);
+    const resCust = await setICRateGroupCustomers(groupId, customerIds);
+    setIsManagingUsers(false);
+    if (resBranch && resCust) {
+      setManageUsersOpen(false);
+    }
+  };
+
   return (
     <PageShell>
       <PageHeader
         title="Rate Groups"
         subtitle="Manage dynamic rate groups for customers and branches"
-        actions={<AddButton label="Create Group" onClick={openCreateModal} />}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <AddButton
+              label="Manage Users"
+              icon={<IconManageUsers />}
+              onClick={() => setManageUsersOpen(true)}
+            />
+            <AddButton
+              label="Create Group"
+              icon={<IconAddGroup />}
+              onClick={openCreateModal}
+            />
+          </div>
+        }
       />
 
       <SectionCard>
@@ -216,15 +211,22 @@ export default function ICTransferRatesPage() {
         open={formOpen}
         mode={formMode}
         initialGroup={editingGroup}
-        allGroups={icRateGroups}
-        allBranches={allBranches}
-        branchCustomers={branchCustomers}
         isSaving={isSaving}
         onClose={() => {
           setFormOpen(false);
           setEditingGroup(null);
         }}
         onSubmit={handleSave}
+      />
+
+      <RateGroupManageUsersModal
+        open={manageUsersOpen}
+        groups={icRateGroups}
+        allBranches={allBranches}
+        branchCustomers={branchCustomers}
+        isSaving={isManagingUsers}
+        onClose={() => setManageUsersOpen(false)}
+        onSave={handleManageUsersSave}
       />
 
       <RateGroupViewModal

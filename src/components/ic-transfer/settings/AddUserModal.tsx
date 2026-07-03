@@ -11,6 +11,7 @@ type Props = {
   showCommission?: boolean;
   showRate?: boolean;
   showPassword?: boolean;
+  showRegion?: boolean;
   initialData?: any;
   regions?: { id: string; name: string }[];
   onAdd?: (data: {
@@ -31,6 +32,7 @@ export default function AddUserModal({
   showCommission = false,
   showRate = false,
   showPassword = true,
+  showRegion = true,
   initialData,
   regions,
   onAdd,
@@ -109,21 +111,23 @@ export default function AddUserModal({
           <input className={formInput} placeholder="0" type="number" step="0.01" value={commission} onChange={e => setCommission(e.target.value)} />
         </div>
       )}
-      <div className={formGroup}>
-        <label className={formLabel}>Region</label>
-        <select className={formSelect} value={regionId} onChange={e => setRegionId(e.target.value)}>
-          <option value="" disabled>Select Region</option>
-          {regions ? (
-            regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)
-          ) : (
-            <>
-              <option>UAE</option>
-              <option>KSA</option>
-              <option>India</option>
-            </>
-          )}
-        </select>
-      </div>
+      {showRegion && (
+        <div className={formGroup}>
+          <label className={formLabel}>Region</label>
+          <select className={formSelect} value={regionId} onChange={e => setRegionId(e.target.value)}>
+            <option value="" disabled>Select Region</option>
+            {regions ? (
+              regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)
+            ) : (
+              <>
+                <option>UAE</option>
+                <option>KSA</option>
+                <option>India</option>
+              </>
+            )}
+          </select>
+        </div>
+      )}
       <div className={formGroup}>
         <label className={formLabel}>Email</label>
         <input className={formInput} type="email" placeholder="email@example.com" value={email} onChange={e => setEmail(e.target.value)} />

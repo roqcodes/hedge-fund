@@ -23,6 +23,7 @@ import {
   mapICSaleRow,
   mapICWarehouseTransactionRow,
 } from '@/lib/icTransferMappers';
+import { logger } from '@/lib/logger';
 
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
 import { validateJournalEntry } from '@/lib/journalEntry';
@@ -643,7 +644,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch dashboard data.';
-    console.error('Failed to fetch initial data from Postgres:', error);
+    logger.error({ error, branchSlug }, 'Failed to fetch initial data from Postgres');
     return { success: false, error: message };
   }
 }
@@ -702,7 +703,7 @@ export async function dbAddBranchAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = error instanceof Error ? error.message : 'Database error occurred while adding branch.';
-    console.error('Error adding branch to database:', error);
+    logger.error({ error, branch }, 'Error adding branch to database');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -783,7 +784,7 @@ export async function dbTransferFundsAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = error instanceof Error ? error.message : 'Database error occurred during transfer.';
-    console.error('Error executing fund transfer:', error);
+    logger.error({ error, fromId, toId, amount }, 'Error executing fund transfer');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -825,7 +826,7 @@ export async function dbAddInvoiceAction(invoice: Invoice): Promise<DbActionResu
     return { success: true, data: invoice };
   } catch (error: unknown) {
     const message = formatPgError(error);
-    console.error('Error adding invoice:', error);
+    logger.error({ error, invoice }, 'Error adding invoice');
     return { success: false, error: message };
   }
 }
@@ -849,7 +850,7 @@ export async function dbUpdateHqBalanceAction(amount: number): Promise<DbActionR
     return { success: true, data: { hqBalance: parseFloat(res.rows[0].amount) } };
   } catch (error: unknown) {
     const message = formatPgError(error);
-    console.error('Error updating HQ balance:', error);
+    logger.error({ error, amount }, 'Error updating HQ balance');
     return { success: false, error: message };
   }
 }
@@ -923,7 +924,7 @@ export async function dbAddExpenseAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error adding expense:', error);
+    logger.error({ error, expense }, 'Error adding expense');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1013,7 +1014,7 @@ export async function dbAddInvestorAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error adding investor:', error);
+    logger.error({ error, investor }, 'Error adding investor');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1076,7 +1077,7 @@ export async function dbUpdateInvestorAction(
     return { success: true, data: investor };
   } catch (error: unknown) {
     const message = formatPgError(error);
-    console.error('Error updating investor:', error);
+    logger.error({ error, investor }, 'Error updating investor');
     return { success: false, error: message };
   }
 }
@@ -1110,7 +1111,7 @@ export async function dbDeleteInvestorAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error deleting investor:', error);
+    logger.error({ error, id }, 'Error deleting investor');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1187,7 +1188,7 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error adding deal:', error);
+    logger.error({ error, deal }, 'Error adding deal');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1264,7 +1265,7 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error updating deal:', error);
+    logger.error({ error, deal }, 'Error updating deal');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1328,7 +1329,7 @@ export async function dbAddDealTransactionAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error adding deal transaction:', error);
+    logger.error({ error, txn }, 'Error adding deal transaction');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1409,7 +1410,7 @@ export async function dbUpdateDealTransactionAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error updating deal transaction:', error);
+    logger.error({ error, txn }, 'Error updating deal transaction');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1451,7 +1452,7 @@ export async function dbDeleteDealTransactionAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error deleting deal transaction:', error);
+    logger.error({ error, id, dealId }, 'Error deleting deal transaction');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1488,7 +1489,7 @@ export async function dbAddDealExpensesAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error adding deal transaction expenses:', error);
+    logger.error({ error, expenses }, 'Error adding deal transaction expenses');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1524,7 +1525,7 @@ export async function dbFetchDealExpensesAction(
     return { success: true, data };
   } catch (error: unknown) {
     const message = formatPgError(error);
-    console.error('Error fetching deal transaction expenses:', error);
+    logger.error({ error, dealTransactionId }, 'Error fetching deal transaction expenses');
     return { success: false, error: message };
   }
 }
@@ -1542,7 +1543,7 @@ export async function dbDeleteDealExpenseAction(
     return { success: true, data: { id } };
   } catch (error: unknown) {
     const message = formatPgError(error);
-    console.error('Error deleting deal transaction expense:', error);
+    logger.error({ error, id }, 'Error deleting deal transaction expense');
     return { success: false, error: message };
   }
 }
@@ -1567,7 +1568,7 @@ export async function dbDeleteDealAction(
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
-    console.error('Error deleting deal:', error);
+    logger.error({ error, id }, 'Error deleting deal');
     return { success: false, error: message };
   } finally {
     client.release();
@@ -1583,7 +1584,7 @@ export async function dbAddEntityAction(entity: Entity): Promise<DbActionResult<
     );
     return { success: true, data: entity };
   } catch (error: unknown) {
-    console.error('Error adding entity:', error);
+    logger.error({ error, entity }, 'Error adding entity');
     return { success: false, error: formatPgError(error) };
   }
 }
@@ -1614,7 +1615,7 @@ export async function dbUpdateEntityAction(entity: Entity): Promise<DbActionResu
     );
     return { success: true, data: entity };
   } catch (error: unknown) {
-    console.error('Error updating entity:', error);
+    logger.error({ error, entity }, 'Error updating entity');
     return { success: false, error: formatPgError(error) };
   }
 }
@@ -1632,7 +1633,7 @@ export async function dbFetchEntitiesAction(): Promise<DbActionResult<Entity[]>>
     }));
     return { success: true, data };
   } catch (error: unknown) {
-    console.error('Error fetching entities:', error);
+    logger.error({ error }, 'Error fetching entities');
     return { success: false, error: formatPgError(error) };
   }
 }

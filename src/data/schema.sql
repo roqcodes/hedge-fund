@@ -354,212 +354,7 @@ CREATE TABLE IF NOT EXISTS tax_invoice_items (
     gross_qty DECIMAL(15, 3) NOT NULL,
     preferred_contact VARCHAR(20) NOT NULL CHECK (preferred_contact IN ('email', 'phone', 'whatsapp')),
     is_global BOOLEAN NOT NULL DEFAULT FALSE,
-    notes TEXT
-);
-
--- 8. Investor Deposits (History)
-CREATE TABLE IF NOT EXISTS investor_deposits (
-    id VARCHAR(50) PRIMARY KEY,
-    investor_id VARCHAR(50) NOT NULL REFERENCES investors(id) ON DELETE RESTRICT,
-    date DATE NOT NULL,
-    type VARCHAR(20) NOT NULL CHECK (type IN ('cash', 'gold')),
-    amount DECIMAL(15, 2) NOT NULL,
-    gold_grams DECIMAL(15, 2),
-    notes TEXT
-);
-
--- 9. Deals
-CREATE TABLE IF NOT EXISTS deals (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    group_name VARCHAR(255) DEFAULT 'General',
-    group_type VARCHAR(20) DEFAULT 'gold' CHECK (group_type IN ('gold', 'currency')),
-    amount DECIMAL(15, 2) NOT NULL,
-    total_investment DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    to_branch_id VARCHAR(50), -- Removed FOREIGN KEY to support custom entities
-    to_branch_name VARCHAR(255) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending', 'completed', 'cancelled')),
-    total_pl DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    expense DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    manager_share DECIMAL(5, 2) NOT NULL DEFAULT 20.00,
-    gold_volume DECIMAL(15, 2) DEFAULT 0.00,
-    managing_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE RESTRICT,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 10. Deal Investors (Many-to-Many junction table)
-CREATE TABLE IF NOT EXISTS deal_investors (
-    deal_id VARCHAR(50) REFERENCES deals(id) ON DELETE CASCADE,
-    investor_id VARCHAR(50) REFERENCES investors(id) ON DELETE RESTRICT,
-    investor_name VARCHAR(255) NOT NULL,
-    amount DECIMAL(15, 2) NOT NULL,
-    is_gold BOOLEAN NOT NULL DEFAULT FALSE,
-    PRIMARY KEY (deal_id, investor_id)
-);
-
--- 11. Deal Transactions (detailed CSV data)
-CREATE TABLE IF NOT EXISTS deal_transactions (
-    id VARCHAR(50) PRIMARY KEY,
-    date DATE NOT NULL,
-    time VARCHAR(5) DEFAULT NULL,          -- HH:MM format, e.g. "14:30"
-    deal_id VARCHAR(50) REFERENCES deals(id) ON DELETE CASCADE,
-    deal_number VARCHAR(50) DEFAULT NULL,
-    weight DECIMAL(15, 2) NOT NULL,
-    rate DECIMAL(15, 2) NOT NULL,
-    pure_cost_aed DECIMAL(15, 2) NOT NULL,
-    currency_amount DECIMAL(15, 2) DEFAULT 0.00,
-    purchase_rate DECIMAL(15, 6) DEFAULT 0.000000,
-    conversion_rate DECIMAL(15, 6) DEFAULT 0.000000,
-    live_sell_rate DECIMAL(15, 2) NOT NULL,
-    sell_premium_discount DECIMAL(15, 2) NOT NULL,
-    sales_aed DECIMAL(15, 2) NOT NULL,
-    expenses DECIMAL(15, 2) NOT NULL,
-    gross_profit DECIMAL(15, 2) NOT NULL,
-    net_profit_per_gram DECIMAL(15, 6) NOT NULL,
-    management_profit DECIMAL(15, 2) NOT NULL,
-    fix_or_unfix VARCHAR(20) NOT NULL,
-    margin_deposit DECIMAL(15, 2) NOT NULL,
-    premium_discount DECIMAL(15, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 12. Deal Transaction Expenses (itemised key-value expenses per deal transaction)
-CREATE TABLE IF NOT EXISTS deal_transaction_expenses (
-    id VARCHAR(50) PRIMARY KEY,
-    deal_transaction_id VARCHAR(50) NOT NULL REFERENCES deal_transactions(id) ON DELETE CASCADE,
-    key VARCHAR(255) NOT NULL,
-    value DECIMAL(15, 2) NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_dte_deal_transaction_id ON deal_transaction_expenses(deal_transaction_id);
-
--- 13. Deal Transaction Payouts (Snapshot of exact profit splits at time of settlement)
-CREATE TABLE IF NOT EXISTS deal_transaction_payouts (
-    id VARCHAR(50) PRIMARY KEY,
-    deal_transaction_id VARCHAR(50) NOT NULL REFERENCES deal_transactions(id) ON DELETE CASCADE,
-    investor_id VARCHAR(50) NOT NULL REFERENCES investors(id) ON DELETE RESTRICT,
-    investor_name VARCHAR(255) NOT NULL,
-    payout_amount DECIMAL(15, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_dtp_deal_transaction_id ON deal_transaction_payouts(deal_transaction_id);
-
--- 14. Physical Balances
-CREATE TABLE IF NOT EXISTS physical_balances (
-    branch_id VARCHAR(50) PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
-    initial_capital DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    initial_volume DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    available_fund DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    available_volume DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 15. Physical Buys
-CREATE TABLE IF NOT EXISTS physical_buys (
-    id VARCHAR(50) PRIMARY KEY,
-    branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    particulars TEXT NOT NULL,
-    gross_weight DECIMAL(15, 2) NOT NULL,
-    pure_conversion DECIMAL(15, 4) NOT NULL,
-    pure_gram DECIMAL(15, 2) NOT NULL,
-    idr_gram DECIMAL(15, 2) NOT NULL,
-    idr_to_usdt DECIMAL(15, 2) NOT NULL,
-    idr_rate DECIMAL(15, 4) NOT NULL,
-    total DECIMAL(15, 2) NOT NULL,
-    buy_value DECIMAL(15, 2) NOT NULL,
-    remaining_weight DECIMAL(15, 2) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
-    fix_or_unfix VARCHAR(20) DEFAULT 'unfixed',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 16. Physical Sells
-CREATE TABLE IF NOT EXISTS physical_sells (
-    id VARCHAR(50) PRIMARY KEY,
-    buy_id VARCHAR(50) NOT NULL REFERENCES physical_buys(id) ON DELETE CASCADE,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    particulars TEXT DEFAULT '',
-    gross_weight DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    pure_conversion DECIMAL(15, 4) NOT NULL DEFAULT 1,
-    pure_gram DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    idr_gram DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    idr_to_usdt DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    idr_rate DECIMAL(15, 4) NOT NULL DEFAULT 0,
-    total DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    sell_value DECIMAL(15, 2) NOT NULL,
-    profit DECIMAL(15, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 18. Tax Invoices
-CREATE TABLE IF NOT EXISTS tax_invoices (
-    id VARCHAR(50) PRIMARY KEY,
-    branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
-    doc_no VARCHAR(100) UNIQUE NOT NULL,
-    doc_date DATE NOT NULL,
-    ref_no VARCHAR(100),
-    ref_date DATE,
-    order_type VARCHAR(50) NOT NULL,
-    fixing_type VARCHAR(50) NOT NULL,
-    department VARCHAR(100) NOT NULL,
-    vat_type VARCHAR(50) NOT NULL,
-    currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-    sales_man VARCHAR(100),
-    customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL,
-    customer_details TEXT,
-    trade_type VARCHAR(10) NOT NULL DEFAULT 'sell' CHECK (trade_type IN ('buy', 'sell')),
-    terms VARCHAR(50),
-    due_date DATE,
-    decl_no VARCHAR(100),
-    remarks TEXT,
-    
-    -- Summaries
-    gross_wt DECIMAL(15, 3) NOT NULL,
-    pure_wt DECIMAL(15, 7) NOT NULL,
-    add_chrg DECIMAL(15, 2) NOT NULL,
-    mkg_chrg DECIMAL(15, 2) NOT NULL,
-    gold_value DECIMAL(15, 2) NOT NULL,
-    gross_amt DECIMAL(15, 2) NOT NULL,
-    discount_percent DECIMAL(5, 2) DEFAULT 0.00,
-    discount_amt DECIMAL(15, 2) DEFAULT 0.00,
-    net_amt_dc DECIMAL(15, 2) NOT NULL,
-    net_amt_bc DECIMAL(15, 2) NOT NULL,
-    tax_amt DECIMAL(15, 2) NOT NULL,
-    
-    -- Settlements
-    cash_pay DECIMAL(15, 2) DEFAULT 0.00,
-    bank_pay DECIMAL(15, 2) DEFAULT 0.00,
-    cc_pay DECIMAL(15, 2) DEFAULT 0.00,
-    party_pay DECIMAL(15, 2) DEFAULT 0.00,
-    
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 19. Tax Invoice Items
-CREATE TABLE IF NOT EXISTS tax_invoice_items (
-    id VARCHAR(50) PRIMARY KEY,
-    invoice_id VARCHAR(50) REFERENCES tax_invoices(id) ON DELETE CASCADE,
-    product_code VARCHAR(255) NOT NULL,
-    mtl_type VARCHAR(50) NOT NULL,
-    pieces INT NOT NULL DEFAULT 1,
-    purity DECIMAL(15, 7) NOT NULL,
-    gross_qty DECIMAL(15, 3) NOT NULL,
-    pure_qty DECIMAL(15, 7) NOT NULL,
-    mkg_rate DECIMAL(15, 5) NOT NULL,
-    mkg_amt DECIMAL(15, 2) NOT NULL,
-    mtl_amt DECIMAL(15, 2) NOT NULL,
-    amount DECIMAL(15, 2) NOT NULL,
-    tax_amt DECIMAL(15, 2) NOT NULL,
-    net_amt DECIMAL(15, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
+    notes TEXT\r\n);\r\n
 -- 20. Product Categories
 CREATE TABLE IF NOT EXISTS product_categories (
     id VARCHAR(50) PRIMARY KEY,
@@ -862,6 +657,8 @@ ALTER TABLE ic_purchases ADD COLUMN IF NOT EXISTS aed_total NUMERIC(15, 4);
 CREATE TABLE IF NOT EXISTS ic_sales (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_name VARCHAR(255) NOT NULL,
+    order_customer_name VARCHAR(255),
+    order_customer_id VARCHAR(255),
     entered_by VARCHAR(255),
     entered_by_name VARCHAR(255),
     entered_by_user_id VARCHAR(255),
@@ -947,13 +744,16 @@ ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS service_charge NUMERIC(15, 4) DEFA
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS bank TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS conversion_rate NUMERIC(15, 6) DEFAULT 1.0;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'AED';
+-- End-customer selected by the branch manager (customer_name still holds the owning branch for association/filtering)
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS order_customer_name VARCHAR(255);
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS order_customer_id VARCHAR(255);
 
 -- Drop legacy constraint if present, then apply expanded order_status check
 ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_order_status_check;
 ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_order_status_check
   CHECK (order_status IN (
     'pending', 'accepted', 'admin_rejected', 'wh_rejected',
-    'wh_processing', 'da_rejected', 'completed'
+    'wh_processing', 'da_rejected', 'cancellation_pending', 'cancelled', 'completed'
   ));
 
 ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_payment_status_check;
@@ -996,5 +796,22 @@ ALTER TABLE ic_sales DROP COLUMN IF EXISTS delivery_status;
 ALTER TABLE ic_sales DROP COLUMN IF EXISTS collected_amount;
 
 CREATE INDEX IF NOT EXISTS idx_ic_sales_derived_from ON ic_sales(derived_from_sale_id);
+
+-- Idempotent adjustments for database hardening
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+-- Make sure critical columns cannot be NULL
+ALTER TABLE ic_sales ALTER COLUMN order_status SET NOT NULL;
+ALTER TABLE ic_sales ALTER COLUMN payment_status SET NOT NULL;
+ALTER TABLE ic_sales ALTER COLUMN priority SET NOT NULL;
+
+-- Missing indexes for query performance optimization
+CREATE INDEX IF NOT EXISTS idx_ic_sales_order_status ON ic_sales(order_status);
+CREATE INDEX IF NOT EXISTS idx_ic_sales_customer_name_lower ON ic_sales(LOWER(customer_name));
+CREATE INDEX IF NOT EXISTS idx_ic_sales_delivery_agent ON ic_sales(delivery_agent_id);
+
+-- Ensure warehouse stock cannot go negative
+ALTER TABLE ic_warehouses DROP CONSTRAINT IF EXISTS ic_warehouses_stock_nonnegative;
+ALTER TABLE ic_warehouses ADD CONSTRAINT ic_warehouses_stock_nonnegative CHECK (current_stock >= 0);
 
 

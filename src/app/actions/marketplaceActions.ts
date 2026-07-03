@@ -3,6 +3,7 @@
 import { query, pool } from '@/lib/db';
 import type { PoolClient } from 'pg';
 import { revalidatePath } from 'next/cache';
+import { logger } from '@/lib/logger';
 
 async function allocateNextDocNo(client: PoolClient, year = new Date().getFullYear()): Promise<string> {
   const prefix = `TIS/${year}/`;
@@ -38,7 +39,7 @@ export async function getNextTaxInvoiceDocNo(_slug?: string) {
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('getNextTaxInvoiceDocNo error:', err);
+    logger.error({ error: err }, 'getNextTaxInvoiceDocNo error');
     return { success: false, error: message };
   }
 }
@@ -165,7 +166,7 @@ export async function saveTaxInvoice(data: any, slug: string) {
     return { success: true, id: invoiceId, docNo: insertedDocNo };
   } catch (err: any) {
     await client.query('ROLLBACK');
-    console.error('saveTaxInvoice error:', err);
+    logger.error({ error: err, data, slug }, 'saveTaxInvoice error');
     return { success: false, error: err.message };
   } finally {
     client.release();
@@ -191,7 +192,7 @@ export async function getTaxInvoicesBySlug(slug: string) {
     
     return { success: true, invoices };
   } catch (err: any) {
-    console.error('getTaxInvoicesBySlug error:', err);
+    logger.error({ error: err, slug }, 'getTaxInvoicesBySlug error');
     return { success: false, error: err.message };
   }
 }
@@ -209,7 +210,7 @@ export async function getTaxInvoiceDetails(invoiceId: string) {
       items: itemsRes.rows 
     };
   } catch (err: any) {
-    console.error('getTaxInvoiceDetails error:', err);
+    logger.error({ error: err, invoiceId }, 'getTaxInvoiceDetails error');
     return { success: false, error: err.message };
   }
 }
@@ -220,7 +221,7 @@ export async function deleteTaxInvoice(invoiceId: string) {
     revalidatePath('/[slug]/physical');
     return { success: true };
   } catch (err: any) {
-    console.error('deleteTaxInvoice error:', err);
+    logger.error({ error: err, invoiceId }, 'deleteTaxInvoice error');
     return { success: false, error: err.message };
   }
 }

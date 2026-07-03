@@ -10,6 +10,8 @@ export type ICOrderStatus =
   | 'wh_rejected'
   | 'wh_processing'
   | 'da_rejected'
+  | 'cancellation_pending'
+  | 'cancelled'
   | 'completed';
 
 export interface WarehouseOrder {

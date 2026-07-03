@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
+import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
 import { getWarehouseRegionId, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
 import { useApp } from '@/context/AppContext';
@@ -19,8 +20,9 @@ import { ICSale } from '@/types';
 import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
 import { portalKpiGrid, portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
 import { BranchOrderStatusCell, BranchOrderWorkflowActions } from '../shared/BranchOrderStatusCell';
-import { getCustomerOrderStatus, canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
+import { getBranchOrderStatus, canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits } from '@/lib/icTransfer/saleUnits';
+import { ConfirmModal } from '@/components/warehouse/shared';
 
 const icCompactTd = (align: 'left' | 'center' | 'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
@@ -30,13 +32,28 @@ const ORDER_COLUMNS = [
   'Date', 'ID', 'Customer', 'Address', 'Units', 'Total AED', 'Status', 'Actions'
 ];
 
+// The end-customer chosen by the branch manager, falling back to the branch name for legacy orders.
+const getOrderCustomer = (s: ICSale) => s.orderCustomerName || s.customerName;
+
+type SortField = 'date' | 'customer' | 'units' | 'totalaed';
+const SORTABLE_COLUMNS: Record<string, SortField> = {
+  date: 'date',
+  customer: 'customer',
+  units: 'units',
+  totalaed: 'totalaed',
+};
+
 export default function ICTransferBranch() {
-  const { icSales, icWarehouses, currentSlug, branches } = useApp();
+  const { icSales, icWarehouses, currentSlug, branches, branchDeleteICSale, branchRequestCancelICSale } = useApp();
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<ICSale | null>(null);
   const [search, setSearch] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [branchCustomers, setBranchCustomers] = useState<{ id: string; name: string }[]>([]);
 
   const {
     dateFilter,
@@ -51,26 +68,99 @@ export default function ICTransferBranch() {
 
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || 'None';
 
-  // Filter sales to only include those where customerName equals our branchName
-  const filteredSales = icSales.filter(s => {
-    const isOurOrder = s.customerName.toLowerCase() === branchName.toLowerCase();
-    if (!isOurOrder) return false;
+  useEffect(() => {
+    if (!currentSlug) return;
+    getCustomersBySlug(currentSlug).then(res => {
+      if (res.success && res.customers) {
+        setBranchCustomers(res.customers.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      }
+    });
+  }, [currentSlug]);
 
-    const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
-    if (search && 
-        !formattedId.toLowerCase().includes(search.toLowerCase()) && 
-        !s.id.toLowerCase().includes(search.toLowerCase()) && 
-        !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
-    if (!matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds)) {
-      return false;
+  // Orders belonging to this branch (customerName holds the owning branch name).
+  const branchSales = useMemo(
+    () => icSales.filter(s => s.customerName.toLowerCase() === branchName.toLowerCase()),
+    [icSales, branchName],
+  );
+
+  // Customer filter options: branch customers plus any names already present on orders.
+  const customerOptions = useMemo(() => {
+    const names = new Set<string>();
+    branchCustomers.forEach(c => names.add(c.name));
+    branchSales.forEach(s => {
+      if (s.orderCustomerName) names.add(s.orderCustomerName);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [branchCustomers, branchSales]);
+
+  const filteredSales = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const rows = branchSales.filter(s => {
+      const orderCustomer = getOrderCustomer(s);
+      const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
+      if (q &&
+          !formattedId.toLowerCase().includes(q) &&
+          !s.id.toLowerCase().includes(q) &&
+          !orderCustomer.toLowerCase().includes(q)) return false;
+      if (customerFilter && orderCustomer !== customerFilter) return false;
+      if (!matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds)) {
+        return false;
+      }
+      return true;
+    });
+
+    const dir = sortOrder === 'asc' ? 1 : -1;
+    return rows.slice().sort((a, b) => {
+      switch (sortField) {
+        case 'customer':
+          return getOrderCustomer(a).localeCompare(getOrderCustomer(b)) * dir;
+        case 'units':
+          return (a.units - b.units) * dir;
+        case 'totalaed':
+          return ((a.aedAmount || 0) - (b.aedAmount || 0)) * dir;
+        case 'date':
+        default:
+          return (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()) * dir;
+      }
+    });
+  }, [branchSales, branches, search, customerFilter, selectedRegionIds, icWarehouses, sortField, sortOrder]);
+
+  const handleHeaderClick = (column: string) => {
+    const key = column.toLowerCase().replace(/\s/g, '');
+    const field = SORTABLE_COLUMNS[key];
+    if (!field) return;
+    if (field === sortField) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
     }
-    return true;
-  });
+  };
+
+  const [deleteTarget, setDeleteTarget] = useState<ICSale | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<ICSale | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const handleEdit = (s: ICSale) => {
     if (!canBranchResubmitOrder(s.orderStatus)) return;
     setSelectedSale(s);
     setModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setActionLoading(true);
+    await branchDeleteICSale(deleteTarget.id);
+    setActionLoading(false);
+    setDeleteTarget(null);
+  };
+
+  const handleCancelConfirm = async () => {
+    if (!cancelTarget) return;
+    setActionLoading(true);
+    await branchRequestCancelICSale(cancelTarget.id);
+    setActionLoading(false);
+    setCancelTarget(null);
   };
 
   const handleCreateOrder = () => {
@@ -85,18 +175,17 @@ export default function ICTransferBranch() {
 
   // Compute stats for current branch orders
   const stats = React.useMemo(() => {
-    const branchSales = icSales.filter(s => s.customerName.toLowerCase() === branchName.toLowerCase());
     const totalOrders = branchSales.length;
     const totalUnits = branchSales.reduce((acc, s) => acc + s.units, 0);
     const totalValue = branchSales.reduce((acc, s) => acc + (s.aedAmount || 0), 0);
     const avgRate = totalUnits > 0 ? totalValue / totalUnits : 0;
 
-    const pendingOrders = branchSales.filter(s => getCustomerOrderStatus(s) === 'Pending').length;
-    const partialOrders = branchSales.filter(s => getCustomerOrderStatus(s) === 'Partial').length;
-    const fulfilledOrders = branchSales.filter(s => getCustomerOrderStatus(s) === 'Paid').length;
+    const pendingOrders = branchSales.filter(s => getBranchOrderStatus(s) === 'Pending').length;
+    const partialOrders = branchSales.filter(s => getBranchOrderStatus(s) === 'Partial').length;
+    const fulfilledOrders = branchSales.filter(s => getBranchOrderStatus(s) === 'Completed').length;
 
     const totalPartialUnitsDelivered = branchSales
-      .filter(s => getCustomerOrderStatus(s) === 'Partial' || !!s.derivedFromSaleId)
+      .filter(s => getBranchOrderStatus(s) === 'Partial' || !!s.derivedFromSaleId)
       .reduce((acc, s) => acc + getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus), 0);
 
     return {
@@ -109,7 +198,7 @@ export default function ICTransferBranch() {
       fulfilledOrders,
       totalPartialUnitsDelivered
     };
-  }, [icSales, branchName]);
+  }, [branchSales]);
 
   return (
     <PageShell>
@@ -157,7 +246,7 @@ export default function ICTransferBranch() {
         />
         <PhysicalSplitKPICard
           top={{ label: 'Active Orders', value: `${stats.pendingOrders + stats.partialOrders} Active` }}
-          bottom={{ label: 'Paid Orders', value: `${stats.fulfilledOrders} Paid` }}
+          bottom={{ label: 'Completed Orders', value: `${stats.fulfilledOrders} Completed` }}
           color="var(--pending)"
           bgColor="var(--pending-light)"
           icon={
@@ -186,6 +275,36 @@ export default function ICTransferBranch() {
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search orders..."
+        onHeaderClick={handleHeaderClick}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        toolbar={
+          <div className="relative">
+            <select
+              value={customerFilter}
+              onChange={e => setCustomerFilter(e.target.value)}
+              className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-300 focus:border-accent focus:outline-none sm:w-56"
+              aria-label="Filter by customer"
+            >
+              <option value="">All Customers</option>
+              {customerOptions.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+              aria-hidden
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </div>
+        }
         mobileView={
           filteredSales.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">No orders found.</div>
@@ -197,7 +316,7 @@ export default function ICTransferBranch() {
                 className="flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900">{s.customerName}</p>
+                  <p className="text-sm font-semibold text-slate-900">{getOrderCustomer(s)}</p>
                   <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</p>
                   <p className="mt-0.5 text-xs text-slate-400">{new Date(s.createdAt || '').toLocaleString()}</p>
                 </div>
@@ -207,19 +326,19 @@ export default function ICTransferBranch() {
                 </div>
                 <div className="text-xs text-slate-500 truncate">{s.address || 'No address'}</div>
                 <div onClick={e => e.stopPropagation()}>
-                  <BranchOrderWorkflowActions sale={s} onResubmit={handleEdit} />
+                  <BranchOrderWorkflowActions
+                    sale={s}
+                    inline
+                    onView={handleView}
+                    onResubmit={handleEdit}
+                    onDelete={setDeleteTarget}
+                    onCancelRequest={setCancelTarget}
+                  />
                 </div>
                 <div className={portalMobileCardFooterClass}>
                   <div className="min-w-0">
                     <BranchOrderStatusCell sale={s} />
                   </div>
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); handleView(s); }}
-                    className="shrink-0 text-xs font-bold text-accent hover:text-accent/80"
-                  >
-                    View Details
-                  </button>
                 </div>
               </div>
             ))
@@ -230,30 +349,22 @@ export default function ICTransferBranch() {
           <tr key={s.id} onClick={() => handleView(s)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">
             <td className={icCompactTd('left')}>{new Date(s.createdAt || '').toLocaleDateString()}</td>
             <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</span></td>
-            <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{s.customerName}</span></td>
-            <td className={icCompactTd('left')}>{s.address || 'None'}</td>
+            <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{getOrderCustomer(s)}</span></td>
+            <td className={icCompactTd('left')}>{s.address || '—'}</td>
             <td className={icCompactTd('right')}>{s.units.toLocaleString()}</td>
             <td className={icCompactTd('right')}><span className="font-bold text-slate-900">{(s.aedAmount || 0).toLocaleString()}</span></td>
             <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
               <BranchOrderStatusCell sale={s} />
             </td>
             <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
-              <div className="flex flex-col items-center gap-1.5">
-                <BranchOrderWorkflowActions sale={s} onResubmit={handleEdit} />
-                <div className="flex items-center justify-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleView(s)}
-                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm transition-all duration-150 hover:border-accent hover:bg-accent/5 hover:text-accent active:scale-95"
-                  title="More Info"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </button>
-                </div>
-              </div>
+              <BranchOrderWorkflowActions
+                sale={s}
+                inline
+                onView={handleView}
+                onResubmit={handleEdit}
+                onDelete={setDeleteTarget}
+                onCancelRequest={setCancelTarget}
+              />
             </td>
           </tr>
         ))}
@@ -268,11 +379,34 @@ export default function ICTransferBranch() {
         open={viewModalOpen}
         onClose={() => { setViewModalOpen(false); setSelectedSale(null); }}
         sale={selectedSale}
+        workflowVariant="branch"
         onEdit={
           selectedSale && canBranchResubmitOrder(selectedSale.orderStatus)
             ? handleEdit
             : undefined
         }
+      />
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete Order"
+        message="Are you sure you want to delete this pending order? This action cannot be undone."
+        confirmLabel="Delete Order"
+        variant="danger"
+        loading={actionLoading}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmModal
+        open={!!cancelTarget}
+        title="Request Cancellation"
+        message="Request cancellation of this accepted order? An admin will review and confirm the cancellation."
+        confirmLabel="Request Cancellation"
+        variant="danger"
+        loading={actionLoading}
+        onConfirm={handleCancelConfirm}
+        onCancel={() => setCancelTarget(null)}
       />
     </PageShell>
   );

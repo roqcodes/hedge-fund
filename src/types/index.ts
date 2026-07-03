@@ -486,37 +486,6 @@ export interface ICWarehouse {
   phone?: string;
   commission?: number;
   regionId?: string;
-}
-
-
-// ═══════════════════════════════════════════════════════════
-// IC Transfer Module
-// ═══════════════════════════════════════════════════════════
-
-export interface ICRegion {
-  id: string;
-  name: string;
-  country: string;
-  createdAt?: string;
-}
-
-export interface ICSupplier {
-  id: string;
-  name: string;
-  phone?: string;
-  commission?: number;
-  regionId?: string;
-  email?: string;
-  address?: string;
-  createdAt?: string;
-}
-
-export interface ICWarehouse {
-  id: string;
-  name: string;
-  phone?: string;
-  commission?: number;
-  regionId?: string;
   email?: string;
   address?: string;
   currentStock?: number;
@@ -559,11 +528,17 @@ export type ICOrderStatus =
   | 'wh_rejected'
   | 'wh_processing'
   | 'da_rejected'
+  | 'cancellation_pending'
+  | 'cancelled'
   | 'completed';
 
 export interface ICSale {
   id: string;
+  /** Owning branch name — used for branch association/filtering. */
   customerName: string;
+  /** End-customer chosen by the branch manager (falls back to customerName when absent). */
+  orderCustomerName?: string;
+  orderCustomerId?: string;
   warehouseId?: string;
   transactionType?: string;
   units: number;

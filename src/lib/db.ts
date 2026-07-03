@@ -9,7 +9,9 @@ const parsedUrl = new URL(env.DATABASE_URL);
 parsedUrl.search = '';
 const cleanUrl = parsedUrl.toString();
 
-const pool = new Pool({
+let pool: Pool;
+
+const poolConfig = {
   connectionString: cleanUrl,
   ssl:
     env.DATABASE_URL.includes('localhost') ||
@@ -20,7 +22,19 @@ const pool = new Pool({
   max: 20,                  // max simultaneous connections
   idleTimeoutMillis: 30_000, // close idle clients after 30s
   connectionTimeoutMillis: 10_000, // fail if connection takes > 10s
-});
+};
+
+if (process.env.NODE_ENV === 'production') {
+  pool = new Pool(poolConfig);
+} else {
+  const globalWithPool = globalThis as unknown as {
+    pool?: Pool;
+  };
+  if (!globalWithPool.pool) {
+    globalWithPool.pool = new Pool(poolConfig);
+  }
+  pool = globalWithPool.pool;
+}
 
 // Log connection errors rather than crashing the process
 pool.on('error', (err) => {

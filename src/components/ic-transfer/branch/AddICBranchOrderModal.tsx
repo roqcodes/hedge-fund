@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
+import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
+import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { ICSale } from '@/types';
 import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { hasICSaleEditableFieldsChanged, type ICSaleContentFields } from '@/lib/icTransfer/saleChanges';
@@ -34,6 +36,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const [deleteToken, setDeleteToken] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [editBaseline, setEditBaseline] = useState<Pick<
     ICSaleContentFields,
     'units' | 'transactionType' | 'address' | 'imageUrl' | 'bank'
@@ -55,6 +60,15 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const groupSaleRate = applicableGroup?.saleRate || 0;
 
   useEffect(() => {
+    if (!open || !currentSlug) return;
+    getCustomersBySlug(currentSlug).then(res => {
+      if (res.success && res.customers) {
+        setCustomers(res.customers.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      }
+    });
+  }, [open, currentSlug]);
+
+  useEffect(() => {
     if (open) {
       setUnits(initialData?.units?.toString() || '');
       setTransactionType(initialData?.transactionType || 'transfer');
@@ -62,6 +76,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       setAddress(initialData?.address || '');
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
+      setSelectedCustomerId(initialData?.orderCustomerId || '');
+      setCustomerQuery(initialData?.orderCustomerName || '');
 
       if (initialData && canBranchResubmitOrder(initialData.orderStatus)) {
         setEditBaseline({
@@ -129,8 +145,12 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
 
   const isResubmitMode = !!initialData && canBranchResubmitOrder(initialData.orderStatus);
 
+  const trimmedCustomer = customerQuery.trim();
+
   const payload = {
     customerName: branchName,
+    orderCustomerName: trimmedCustomer || undefined,
+    orderCustomerId: selectedCustomerId || undefined,
     transactionType,
     unitRate: rateNum,
     units: unitNum,
@@ -174,6 +194,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     isUploading ||
     !unitNum ||
     !rateNum ||
+    (!initialData && !trimmedCustomer) ||
     (isResubmitMode && !canResubmit);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -195,7 +216,12 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     <Modal
       open={open}
       onClose={onClose}
-      title={isResubmitMode ? 'Edit & Resubmit Order' : 'Create Transfer Order'}
+      title={
+        <div className="flex flex-col gap-0.5">
+          <span>{isResubmitMode ? 'Edit & Resubmit Order' : 'Create Transfer Order'}</span>
+          <span className="text-xs font-semibold text-accent">{branchName}</span>
+        </div>
+      }
       maxWidth="max-w-[1100px] w-[95vw]"
       footer={
         <>
@@ -232,14 +258,34 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           {/* Left Column: Customer details, Address and Upload */}
           <div className="space-y-4 lg:col-span-5">
             <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Customer</h3>
-            
-            <InputField label="Customer (Your Branch)">
-              <input 
-                className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`} 
-                value={branchName} 
-                disabled 
-                readOnly 
-              />
+
+            <InputField label="Customer">
+              {isResubmitMode ? (
+                <input
+                  className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`}
+                  value={customerQuery || branchName}
+                  disabled
+                  readOnly
+                />
+              ) : (
+                <ComboSearchInput
+                  value={customerQuery}
+                  onChange={val => {
+                    setCustomerQuery(val);
+                    const match = customers.find(c => c.name === val);
+                    setSelectedCustomerId(match?.id || '');
+                  }}
+                  onSelectOption={opt => {
+                    setCustomerQuery(opt.label);
+                    setSelectedCustomerId(opt.value);
+                  }}
+                  options={customers.map(c => ({ value: c.id, label: c.name }))}
+                  placeholder="Search and select a customer…"
+                />
+              )}
+              <p className="mt-1 text-[11px] text-slate-400">
+                Order will be recorded under {branchName}.
+              </p>
             </InputField>
 
             <InputField label="Bank">

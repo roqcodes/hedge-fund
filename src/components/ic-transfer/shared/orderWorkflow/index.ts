@@ -4,4 +4,4 @@ export { WorkflowActionButton } from './WorkflowActionButton';
 export type { WorkflowActionVariant } from './WorkflowActionButton';
 export { WorkflowNotice } from './WorkflowNotice';
 export type { WorkflowNoticeVariant } from './WorkflowNotice';
-export { IconCheck, IconX, IconRefresh, IconUserPlus, IconEdit } from './icons';
+export { IconCheck, IconX, IconRefresh, IconUserPlus, IconEdit, IconTrash, IconBan, IconEye } from './icons';

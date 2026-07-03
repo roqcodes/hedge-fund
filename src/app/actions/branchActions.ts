@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getCurrentUserAction } from '@/app/actions/auth';
 import { HIDEABLE_BRANCH_PAGE_IDS } from '@/lib/branchPages';
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
+import { logger } from '@/lib/logger';
 
 export async function updateBranchSettingsAction(
   branchId: string, 
@@ -47,7 +48,7 @@ export async function updateBranchSettingsAction(
 
     return { success: true };
   } catch (error: any) {
-    console.error('Failed to update branch settings:', error);
+    logger.error({ error, branchId }, 'Failed to update branch settings');
     return { success: false, error: error.message };
   }
 }
@@ -73,7 +74,7 @@ export async function updateBranchPageSettingsAction(
     revalidatePath('/', 'layout');
     return { success: true, hiddenPages: sanitized };
   } catch (error: unknown) {
-    console.error('Failed to update branch page settings:', error);
+    logger.error({ error, branchId }, 'Failed to update branch page settings');
     return { success: false, error: error instanceof Error ? error.message : 'Update failed' };
   }
 }

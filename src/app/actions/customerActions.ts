@@ -2,6 +2,7 @@
 
 import { query } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
+import { logger } from '@/lib/logger';
 
 export async function getCustomersBySlug(slug: string) {
   try {
@@ -18,7 +19,7 @@ export async function getCustomersBySlug(slug: string) {
     return { success: true, customers: res.rows };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('getCustomers error:', err);
+    logger.error({ error: err, slug }, 'getCustomers error');
     return { success: false, error: message };
   }
 }
@@ -35,7 +36,7 @@ export async function getAllCustomers() {
     return { success: true, customers: res.rows };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('getAllCustomers error:', err);
+    logger.error({ error: err }, 'getAllCustomers error');
     return { success: false, error: message };
   }
 }
@@ -72,7 +73,7 @@ export async function getCustomerById(customerId: string, slug?: string) {
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('getCustomerById error:', err);
+    logger.error({ error: err, customerId, slug }, 'getCustomerById error');
     return { success: false, error: message };
   }
 }
@@ -123,7 +124,7 @@ export async function saveCustomer(
     return { success: true, id };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('saveCustomer error:', err);
+    logger.error({ error: err, slug, data }, 'saveCustomer error');
     return { success: false, error: message };
   }
 }
@@ -135,7 +136,7 @@ export async function deleteCustomer(id: string) {
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('deleteCustomer error:', err);
+    logger.error({ error: err, id }, 'deleteCustomer error');
     return { success: false, error: message };
   }
 }

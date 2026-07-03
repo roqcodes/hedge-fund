@@ -7,6 +7,7 @@ import { btnPrimary, btnSecondary } from '@/lib/ui';
 import AddUserModal from '@/components/ic-transfer/settings/AddUserModal';
 import { useApp } from '@/context/AppContext';
 import type { ICWarehouse } from '@/types';
+import { ConfirmModal } from '@/components/warehouse/shared';
 
 type Props = {
   open: boolean;
@@ -14,19 +15,15 @@ type Props = {
 };
 
 export default function ManageWarehousesModal({ open, onClose }: Props) {
-  const { icRegions, icWarehouses, addICWarehouse, updateICWarehouse, deleteICWarehouse } = useApp();
+  const { icWarehouses, addICWarehouse, updateICWarehouse, deleteICWarehouse } = useApp();
   const router = useRouter();
   const params = useParams();
   const branchSlug = params.slug as string;
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<ICWarehouse | null>(null);
-
-  const regionNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    icRegions.forEach(r => map.set(r.id, r.name));
-    return map;
-  }, [icRegions]);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const sortedWarehouses = useMemo(
     () => [...icWarehouses].sort((a, b) => a.name.localeCompare(b.name)),
@@ -58,7 +55,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
         data.name,
         data.phone,
         data.commission,
-        data.regionId,
+        '',
         data.email,
         data.address,
       );
@@ -67,7 +64,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
         data.name,
         data.phone,
         data.commission,
-        data.regionId,
+        '',
         data.email,
         data.address,
       );
@@ -76,9 +73,12 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
     setEditingWarehouse(null);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this warehouse?')) return;
-    await deleteICWarehouse(id);
+  const handleDeleteConfirm = async () => {
+    if (!deleteTargetId) return;
+    setDeleteLoading(true);
+    await deleteICWarehouse(deleteTargetId);
+    setDeleteLoading(false);
+    setDeleteTargetId(null);
   };
 
   const openUsers = (warehouseId: string) => {
@@ -88,6 +88,16 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
 
   return (
     <>
+      <ConfirmModal
+        open={!!deleteTargetId}
+        title="Delete Warehouse"
+        message="Are you sure you want to delete this warehouse? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteLoading}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTargetId(null)}
+      />
       <Modal
         open={open}
         onClose={onClose}
@@ -114,8 +124,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-slate-900">{warehouse.name}</p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {regionNameById.get(warehouse.regionId || '') || 'No region'}
-                      {warehouse.phone ? ` · ${warehouse.phone}` : ''}
+                      {warehouse.phone || 'No phone'}
                       {warehouse.commission != null ? ` · ${warehouse.commission}% commission` : ''}
                     </p>
                   </div>
@@ -137,7 +146,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
                     <button
                       type="button"
                       className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-100"
-                      onClick={() => handleDelete(warehouse.id)}
+                      onClick={() => setDeleteTargetId(warehouse.id)}
                     >
                       Delete
                     </button>
@@ -156,10 +165,10 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
           setEditingWarehouse(null);
         }}
         title={editingWarehouse ? 'Edit Warehouse' : 'Add Warehouse'}
-        regions={icRegions}
         showCommission
         showRate={false}
         showPassword={false}
+        showRegion={false}
         initialData={editingWarehouse}
         onAdd={handleSave}
       />

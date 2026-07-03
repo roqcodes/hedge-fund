@@ -2,6 +2,7 @@ export { default as PageShell } from './PageShell';
 export { default as PageHeader } from './PageHeader';
 export { default as SectionCard } from './SectionCard';
 export { default as AddButton } from './AddButton';
+export { IconManageUsers, IconAddGroup } from './headerIcons';
 export { default as ExportButtons } from './ExportButtons';
 export { default as FilterChips } from './FilterChips';
 export { default as SearchInput } from './SearchInput';

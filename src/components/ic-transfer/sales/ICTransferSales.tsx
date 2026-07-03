@@ -24,7 +24,7 @@ import { portalKpiGrid } from '@/lib/icTransfer/layoutConstants';
 import { ConfirmModal } from '@/components/warehouse/shared';
 import { AdminOrderStatusCard, AdminOrderWorkflowActions } from '../shared/AdminOrderWorkflowPanel';
 import SalePriorityControl from '../shared/SalePriorityControl';
-import { IC_ORDER_STATUSES, getAdminStatusLabel, normalizeOrderStatus, canAdminAccept, getCustomerOrderStatus } from '@/lib/icTransfer/orderStatus';
+import { IC_ORDER_STATUSES, getAdminStatusLabel, normalizeOrderStatus, canAdminAccept, getCustomerOrderStatus, getAdminRowAccentClass, getAdminCardAccentClass } from '@/lib/icTransfer/orderStatus';
 import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { PriorityBadge } from '@/components/warehouse/shared';
@@ -378,7 +378,7 @@ export default function ICTransferSales() {
                 <div
                   key={s.id}
                   onClick={() => handleView(s)}
-                  className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors ${highPriorityCardClass(s.priority)}`}
+                  className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer transition-colors ${getAdminCardAccentClass(s.orderStatus) ?? `hover:bg-slate-50 ${highPriorityCardClass(s.priority)}`}`}
                 >
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0">
@@ -426,7 +426,7 @@ export default function ICTransferSales() {
             <tr
               key={s.id}
               onClick={() => handleView(s)}
-              className={`cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${highPriorityRowClass(s.priority)}`}
+              className={`cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${getAdminRowAccentClass(s.orderStatus) ?? highPriorityRowClass(s.priority)}`}
             >
               {/* DATE */}
               <td className={icCompactTd('left')}>

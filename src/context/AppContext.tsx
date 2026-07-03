@@ -88,6 +88,8 @@ import {
   dbUpdateICSaleAction,
   dbDeleteICSaleAction,
   branchResubmitICSaleAction,
+  branchDeleteICSaleAction,
+  branchRequestCancelICSaleAction,
 } from '@/app/actions/icTransferActions';
 import { fetchCurrencyRatesAction } from '@/app/actions/currencyActions';
 import {
@@ -239,6 +241,8 @@ interface AppContextType extends AppState {
   addICSale: (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => Promise<boolean>;
   updateICSale: (id: string, updates: Partial<Omit<ICSale, 'id' | 'createdAt'>>) => Promise<boolean>;
   resubmitICSale: (id: string, updates: import('@/lib/icTransfer/saleChanges').ICSaleContentFields, branchSlug?: string) => Promise<boolean>;
+  branchDeleteICSale: (id: string, branchSlug?: string) => Promise<boolean>;
+  branchRequestCancelICSale: (id: string, branchSlug?: string) => Promise<boolean>;
   deleteICPurchase: (id: string) => Promise<boolean>;
   deleteICSale: (id: string) => Promise<boolean>;
 }
@@ -1756,6 +1760,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast, currentSlug]);
 
+  const branchDeleteICSale = useCallback(async (id: string, branchSlug?: string) => {
+    try {
+      const slug = branchSlug ?? (currentSlug !== 'superadmin' ? currentSlug : undefined);
+      const res = await branchDeleteICSaleAction(id, slug);
+      if (res.success) {
+        setState(s => ({ ...s, icSales: s.icSales.filter(sItem => sItem.id !== id) }));
+        showToast('Order deleted successfully');
+        return true;
+      }
+      showToast(res.error || 'Failed to delete order', 'error');
+      return false;
+    } catch {
+      showToast('Error deleting order', 'error');
+      return false;
+    }
+  }, [showToast, currentSlug]);
+
+  const branchRequestCancelICSale = useCallback(async (id: string, branchSlug?: string) => {
+    try {
+      const slug = branchSlug ?? (currentSlug !== 'superadmin' ? currentSlug : undefined);
+      const res = await branchRequestCancelICSaleAction(id, slug);
+      if (res.success && res.data) {
+        setState(s => ({
+          ...s,
+          icSales: s.icSales.map(sItem => sItem.id === id ? res.data! : sItem),
+        }));
+        showToast('Cancellation requested — awaiting admin review');
+        return true;
+      }
+      showToast(res.error || 'Failed to request cancellation', 'error');
+      return false;
+    } catch {
+      showToast('Error requesting cancellation', 'error');
+      return false;
+    }
+  }, [showToast, currentSlug]);
+
   const deleteICPurchase = useCallback(async (id: string) => {
     try {
       const res = await dbDeleteICPurchaseAction(id);
@@ -1889,11 +1930,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
-      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale,
+      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale,
       deleteICPurchase,
       deleteICSale,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, deleteICPurchase, deleteICSale]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;

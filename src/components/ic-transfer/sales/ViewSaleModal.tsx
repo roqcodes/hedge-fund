@@ -7,6 +7,7 @@ import { useApp } from '@/context/AppContext';
 import { ConfirmModal } from '@/components/warehouse/shared';
 import SalePriorityControl from '../shared/SalePriorityControl';
 import SaleOrderWorkflowSection from '../shared/SaleOrderWorkflowSection';
+import ProofImageActions from '../shared/ProofImageActions';
 import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { isBranchScopedUser } from '@/lib/rbac';
@@ -23,7 +24,7 @@ type Props = {
 };
 
 export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVariant = 'auto' }: Props) {
-  const { icWarehouses, updateICSale, deleteICSale, user, branches, icSales, refetchData } = useApp();
+  const { icWarehouses, updateICSale, deleteICSale, user, branches, icSales, refetchData, showToast } = useApp();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -209,7 +210,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               </div>
             )}
 
-            {liveSale.deliveryAgentName && (
+            {liveSale.deliveryAgentName && !isBranchPortalView && (
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Assigned Agent</p>
                 <p className="text-sm font-semibold text-slate-900 mt-0.5">{liveSale.deliveryAgentName}</p>
@@ -221,12 +222,12 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Delivery Address</p>
                 <p className="text-sm text-slate-700 mt-0.5 bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap">{liveSale.address}</p>
               </div>
-            ) : (
+            ) : !isBranchPortalView ? (
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Warehouse</p>
                 <p className="text-sm font-semibold text-slate-700 mt-0.5 bg-slate-50 p-3 rounded-xl border border-slate-100">{getWarehouseName(liveSale.warehouseId)}</p>
               </div>
-            )}
+            ) : null}
 
             <SaleOrderWorkflowSection
               sale={liveSale}
@@ -287,11 +288,22 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Delivery/Payment Proof (Agent Upload)</p>
               {liveSale.deliveryImageUrl ? (
-                <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  <a href={liveSale.deliveryImageUrl} target="_blank" rel="noopener noreferrer">
-                    <img src={liveSale.deliveryImageUrl} alt="Delivery proof" className="absolute inset-0 h-full w-full object-contain hover:opacity-90 transition-opacity" />
-                  </a>
-                </div>
+                <>
+                  <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                    <a href={liveSale.deliveryImageUrl} target="_blank" rel="noopener noreferrer">
+                      <img src={liveSale.deliveryImageUrl} alt="Delivery proof" className="absolute inset-0 h-full w-full object-contain hover:opacity-90 transition-opacity" />
+                    </a>
+                  </div>
+                  {isBranchPortalView ? (
+                    <ProofImageActions
+                      imageUrl={liveSale.deliveryImageUrl}
+                      downloadFilename={`delivery-proof-${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}`}
+                      onCopySuccess={() => showToast('Image link copied')}
+                      onCopyError={msg => showToast(msg, 'error')}
+                      onDownloadError={msg => showToast(msg, 'error')}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-slate-400 text-xs font-medium">
                   No delivery proof image uploaded

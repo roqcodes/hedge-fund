@@ -11,13 +11,18 @@ export async function adjustWarehouseStock(
   const res = await client.query(
     `UPDATE ic_warehouses
      SET current_stock = current_stock + $2
-     WHERE id = $1
+     WHERE id = $1 AND (current_stock + $2 >= 0)
      RETURNING current_stock`,
     [warehouseId, deltaUnits],
   );
 
   if (res.rowCount === 0) {
-    throw new Error('Warehouse not found');
+    const existCheck = await client.query('SELECT id FROM ic_warehouses WHERE id = $1', [warehouseId]);
+    if (existCheck.rowCount === 0) {
+      throw new Error('Warehouse not found');
+    } else {
+      throw new Error('Insufficient warehouse stock');
+    }
   }
 }
 

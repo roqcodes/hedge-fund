@@ -1,6 +1,7 @@
 'use server';
 
 import { DEFAULT_RATES } from '@/lib/currency';
+import { logger } from '@/lib/logger';
 
 const RATES_URL = 'https://open.er-api.com/v6/latest/AED';
 
@@ -20,7 +21,7 @@ export async function fetchCurrencyRatesAction(): Promise<{
       fetchedAt: new Date().toISOString(),
     };
   } catch (error) {
-    console.error('fetchCurrencyRatesAction failed:', error);
+    logger.error({ error }, 'fetchCurrencyRatesAction failed');
     return {
       success: false,
       rates: { ...DEFAULT_RATES },

@@ -2,6 +2,27 @@
 
 import { query, pool } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
+import { buildProductSkuBase } from '@/lib/products/sku';
+import { logger } from '@/lib/logger';
+
+async function generateUniqueProductSku(
+  branchId: string,
+  metalType: string,
+  weight: number | string,
+  unit: string,
+): Promise<string> {
+  const base = buildProductSkuBase(metalType, weight, unit);
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const sku = `${base}-${suffix}`;
+    const existing = await query(
+      `SELECT 1 FROM products WHERE branch_id = $1 AND sku = $2 LIMIT 1`,
+      [branchId, sku],
+    );
+    if (existing.rowCount === 0) return sku;
+  }
+  return `${base}-${Date.now().toString(36).slice(-5).toUpperCase()}`;
+}
 
 // --- Categories ---
 
@@ -16,7 +37,7 @@ export async function getCategoriesBySlug(slug: string) {
     `, [slug]);
     return { success: true, categories: res.rows };
   } catch (err: any) {
-    console.error('getCategories error:', err);
+    logger.error({ error: err, slug }, 'getCategories error');
     return { success: false, error: err.message };
   }
 }
@@ -36,7 +57,7 @@ export async function saveCategory(slug: string, id: string | null, name: string
     revalidatePath('/[slug]/products');
     return { success: true };
   } catch (err: any) {
-    console.error('saveCategory error:', err);
+    logger.error({ error: err, slug, id, name }, 'saveCategory error');
     return { success: false, error: err.message };
   }
 }
@@ -47,7 +68,7 @@ export async function deleteCategory(id: string) {
     revalidatePath('/[slug]/products');
     return { success: true };
   } catch (err: any) {
-    console.error('deleteCategory error:', err);
+    logger.error({ error: err, id }, 'deleteCategory error');
     return { success: false, error: err.message };
   }
 }
@@ -65,7 +86,7 @@ export async function getSubcategoriesBySlug(slug: string) {
     `, [slug]);
     return { success: true, subcategories: res.rows };
   } catch (err: any) {
-    console.error('getSubcategories error:', err);
+    logger.error({ error: err, slug }, 'getSubcategories error');
     return { success: false, error: err.message };
   }
 }
@@ -85,7 +106,7 @@ export async function saveSubcategory(slug: string, id: string | null, categoryI
     revalidatePath('/[slug]/products');
     return { success: true };
   } catch (err: any) {
-    console.error('saveSubcategory error:', err);
+    logger.error({ error: err, slug, id, categoryId, name }, 'saveSubcategory error');
     return { success: false, error: err.message };
   }
 }
@@ -96,7 +117,7 @@ export async function deleteSubcategory(id: string) {
     revalidatePath('/[slug]/products');
     return { success: true };
   } catch (err: any) {
-    console.error('deleteSubcategory error:', err);
+    logger.error({ error: err, id }, 'deleteSubcategory error');
     return { success: false, error: err.message };
   }
 }
@@ -116,7 +137,7 @@ export async function getProductsBySlug(slug: string) {
     `, [slug]);
     return { success: true, products: res.rows };
   } catch (err: any) {
-    console.error('getProducts error:', err);
+    logger.error({ error: err, slug }, 'getProducts error');
     return { success: false, error: err.message };
   }
 }
@@ -128,6 +149,10 @@ export async function saveProduct(slug: string, data: any) {
     const branchId = branchRes.rows[0].id;
 
     const id = data.id || `prod_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    const sku = data.id
+      ? data.sku
+      : await generateUniqueProductSku(branchId, data.metal_type, data.weight, data.unit);
 
     const q = `
       INSERT INTO products (
@@ -159,17 +184,17 @@ export async function saveProduct(slug: string, data: any) {
     `;
 
     const values = [
-      id, branchId, data.sku, data.name, data.category_id || null, data.subcategory_id || null, 
+      id, branchId, sku, data.name, data.category_id || null, data.subcategory_id || null,
       data.metal_type, data.purity || 0, data.weight || 0, data.unit, data.brand || '', data.origin || '',
-      data.buy_premium || 0, data.sell_premium || 0, data.making_charge || 0, data.vat_percent || 0,
-      data.inventory_type, data.redeemable || false, data.hedging_enabled || false, data.status
+      0, 0, 0, 0,
+      data.inventory_type || 'Physical', false, false, data.status || 'Active',
     ];
 
     await query(q, values);
     revalidatePath('/[slug]/products');
     return { success: true, id };
   } catch (err: any) {
-    console.error('saveProduct error:', err);
+    logger.error({ error: err, slug, data }, 'saveProduct error');
     return { success: false, error: err.message };
   }
 }
@@ -180,7 +205,7 @@ export async function deleteProduct(id: string) {
     revalidatePath('/[slug]/products');
     return { success: true };
   } catch (err: any) {
-    console.error('deleteProduct error:', err);
+    logger.error({ error: err, id }, 'deleteProduct error');
     return { success: false, error: err.message };
   }
 }
