@@ -10,12 +10,14 @@ import {
   adminReassignICSaleWarehouseAction,
   adminApproveCancelICSaleAction,
   adminDeclineCancelICSaleAction,
+  adminVerifyDeliveryAction,
 } from '@/app/actions/icTransferActions';
 import {
   canAdminAccept,
   canAdminReject,
   canAdminReassignWarehouse,
   canAdminResolveCancellation,
+  canAdminVerifyDelivery,
   getAdminStatusLabel,
   getAdminStatusStyle,
   normalizeOrderStatus,
@@ -32,6 +34,9 @@ import {
   IconRefresh,
   IconBan,
 } from './orderWorkflow';
+import ByHandAdminActions, { ByHandAdminNotice } from './ByHandAdminActions';
+import { isByHandSale } from '@/lib/icTransfer/byHand';
+import { canPerformICTransferAdminActions } from '@/lib/rbac';
 import { btnPrimary, btnSecondary, formSelect } from '@/lib/ui';
 
 type SharedProps = {
@@ -58,8 +63,8 @@ export function AdminOrderStatusCard({
 }) {
   return (
     <OrderStatusCard
-      label={getAdminStatusLabel(sale.orderStatus)}
-      statusStyle={getAdminStatusStyle(sale.orderStatus)}
+      label={getAdminStatusLabel(sale.orderStatus, sale.transactionType)}
+      statusStyle={getAdminStatusStyle(sale.orderStatus, sale.transactionType)}
       remarks={sale.rejectionRemarks}
       remarksVariant={getRemarksVariant(sale.orderStatus)}
       compact={compact}
@@ -70,11 +75,13 @@ export function AdminOrderStatusCard({
 
 /** Workflow action buttons + modals for the Actions column or detail panels. */
 export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: SharedProps & { compact?: boolean }) {
-  const { icWarehouses, showToast, refetchData } = useApp();
+  const { icWarehouses, showToast, refetchData, currentSlug, user } = useApp();
+  const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [approveCancelOpen, setApproveCancelOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const [warehouseId, setWarehouseId] = useState(sale.warehouseId || '');
   const [loading, setLoading] = useState(false);
 
@@ -85,7 +92,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
       return;
     }
     setLoading(true);
-    const res = await adminAcceptICSaleAction(sale.id, warehouseId);
+    const res = await adminAcceptICSaleAction(sale.id, warehouseId, branchSlug);
     setLoading(false);
     if (res.success) {
       showToast('Order accepted and warehouse assigned', 'success');
@@ -104,7 +111,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
       return;
     }
     setLoading(true);
-    const res = await adminReassignICSaleWarehouseAction(sale.id, warehouseId);
+    const res = await adminReassignICSaleWarehouseAction(sale.id, warehouseId, branchSlug);
     setLoading(false);
     if (res.success) {
       showToast('Warehouse reassigned successfully', 'success');
@@ -118,7 +125,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
 
   const handleReject = async (remarks: string) => {
     setLoading(true);
-    const res = await adminRejectICSaleAction(sale.id, remarks);
+    const res = await adminRejectICSaleAction(sale.id, remarks, branchSlug);
     setLoading(false);
     if (res.success) {
       showToast('Order rejected', 'success');
@@ -132,7 +139,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
 
   const handleApproveCancel = async () => {
     setLoading(true);
-    const res = await adminApproveCancelICSaleAction(sale.id);
+    const res = await adminApproveCancelICSaleAction(sale.id, branchSlug);
     setLoading(false);
     if (res.success) {
       showToast('Cancellation approved — order cancelled', 'success');
@@ -146,7 +153,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
 
   const handleDeclineCancel = async () => {
     setLoading(true);
-    const res = await adminDeclineCancelICSaleAction(sale.id);
+    const res = await adminDeclineCancelICSaleAction(sale.id, branchSlug);
     setLoading(false);
     if (res.success) {
       showToast('Cancellation declined — order restored', 'success');
@@ -157,16 +164,34 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
     }
   };
 
+  const handleVerifyDelivery = async () => {
+    setLoading(true);
+    const res = await adminVerifyDeliveryAction(sale.id, branchSlug);
+    setLoading(false);
+    if (res.success) {
+      showToast('Delivery verified — order completed for customer', 'success');
+      setVerifyOpen(false);
+      await refetchData();
+      onUpdated?.();
+    } else {
+      showToast(res.error || 'Failed to verify delivery', 'error');
+    }
+  };
+
   const showAccept = canAdminAccept(sale.orderStatus);
   const showReject = canAdminReject(sale.orderStatus);
   const showReassign = canAdminReassignWarehouse(sale.orderStatus);
   const showResolveCancel = canAdminResolveCancellation(sale.orderStatus);
-  const hasActions = showAccept || showReject || showReassign || showResolveCancel;
+  const showVerifyDelivery = canAdminVerifyDelivery(sale.orderStatus);
+  const showByHandActions = isByHandSale(sale);
+  const hasStandardActions = showAccept || showReject || showReassign || showResolveCancel || showVerifyDelivery;
+  const hasActions = canPerformICTransferAdminActions(user) && (hasStandardActions || showByHandActions);
 
   if (!hasActions) return null;
 
   return (
     <>
+      {hasStandardActions ? (
       <OrderWorkflowActionStack compact={compact}>
         {showAccept && (
           <WorkflowActionButton
@@ -218,7 +243,24 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
             </WorkflowActionButton>
           </>
         )}
+        {showVerifyDelivery && (
+          <WorkflowActionButton
+            variant="success"
+            icon={<IconCheck />}
+            size={compact ? 'sm' : 'md'}
+            onClick={e => { e.stopPropagation(); setVerifyOpen(true); }}
+          >
+            Verify Delivery
+          </WorkflowActionButton>
+        )}
       </OrderWorkflowActionStack>
+      ) : null}
+
+      {showByHandActions ? (
+        <div className={compact ? 'mt-1.5' : 'mt-2'}>
+          <ByHandAdminActions sale={sale} onUpdated={onUpdated} compact={compact} />
+        </div>
+      ) : null}
 
       <Modal
         open={acceptOpen}
@@ -235,7 +277,11 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
         }
       >
         <form id="accept-order-form" onSubmit={handleAccept} className="space-y-4">
-          <p className="text-sm text-slate-600">Select a warehouse to process this order.</p>
+          {isByHandSale(sale) ? (
+            <ByHandAdminNotice sale={sale} />
+          ) : (
+            <p className="text-sm text-slate-600">Select a warehouse to process this order.</p>
+          )}
           <select
             value={warehouseId}
             onChange={e => setWarehouseId(e.target.value)}
@@ -303,6 +349,17 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
         loading={loading}
         onConfirm={handleApproveCancel}
         onCancel={() => setApproveCancelOpen(false)}
+      />
+
+      <ConfirmModal
+        open={verifyOpen}
+        title="Verify Delivery"
+        message="Confirm delivery proof and mark this order as completed? The customer will see the order as delivered."
+        confirmLabel="Verify Delivery"
+        variant="success"
+        loading={loading}
+        onConfirm={handleVerifyDelivery}
+        onCancel={() => setVerifyOpen(false)}
       />
     </>
   );

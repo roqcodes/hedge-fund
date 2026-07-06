@@ -19,6 +19,7 @@ import {
   fetchDeliveryAgentOrdersSchema,
 } from '@/lib/validations/icTransfer';
 import { z } from 'zod';
+import { SQL_EXCLUDE_BY_HAND_FROM_WAREHOUSE } from '@/lib/icTransfer/byHand';
 
 /** Returns today's ISO date string (YYYY-MM-DD) in UTC. */
 function todayISO() {
@@ -57,6 +58,7 @@ export async function fetchWarehouseOrders(
       FROM ic_sales s
       LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
       WHERE s.warehouse_id = $1
+        AND ${SQL_EXCLUDE_BY_HAND_FROM_WAREHOUSE}
         AND s.created_at >= $2
         AND s.created_at <  $3
       ORDER BY
@@ -86,6 +88,7 @@ export async function fetchWarehouseUndeliveredOrders(warehouseId: string) {
       FROM ic_sales s
       LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
       WHERE s.warehouse_id = $1
+        AND ${SQL_EXCLUDE_BY_HAND_FROM_WAREHOUSE}
         AND s.order_status <> 'completed'
         AND s.order_status <> 'wh_rejected'
       ORDER BY s.created_at DESC
@@ -320,7 +323,7 @@ export async function deleteWarehouseGroup(id: string) {
 export async function assignOrderToAgent(orderId: string, agentId: string | null) {
   try {
     const parsed = assignOrderToAgentSchema.parse({ orderId, agentId });
-    await query(
+    const res = await query(
       `UPDATE ic_sales
        SET delivery_agent_id = $1,
            order_status = CASE
@@ -328,7 +331,8 @@ export async function assignOrderToAgent(orderId: string, agentId: string | null
              ELSE order_status
            END,
            status_updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
+       WHERE id = $2
+         AND transaction_type IS DISTINCT FROM 'by_hand'`,
       [parsed.agentId, parsed.orderId],
     );
     return { success: true };
@@ -354,6 +358,7 @@ export async function warehouseAcceptOrder(orderId: string, agentId: string, upd
            status_updated_by = $2
        WHERE id = $3
          AND order_status IN ('accepted', 'da_rejected')
+         AND transaction_type IS DISTINCT FROM 'by_hand'
        RETURNING id`,
       [parsed.agentId, parsed.updatedBy, parsed.orderId],
     );
@@ -383,6 +388,7 @@ export async function warehouseRejectOrder(orderId: string, remarks: string, upd
            status_updated_by = $2
        WHERE id = $3
          AND order_status IN ('accepted', 'wh_processing', 'da_rejected')
+         AND transaction_type IS DISTINCT FROM 'by_hand'
        RETURNING id`,
       [parsed.remarks.trim(), parsed.updatedBy, parsed.orderId],
     );
@@ -411,6 +417,7 @@ export async function deliveryAgentRejectOrder(orderId: string, remarks: string,
            status_updated_by = $2
        WHERE id = $3
          AND order_status = 'wh_processing'
+         AND transaction_type IS DISTINCT FROM 'by_hand'
        RETURNING id`,
       [parsed.remarks.trim(), parsed.updatedBy, parsed.orderId],
     );
@@ -447,6 +454,10 @@ export async function completeDeliveryWithUnits(
       }
       const order = orderRes.rows[0];
 
+      if (order.transaction_type === 'by_hand') {
+        throw new Error('By Hand orders are fulfilled by admin only');
+      }
+
       if (order.order_status !== 'wh_processing') {
         throw new Error('Order is not ready for delivery completion');
       }
@@ -466,6 +477,21 @@ export async function completeDeliveryWithUnits(
       const remaining = totalUnits - delivered;
       const isFullDelivery = remaining <= 0.0001;
 
+      const warehouseId = order.warehouse_id as string | null;
+      let sendProofToCustomer = true;
+      if (warehouseId) {
+        const whRes = await client.query(
+          `SELECT send_delivery_proof_to_customer FROM ic_warehouses WHERE id = $1`,
+          [warehouseId],
+        );
+        if (whRes.rows.length > 0) {
+          sendProofToCustomer = whRes.rows[0].send_delivery_proof_to_customer !== false;
+        }
+      }
+
+      const finalOrderStatus = sendProofToCustomer ? 'completed' : 'delivery_pending_admin';
+      const finalPaymentStatus = sendProofToCustomer ? 'paid' : 'pending';
+
       await client.query(
         `UPDATE ic_sales SET
           units = $1,
@@ -473,17 +499,19 @@ export async function completeDeliveryWithUnits(
           aed_amount = $3,
           service_charge = $4,
           collected_units = $1,
-          order_status = 'completed',
-          payment_status = 'paid',
-          delivery_image_url = $5,
+          order_status = $5,
+          payment_status = $6,
+          delivery_image_url = $7,
           status_updated_at = CURRENT_TIMESTAMP,
-          status_updated_by = $6
-         WHERE id = $7`,
+          status_updated_by = $8
+         WHERE id = $9`,
         [
           deliveredFinancials.units,
           deliveredFinancials.convertedAmount,
           deliveredFinancials.aedAmount,
           deliveredFinancials.serviceCharge,
+          finalOrderStatus,
+          finalPaymentStatus,
           parsed.imageUrl || null,
           parsed.updatedBy || 'delivery_agent',
           parsed.orderId,
@@ -535,7 +563,6 @@ export async function completeDeliveryWithUnits(
         remainderSaleId = insertRes.rows[0].id;
       }
 
-      const warehouseId = order.warehouse_id as string | null;
       if (warehouseId) {
         await logWarehouseStockTransaction(
           client,
@@ -549,14 +576,21 @@ export async function completeDeliveryWithUnits(
       }
 
       await client.query('COMMIT');
+      const awaitingAdmin = finalOrderStatus === 'delivery_pending_admin';
       return {
         success: true,
         remainderSaleId,
         message: remainderSaleId
           ? agentId
-            ? `Delivered ${delivered} units. Remaining ${remaining} units assigned to you as a new order.`
-            : `Delivered ${delivered} units. Remaining ${remaining} units created as a new order.`
-          : `Delivered all ${delivered} units.`,
+            ? `Delivered ${delivered} units. Remaining ${remaining} units assigned to you as a new order.${
+                awaitingAdmin ? ' Awaiting admin verification.' : ''
+              }`
+            : `Delivered ${delivered} units. Remaining ${remaining} units created as a new order.${
+                awaitingAdmin ? ' Awaiting admin verification.' : ''
+              }`
+          : awaitingAdmin
+            ? `Delivered all ${delivered} units. Awaiting admin verification.`
+            : `Delivered all ${delivered} units.`,
       };
     } catch (error: unknown) {
       await client.query('ROLLBACK');
@@ -614,6 +648,7 @@ export async function fetchDeliveryAgentOrders(
       LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
       WHERE s.created_at >= $2
         AND s.created_at <  $3
+        AND ${SQL_EXCLUDE_BY_HAND_FROM_WAREHOUSE}
         AND (
           s.delivery_agent_id = $1
           OR (

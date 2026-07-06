@@ -29,7 +29,7 @@ import { resolveDateRange } from '@/lib/warehouseDateUtils';
 
 import type { WarehouseOrder, DeliveryAgent } from '@/types/warehouse';
 
-type TabKey = 'Pending' | 'Completed' | 'Rejected';
+type TabKey = 'Pending' | 'AwaitingAdmin' | 'Completed' | 'Rejected';
 
 type SortField =
   | 'Date'
@@ -141,7 +141,12 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
     return orders
       .filter(o => {
         if (tab === 'Pending') {
-          return !isSaleCompleted(o.order_status) && !isWarehouseRejected(o.order_status);
+          return !isSaleCompleted(o.order_status)
+            && o.order_status !== 'delivery_pending_admin'
+            && !isWarehouseRejected(o.order_status);
+        }
+        if (tab === 'AwaitingAdmin') {
+          return o.order_status === 'delivery_pending_admin';
         }
         if (tab === 'Completed') {
           return isSaleCompleted(o.order_status);
@@ -185,13 +190,22 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
     });
   }, [filteredOrders, sortField, sortOrder, branches]);
   const pendingCount = orders.filter(
-    o => !isSaleCompleted(o.order_status) && !isWarehouseRejected(o.order_status),
+    o => !isSaleCompleted(o.order_status)
+      && o.order_status !== 'delivery_pending_admin'
+      && !isWarehouseRejected(o.order_status),
   ).length;
+  const awaitingAdminCount = orders.filter(o => o.order_status === 'delivery_pending_admin').length;
   const completedCount = orders.filter(o => isSaleCompleted(o.order_status)).length;
   const rejectedCount = orders.filter(o => isWarehouseRejected(o.order_status)).length;
 
   const tabEmptyLabel =
-    tab === 'Pending' ? 'pending' : tab === 'Completed' ? 'completed' : 'rejected';
+    tab === 'Pending'
+      ? 'pending'
+      : tab === 'AwaitingAdmin'
+        ? 'awaiting admin verification'
+        : tab === 'Completed'
+          ? 'completed'
+          : 'rejected';
 
   const COLS: { label: SortField; align: 'left' | 'right' | 'center' }[] = [
     { label: 'Date',       align: 'left'   },
@@ -244,6 +258,12 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
             Rejected
             <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">
               {rejectedCount}
+            </span>
+          </button>
+          <button onClick={() => setTab('AwaitingAdmin')} className={tab === 'AwaitingAdmin' ? tabBtnActive : tabBtn}>
+            Awaiting Admin
+            <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">
+              {awaitingAdminCount}
             </span>
           </button>
           <button onClick={() => setTab('Completed')} className={tab === 'Completed' ? tabBtnActive : tabBtn}>

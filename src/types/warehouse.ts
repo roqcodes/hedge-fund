@@ -10,6 +10,7 @@ export type ICOrderStatus =
   | 'wh_rejected'
   | 'wh_processing'
   | 'da_rejected'
+  | 'delivery_pending_admin'
   | 'cancellation_pending'
   | 'cancelled'
   | 'completed';

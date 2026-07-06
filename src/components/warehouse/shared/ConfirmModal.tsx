@@ -9,7 +9,7 @@ interface ConfirmModalProps {
   title?: string;
   message: string;
   confirmLabel?: string;
-  variant?: 'danger' | 'warning';
+  variant?: 'danger' | 'warning' | 'success';
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -29,6 +29,11 @@ export default function ConfirmModal({
     'inline-flex items-center justify-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all duration-150 hover:bg-red-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed';
   const warningBtn =
     'inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all duration-150 hover:bg-amber-600 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed';
+  const successBtn =
+    'inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all duration-150 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed';
+
+  const confirmBtnClass =
+    variant === 'danger' ? dangerBtn : variant === 'success' ? successBtn : warningBtn;
 
   return (
     <Modal
@@ -43,7 +48,7 @@ export default function ConfirmModal({
           </button>
           <button
             type="button"
-            className={variant === 'danger' ? dangerBtn : warningBtn}
+            className={confirmBtnClass}
             onClick={onConfirm}
             disabled={loading}
           >

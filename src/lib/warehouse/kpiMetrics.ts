@@ -1,5 +1,5 @@
 import { isWarehouseRejected } from '@/lib/icTransfer/orderStatus';
-import { getDeliveredUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
+import { getDeliveredUnits, getRemainingUnits, isDeliveryAgentFinished, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
 import type { WarehouseOrder } from '@/types/warehouse';
 
 export type WarehouseKpiMetrics = {
@@ -29,8 +29,12 @@ export function computeWarehouseSettlementKpis(
   currentStock: number | null,
   undeliveredOrders?: WarehouseOrder[],
 ): WarehouseKpiMetrics {
-  const isPending: PendingPredicate = o =>
-    !isSaleCompleted(o.order_status) && !isWarehouseRejected(o.order_status);
+  const isPending: PendingPredicate = o => {
+    const status = o.order_status || 'pending';
+    return !isSaleCompleted(status)
+      && status !== 'delivery_pending_admin'
+      && !isWarehouseRejected(status);
+  };
 
   const pendingOrders = orders.filter(isPending);
   const reservedOrders = undeliveredOrders ?? pendingOrders;
@@ -53,9 +57,9 @@ export function computeWarehouseSettlementKpis(
 export function computeDeliveryAgentKpis(orders: WarehouseOrder[]): WarehouseKpiMetrics {
   const pendingOrders = orders.filter(o => {
     const status = o.order_status || 'pending';
-    return !isSaleCompleted(status) && status === 'wh_processing';
+    return !isDeliveryAgentFinished(status) && status === 'wh_processing';
   });
-  const completedOrders = orders.filter(o => isSaleCompleted(o.order_status));
+  const completedOrders = orders.filter(o => isDeliveryAgentFinished(o.order_status));
   const splitOrders = orders.filter(o => !!o.derived_from_sale_id);
 
   let totalUnits = 0;

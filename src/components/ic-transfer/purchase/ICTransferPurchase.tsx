@@ -26,11 +26,11 @@ const icCompactTd = (align: 'left'|'center'|'right') => `p-3 text-sm whitespace-
 const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDigits: 2 })}`;
 
 const PURCHASE_COLUMNS = [
-  'Date', 'ID', 'Supplier', 'Location', 'Units', 'Total AED', 'Status', 'Actions'
+  'Date', 'ID', 'Supplier', 'Units', 'Total AED', 'Status', 'Actions'
 ];
 
 export default function ICTransferPurchase() {
-  const { icPurchases, icSuppliers, icWarehouses, icRegions, updateICPurchase } = useApp();
+  const { icPurchases, icSuppliers, icWarehouses, updateICPurchase } = useApp();
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -47,7 +47,6 @@ export default function ICTransferPurchase() {
 
   const getSupplierName = (id: string) => icSuppliers.find(s => s.id === id)?.name || id;
   const getWarehouseName = (id: string) => icWarehouses.find(w => w.id === id)?.name || id;
-  const getLocationName = (id: string) => icRegions.find(r => r.id === id)?.name || id;
 
   const filteredPurchases = icPurchases.filter(p => {
     const formattedId = getFormattedTxnId(p.id, 'purchase', p);
@@ -196,10 +195,7 @@ export default function ICTransferPurchase() {
                 </div>
                 <div className="flex justify-between items-center rounded-xl bg-slate-50/70 p-2.5 text-xs text-slate-500">
                   <span>Units: <strong className="text-slate-700">{p.units.toLocaleString()}</strong></span>
-                  <span>{getLocationName(p.locationId || '')}</span>
-                </div>
-                <div className="text-xs text-slate-500">
-                  Total: <strong className="text-slate-700">{(p.aedTotal || 0).toLocaleString()} AED</strong>
+                  <span>Total: <strong className="text-slate-700">{(p.aedTotal || 0).toLocaleString()} AED</strong></span>
                 </div>
                 <div className={portalMobileCardFooterClass}>
                   <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
@@ -225,7 +221,6 @@ export default function ICTransferPurchase() {
             <td className={icCompactTd('left')}>{new Date(p.createdAt || '').toLocaleDateString()}</td>
             <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{getFormattedTxnId(p.id, 'purchase', p)}</span></td>
             <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{getSupplierName(p.supplierId || '')}</span></td>
-            <td className={icCompactTd('left')}>{getLocationName(p.locationId || '')}</td>
             <td className={icCompactTd('right')}>{p.units.toLocaleString()}</td>
             <td className={icCompactTd('right')}><span className="font-bold text-slate-900">{(p.aedTotal || 0).toLocaleString()}</span></td>
             <td className={icCompactTd('center')}>

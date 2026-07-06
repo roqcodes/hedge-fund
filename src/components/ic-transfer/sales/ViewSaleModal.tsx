@@ -8,7 +8,7 @@ import { ConfirmModal } from '@/components/warehouse/shared';
 import SalePriorityControl from '../shared/SalePriorityControl';
 import SaleOrderWorkflowSection from '../shared/SaleOrderWorkflowSection';
 import ProofImageActions from '../shared/ProofImageActions';
-import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
+import { canBranchResubmitOrder, canCustomerSeeDeliveryProof } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { isBranchScopedUser } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
@@ -24,7 +24,7 @@ type Props = {
 };
 
 export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVariant = 'auto' }: Props) {
-  const { icWarehouses, updateICSale, deleteICSale, user, branches, icSales, refetchData, showToast } = useApp();
+  const { icWarehouses, deleteICSale, user, branches, icSales, refetchData, showToast } = useApp();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -67,12 +67,6 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
 
   if (!sale || !liveSale) return null;
 
-  const handleTogglePaid = async () => {
-    const newStatus = liveSale.paymentStatus === 'paid' ? 'pending' : 'paid';
-    await updateICSale(liveSale.id, { paymentStatus: newStatus });
-    onClose();
-  };
-
   const handleDelete = async () => {
     setDeleteLoading(true);
     await deleteICSale(liveSale.id);
@@ -94,6 +88,11 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
   const workflowUiVariant = isBranchPortalView ? 'branch' : 'admin';
   const canBranchModifyRejected = isBranchPortalView && canBranchResubmitOrder(liveSale.orderStatus);
   const showDelete = !isBranchPortalView || canBranchModifyRejected;
+  const canShowDeliveryProof =
+    (!isBranchPortalView || canCustomerSeeDeliveryProof(liveSale.orderStatus))
+    && !!liveSale.deliveryImageUrl;
+  const showDeliveryProofPending =
+    isBranchPortalView && !canCustomerSeeDeliveryProof(liveSale.orderStatus);
 
   const handleWorkflowUpdated = async () => {
     await refetchData();
@@ -125,19 +124,6 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               >
                 Close
               </button>
-              {user?.role !== 'branch_manager' && (
-                <button 
-                  type="button" 
-                  onClick={handleTogglePaid}
-                  className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-bold shadow-sm transition-all duration-150 active:scale-95 ${
-                    liveSale.paymentStatus === 'paid' 
-                    ? 'border-amber-200 bg-amber-50 text-amber-600 hover:border-amber-400 hover:bg-amber-100' 
-                    : 'border-green-200 bg-green-50 text-green-600 hover:border-green-400 hover:bg-green-100'
-                  }`}
-                >
-                  {liveSale.paymentStatus === 'paid' ? 'Mark as Pending' : 'Mark as Paid'}
-                </button>
-              )}
             </div>
           </div>
         }
@@ -171,8 +157,12 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               </div>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Transaction Type</p>
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 capitalize mt-0.5">
-                  {liveSale.transactionType?.replace('_', ' ') || 'By Hand'}
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize mt-0.5 ${
+                  liveSale.transactionType === 'by_hand'
+                    ? 'border border-violet-200 bg-violet-50 text-violet-700'
+                    : 'bg-slate-100 text-slate-700'
+                }`}>
+                  {liveSale.transactionType?.replace('_', ' ') || 'Transfer'}
                 </span>
               </div>
             </div>
@@ -212,17 +202,6 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               </div>
             </div>
 
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Payment Status</p>
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold mt-0.5 ${
-                liveSale.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
-                liveSale.paymentStatus === 'partial' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
-                'bg-amber-100 text-amber-700 border border-amber-200'
-              }`}>
-                {liveSale.paymentStatus || 'pending'}
-              </span>
-            </div>
-
             {!isBranchPortalView && (
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Priority</p>
@@ -246,6 +225,23 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Warehouse</p>
                 <p className="text-sm font-semibold text-slate-700 mt-0.5 bg-slate-50 p-3 rounded-xl border border-slate-100">{getWarehouseName(liveSale.warehouseId)}</p>
+              </div>
+            ) : null}
+
+            {liveSale.transactionType === 'by_hand' && (liveSale.location || liveSale.district) ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {liveSale.location ? (
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Location</p>
+                    <p className="text-sm font-semibold text-slate-700 mt-0.5">{liveSale.location}</p>
+                  </div>
+                ) : null}
+                {liveSale.district ? (
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">District</p>
+                    <p className="text-sm font-semibold text-slate-700 mt-0.5">{liveSale.district}</p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -307,7 +303,11 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
             {/* Delivery Proof */}
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Delivery/Payment Proof (Agent Upload)</p>
-              {liveSale.deliveryImageUrl ? (
+              {showDeliveryProofPending ? (
+                <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-slate-500 text-xs font-medium">
+                  Pending
+                </div>
+              ) : canShowDeliveryProof ? (
                 <>
                   <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                     <a href={liveSale.deliveryImageUrl} target="_blank" rel="noopener noreferrer">
@@ -315,7 +315,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                     </a>
                   </div>
                   <ProofImageActions
-                    imageUrl={liveSale.deliveryImageUrl}
+                    imageUrl={liveSale.deliveryImageUrl!}
                     downloadFilename={`payment-proof-${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}`}
                     enableShare
                     shareTitle="Payment proof"
@@ -323,7 +323,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                     enableWhatsApp={phoneChecked}
                     whatsappPhone={customerPhone ?? undefined}
                     whatsappMessage={`Hello ${orderCustomerName || customerName || ''}, here is the payment proof for your order ${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}: ${liveSale.deliveryImageUrl}`.trim()}
-                    onCopySuccess={() => showToast('Image link copied')}
+                    onCopySuccess={() => showToast('Image copied')}
                     onCopyError={msg => showToast(msg, 'error')}
                     onDownloadError={msg => showToast(msg, 'error')}
                     onShareError={msg => showToast(msg, 'error')}

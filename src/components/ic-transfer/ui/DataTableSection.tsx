@@ -27,6 +27,8 @@ type Props = {
   sortOrder?: 'asc' | 'desc';
   /** Optional mobile card list — hides the desktop table below md when provided */
   mobileView?: React.ReactNode;
+  /** Custom header cell content keyed by column name */
+  headerCellContent?: Partial<Record<string, React.ReactNode>>;
 };
 
 export default function DataTableSection({
@@ -44,6 +46,7 @@ export default function DataTableSection({
   sortField,
   sortOrder,
   mobileView,
+  headerCellContent,
 }: Props) {
   const showSearch = searchValue !== undefined && onSearchChange !== undefined;
   const tableVisibility = mobileView ? 'hidden md:block' : '';
@@ -77,14 +80,16 @@ export default function DataTableSection({
                       className={`${icThClass('left')} ${onHeaderClick ? 'cursor-pointer select-none hover:text-slate-800' : ''}`}
                       onClick={() => onHeaderClick?.(col)}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span>{col}</span>
-                        {isSorted && (
-                          <span className="text-xs text-slate-400">
-                            {sortOrder === 'asc' ? '▲' : '▼'}
-                          </span>
-                        )}
-                      </div>
+                      {headerCellContent?.[col] ?? (
+                        <div className="flex items-center gap-1.5">
+                          <span>{col}</span>
+                          {isSorted && (
+                            <span className="text-xs text-slate-400">
+                              {sortOrder === 'asc' ? '▲' : '▼'}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </th>
                   );
                 })}

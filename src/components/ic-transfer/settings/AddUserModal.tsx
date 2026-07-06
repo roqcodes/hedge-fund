@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Modal from '@/components/ui/Modal';
+import ToggleSwitch from '@/components/ui/ToggleSwitch';
 import { btnPrimary, btnSecondary, formGroup, formInput, formLabel, formRow, formSelect, formTextarea } from '@/lib/ui';
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
   showRate?: boolean;
   showPassword?: boolean;
   showRegion?: boolean;
+  showDeliveryProofToggle?: boolean;
   initialData?: any;
   regions?: { id: string; name: string }[];
   onAdd?: (data: {
@@ -22,6 +24,7 @@ type Props = {
     regionId: string;
     email: string;
     address: string;
+    sendDeliveryProofToCustomer?: boolean;
   }) => Promise<boolean | void>;
 };
 
@@ -33,6 +36,7 @@ export default function AddUserModal({
   showRate = false,
   showPassword = true,
   showRegion = true,
+  showDeliveryProofToggle = false,
   initialData,
   regions,
   onAdd,
@@ -43,6 +47,7 @@ export default function AddUserModal({
   const [regionId, setRegionId] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [sendDeliveryProofToCustomer, setSendDeliveryProofToCustomer] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
@@ -53,6 +58,7 @@ export default function AddUserModal({
       setRegionId(initialData?.regionId || (regions?.[0]?.id || ''));
       setEmail(initialData?.email || '');
       setAddress(initialData?.address || '');
+      setSendDeliveryProofToCustomer(initialData?.sendDeliveryProofToCustomer !== false);
     }
   }, [open, initialData, regions]);
 
@@ -69,6 +75,7 @@ export default function AddUserModal({
         regionId,
         email,
         address,
+        sendDeliveryProofToCustomer,
       });
     }
     // reset
@@ -78,6 +85,7 @@ export default function AddUserModal({
     setRegionId('');
     setEmail('');
     setAddress('');
+    setSendDeliveryProofToCustomer(true);
     setIsSubmitting(false);
     onClose();
   };
@@ -148,6 +156,17 @@ export default function AddUserModal({
             <label className={formLabel}>Confirm Password</label>
             <input className={formInput} type="password" />
           </div>
+        </div>
+      )}
+      {showDeliveryProofToggle && (
+        <div className={formGroup}>
+          <ToggleSwitch
+            checked={sendDeliveryProofToCustomer}
+            onChange={setSendDeliveryProofToCustomer}
+            label="Send delivery proof directly to customer"
+            hint="When off, delivery proof goes to admin for verification before the customer sees the order as completed."
+            tone="emerald"
+          />
         </div>
       )}
       <div className={formGroup}>

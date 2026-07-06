@@ -1,4 +1,5 @@
 import { isDateInRange, type DateFilterRange } from '@/lib/dateFilterRange';
+import { isByHandSale } from '@/lib/icTransfer/byHand';
 import { isWarehouseRejected } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
 import type { WarehouseKpiMetrics } from '@/lib/warehouse/kpiMetrics';
@@ -37,7 +38,11 @@ export type WarehouseMatrixResult = {
 };
 
 function isActiveOrder(sale: ICSale): boolean {
-  return !isSaleCompleted(sale.orderStatus) && !isWarehouseRejected(sale.orderStatus);
+  if (isByHandSale(sale)) return false;
+  const status = sale.orderStatus || 'pending';
+  return !isSaleCompleted(status)
+    && status !== 'delivery_pending_admin'
+    && !isWarehouseRejected(status);
 }
 
 function saleInRange(sale: ICSale, range: DateFilterRange): boolean {

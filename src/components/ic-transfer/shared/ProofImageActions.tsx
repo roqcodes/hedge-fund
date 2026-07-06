@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { IconCheck, IconDownload, IconLink, IconShare, IconWhatsApp } from './orderWorkflow/icons';
+import { IconCheck, IconCopy, IconDownload, IconShare, IconWhatsApp } from './orderWorkflow/icons';
 
 type Props = {
   imageUrl: string;
@@ -29,6 +29,55 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '');
 }
 
+const CLIPBOARD_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+async function fetchImageBlob(imageUrl: string): Promise<Blob> {
+  const res = await fetch(imageUrl);
+  if (!res.ok) throw new Error('Fetch failed');
+  return res.blob();
+}
+
+/** Convert remote image to PNG for broader clipboard support. */
+async function imageUrlToPngBlob(imageUrl: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas unavailable'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(
+        blob => (blob ? resolve(blob) : reject(new Error('Could not encode image'))),
+        'image/png',
+      );
+    };
+    img.onerror = () => reject(new Error('Could not load image'));
+    img.src = imageUrl;
+  });
+}
+
+async function copyImageBlobToClipboard(blob: Blob, imageUrl: string): Promise<void> {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+    throw new Error('Clipboard image copy not supported');
+  }
+
+  let clipboardBlob = blob;
+  let mimeType = blob.type && CLIPBOARD_IMAGE_TYPES.has(blob.type) ? blob.type : 'image/png';
+
+  if (!CLIPBOARD_IMAGE_TYPES.has(mimeType)) {
+    clipboardBlob = await imageUrlToPngBlob(imageUrl);
+    mimeType = 'image/png';
+  }
+
+  await navigator.clipboard.write([new ClipboardItem({ [mimeType]: clipboardBlob })]);
+}
+
 export default function ProofImageActions({
   imageUrl,
   downloadFilename = 'delivery-proof',
@@ -44,26 +93,29 @@ export default function ProofImageActions({
   onShareError,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
 
-  const handleCopyLink = async () => {
+  const handleCopyImage = async () => {
+    setCopying(true);
     try {
-      await navigator.clipboard.writeText(imageUrl);
+      const blob = await fetchImageBlob(imageUrl);
+      await copyImageBlobToClipboard(blob, imageUrl);
       setCopied(true);
       onCopySuccess?.();
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      onCopyError?.('Could not copy link to clipboard');
+      onCopyError?.('Could not copy image to clipboard');
+    } finally {
+      setCopying(false);
     }
   };
 
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await fetch(imageUrl);
-      if (!res.ok) throw new Error('Fetch failed');
-      const blob = await res.blob();
+      const blob = await fetchImageBlob(imageUrl);
       const ext = blob.type.split('/')[1]?.split('+')[0] || 'jpg';
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -128,9 +180,9 @@ export default function ProofImageActions({
 
   return (
     <div className="mt-2 flex flex-wrap gap-2">
-      <button type="button" className={btnClass} onClick={handleCopyLink}>
-        {copied ? <IconCheck /> : <IconLink />}
-        {copied ? 'Copied' : 'Copy Link'}
+      <button type="button" className={btnClass} onClick={handleCopyImage} disabled={copying}>
+        {copied ? <IconCheck /> : <IconCopy />}
+        {copied ? 'Copied' : copying ? 'Copying…' : 'Copy Image'}
       </button>
       <button type="button" className={btnClass} onClick={handleDownload} disabled={downloading}>
         <IconDownload />

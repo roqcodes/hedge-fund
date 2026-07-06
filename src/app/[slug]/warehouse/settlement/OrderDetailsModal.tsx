@@ -8,7 +8,7 @@ import Modal from '@/components/ui/Modal';
 import RejectRemarkModal from '@/components/ic-transfer/shared/RejectRemarkModal';
 import { canDeliveryAgentAct } from '@/lib/icTransfer/orderStatus';
 import { PriorityBadge } from '@/components/warehouse/shared';
-import { formatUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
+import { formatUnits, getRemainingUnits, isDeliveryAgentFinished } from '@/lib/icTransfer/saleUnits';
 import { AdminOrderStatusBadge } from '@/components/ic-transfer/shared/OrderStatusBadge';
 import { btnPrimary, btnSecondary } from '@/lib/ui';
 import { uploadImageToCloudinary, deleteCloudinaryImageByToken } from '@/lib/cloudinary';
@@ -105,7 +105,7 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
 
   if (!order) return null;
 
-  const isEditable = isDeliveryView && !isSaleCompleted(order.order_status) && canDeliveryAgentAct(order.order_status);
+  const isEditable = isDeliveryView && !isDeliveryAgentFinished(order.order_status) && canDeliveryAgentAct(order.order_status);
 
   const deliveredUnits = isEditable
     ? Math.min(totalUnits, Math.max(0, parseFloat(collectedUnits) || 0))

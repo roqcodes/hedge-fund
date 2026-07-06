@@ -608,6 +608,7 @@ CREATE TABLE IF NOT EXISTS ic_warehouses (
 CREATE INDEX IF NOT EXISTS idx_ic_warehouses_region ON ic_warehouses(region_id);
 
 ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS current_stock NUMERIC(15, 4) NOT NULL DEFAULT 0;
+ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS send_delivery_proof_to_customer BOOLEAN NOT NULL DEFAULT true;
 
 CREATE TABLE IF NOT EXISTS ic_rate_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -669,6 +670,8 @@ CREATE TABLE IF NOT EXISTS ic_sales (
     aed_amount NUMERIC(15, 4),
     bank TEXT,
     address TEXT,
+    location TEXT,
+    district TEXT,
     image_url TEXT,
     conversion_rate NUMERIC(15, 6) DEFAULT 1.0,
     currency VARCHAR(10) DEFAULT 'AED',
@@ -738,6 +741,8 @@ ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS status_updated_by VARCHAR(255);
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS delivery_image_url TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS derived_from_sale_id UUID REFERENCES ic_sales(id) ON DELETE SET NULL;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS location TEXT;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS district TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS service_charge NUMERIC(15, 4) DEFAULT 0.00;
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS bank TEXT;
@@ -752,7 +757,8 @@ ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_order_status_check;
 ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_order_status_check
   CHECK (order_status IN (
     'pending', 'accepted', 'admin_rejected', 'wh_rejected',
-    'wh_processing', 'da_rejected', 'cancellation_pending', 'cancelled', 'completed'
+    'wh_processing', 'da_rejected', 'delivery_pending_admin',
+    'cancellation_pending', 'cancelled', 'completed'
   ));
 
 ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_payment_status_check;

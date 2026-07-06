@@ -1,4 +1,5 @@
 import type { ICSale } from '@/types';
+import { isByHandSale } from './byHand';
 
 /** Internal workflow status — visible in admin panel only. */
 export type ICOrderStatus =
@@ -8,6 +9,7 @@ export type ICOrderStatus =
   | 'wh_rejected'
   | 'wh_processing'
   | 'da_rejected'
+  | 'delivery_pending_admin'
   | 'cancellation_pending'
   | 'cancelled'
   | 'completed';
@@ -15,6 +17,7 @@ export type ICOrderStatus =
 /** Simplified status shown to branch/customer. */
 export type ICCustomerOrderStatus =
   | 'Pending'
+  | 'Processing'
   | 'Admin Accepted'
   | 'Warehouse Processing'
   | 'Order Dispatched'
@@ -32,6 +35,7 @@ export const IC_ORDER_STATUSES: ICOrderStatus[] = [
   'wh_rejected',
   'wh_processing',
   'da_rejected',
+  'delivery_pending_admin',
   'cancellation_pending',
   'cancelled',
   'completed',
@@ -44,6 +48,7 @@ export const ADMIN_STATUS_LABELS: Record<ICOrderStatus, string> = {
   wh_rejected: 'WH Rejected',
   wh_processing: 'WH Processing',
   da_rejected: 'Delivery Agent Rejected',
+  delivery_pending_admin: 'Delivery Awaiting Verification',
   cancellation_pending: 'Cancellation Pending',
   cancelled: 'Cancelled',
   completed: 'Completed',
@@ -56,6 +61,7 @@ export const ADMIN_STATUS_STYLES: Record<ICOrderStatus, string> = {
   wh_rejected: 'bg-orange-50 text-orange-700 border-orange-200',
   wh_processing: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   da_rejected: 'bg-rose-50 text-rose-700 border-rose-200',
+  delivery_pending_admin: 'bg-sky-50 text-sky-700 border-sky-200',
   cancellation_pending: 'bg-red-50 text-red-700 border-red-200',
   cancelled: 'bg-slate-100 text-slate-500 border-slate-200',
   completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -63,6 +69,7 @@ export const ADMIN_STATUS_STYLES: Record<ICOrderStatus, string> = {
 
 export const CUSTOMER_STATUS_STYLES: Record<ICCustomerOrderStatus, string> = {
   Pending: 'bg-slate-50 text-slate-600 border-slate-200',
+  Processing: 'bg-violet-50 text-violet-700 border-violet-200',
   'Admin Accepted': 'bg-blue-50 text-blue-700 border-blue-200',
   'Warehouse Processing': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Order Dispatched': 'bg-violet-50 text-violet-700 border-violet-200',
@@ -78,25 +85,47 @@ export const CUSTOMER_STATUS_STYLES: Record<ICCustomerOrderStatus, string> = {
  * Left-to-right row gradient accent for the admin sales table.
  * Pending orders get a yellow gradient; cancellation requests get a red one.
  */
-export function getAdminRowAccentClass(status?: string | null): string | null {
+export function getAdminRowAccentClass(status?: string | null, transactionType?: string | null): string | null {
   const s = normalizeOrderStatus(status);
+  if (isByHandSale({ transactionType: transactionType ?? undefined })) {
+    if (s === 'accepted') {
+      return 'bg-gradient-to-l from-violet-100 via-violet-50/60 to-transparent hover:from-violet-200/90 hover:via-violet-100/50';
+    }
+    if (s === 'completed') {
+      return 'bg-gradient-to-l from-emerald-50/80 via-emerald-50/30 to-transparent';
+    }
+  }
   if (s === 'cancellation_pending') {
     return 'bg-gradient-to-l from-red-100 via-red-50/50 to-transparent hover:from-red-200/90 hover:via-red-100/50';
   }
   if (s === 'pending') {
     return 'bg-gradient-to-l from-amber-100 via-amber-50/50 to-transparent hover:from-amber-200/90 hover:via-amber-100/50';
   }
+  if (s === 'delivery_pending_admin') {
+    return 'bg-gradient-to-l from-sky-100 via-sky-50/50 to-transparent hover:from-sky-200/90 hover:via-sky-100/50';
+  }
   return null;
 }
 
 /** Mobile card accent mirroring the row gradient. */
-export function getAdminCardAccentClass(status?: string | null): string | null {
+export function getAdminCardAccentClass(status?: string | null, transactionType?: string | null): string | null {
   const s = normalizeOrderStatus(status);
+  if (isByHandSale({ transactionType: transactionType ?? undefined })) {
+    if (s === 'accepted') {
+      return 'border-violet-200 bg-gradient-to-l from-violet-100 to-white ring-1 ring-violet-100';
+    }
+    if (s === 'completed') {
+      return 'border-emerald-200 bg-gradient-to-l from-emerald-50 to-white ring-1 ring-emerald-100';
+    }
+  }
   if (s === 'cancellation_pending') {
     return 'border-red-200 bg-gradient-to-l from-red-100 to-white ring-1 ring-red-100';
   }
   if (s === 'pending') {
     return 'border-amber-200 bg-gradient-to-l from-amber-100 to-white ring-1 ring-amber-100';
+  }
+  if (s === 'delivery_pending_admin') {
+    return 'border-sky-200 bg-gradient-to-l from-sky-100 to-white ring-1 ring-sky-100';
   }
   return null;
 }
@@ -110,7 +139,7 @@ export function normalizeOrderStatus(status?: string | null): ICOrderStatus {
 
 /** Map internal workflow state to customer-facing label. */
 export function getCustomerOrderStatus(
-  sale: Pick<ICSale, 'orderStatus' | 'deliveryAgentId' | 'aedAmount' | 'paymentStatus' | 'derivedFromSaleId'>,
+  sale: Pick<ICSale, 'orderStatus' | 'deliveryAgentId' | 'aedAmount' | 'paymentStatus' | 'derivedFromSaleId' | 'transactionType'>,
 ): ICCustomerOrderStatus {
   const status = normalizeOrderStatus(sale.orderStatus);
 
@@ -118,13 +147,20 @@ export function getCustomerOrderStatus(
   if (status === 'cancellation_pending') return 'Cancellation Requested';
   if (status === 'cancelled') return 'Cancelled';
   if (status === 'pending') return 'Pending';
-  if (status === 'accepted') return 'Admin Accepted';
+  if (status === 'accepted') {
+    if (isByHandSale(sale)) return 'Processing';
+    return 'Admin Accepted';
+  }
 
   if (status === 'wh_rejected') return 'Admin Accepted';
   if (status === 'da_rejected') return 'Warehouse Processing';
 
   if (status === 'wh_processing') {
     return sale.deliveryAgentId ? 'Order Dispatched' : 'Warehouse Processing';
+  }
+
+  if (status === 'delivery_pending_admin') {
+    return 'Order Dispatched';
   }
 
   if (status === 'completed') {
@@ -138,18 +174,40 @@ export function getCustomerOrderStatus(
 
 /** Branch-facing status — shows Completed instead of Paid for finished orders. */
 export function getBranchOrderStatus(
-  sale: Pick<ICSale, 'orderStatus' | 'deliveryAgentId' | 'aedAmount' | 'paymentStatus' | 'derivedFromSaleId'>,
+  sale: Pick<ICSale, 'orderStatus' | 'deliveryAgentId' | 'aedAmount' | 'paymentStatus' | 'derivedFromSaleId' | 'transactionType'>,
 ): ICCustomerOrderStatus {
   const status = getCustomerOrderStatus(sale);
   return status === 'Paid' ? 'Completed' : status;
 }
 
-export function getAdminStatusLabel(status?: string | null): string {
-  return ADMIN_STATUS_LABELS[normalizeOrderStatus(status)];
+export function getAdminStatusLabel(status?: string | null, transactionType?: string | null): string {
+  const s = normalizeOrderStatus(status);
+  if (transactionType === 'by_hand') {
+    if (s === 'accepted') return 'By Hand — Pending';
+    if (s === 'completed') return 'By Hand — Completed';
+    if (s === 'pending') return 'By Hand — Awaiting Admin';
+  }
+  return ADMIN_STATUS_LABELS[s];
 }
 
-export function getAdminStatusStyle(status?: string | null): string {
-  return ADMIN_STATUS_STYLES[normalizeOrderStatus(status)];
+export function getAdminStatusStyle(status?: string | null, transactionType?: string | null): string {
+  const s = normalizeOrderStatus(status);
+  if (transactionType === 'by_hand') {
+    if (s === 'accepted') return 'bg-violet-50 text-violet-700 border-violet-200';
+    if (s === 'completed') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (s === 'pending') return 'bg-amber-50 text-amber-700 border-amber-200';
+  }
+  return ADMIN_STATUS_STYLES[s];
+}
+
+/** Admin may approve delivery proof submitted by a delivery agent. */
+export function canAdminVerifyDelivery(status?: string | null): boolean {
+  return normalizeOrderStatus(status) === 'delivery_pending_admin';
+}
+
+/** Branch/customer may view agent delivery proof only after admin verification. */
+export function canCustomerSeeDeliveryProof(status?: string | null): boolean {
+  return normalizeOrderStatus(status) !== 'delivery_pending_admin';
 }
 
 export function canAdminAccept(status?: string | null): boolean {
@@ -166,7 +224,11 @@ export function canAdminReassignWarehouse(status?: string | null): boolean {
   return s === 'wh_rejected' || s === 'da_rejected';
 }
 
-export function canWarehouseAct(status?: string | null): boolean {
+export function canWarehouseAct(
+  status?: string | null,
+  transactionType?: string | null,
+): boolean {
+  if (transactionType === 'by_hand') return false;
   const s = normalizeOrderStatus(status);
   return s === 'accepted' || s === 'da_rejected';
 }

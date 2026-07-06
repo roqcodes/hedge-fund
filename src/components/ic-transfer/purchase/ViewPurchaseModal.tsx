@@ -14,7 +14,7 @@ type Props = {
 };
 
 export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
-  const { icSuppliers, icWarehouses, icRegions, updateICPurchase, deleteICPurchase } = useApp();
+  const { icSuppliers, icWarehouses, updateICPurchase, deleteICPurchase } = useApp();
 
   if (!purchase) return null;
 
@@ -33,7 +33,6 @@ export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
 
   const getSupplierName = (id?: string) => icSuppliers.find(s => s.id === id)?.name || id || 'Unknown';
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || id || 'Unknown';
-  const getLocationName = (id?: string) => icRegions.find(r => r.id === id)?.name || id || 'Unknown';
 
   return (
     <Modal
@@ -88,7 +87,6 @@ export default function ViewPurchaseModal({ open, onClose, purchase }: Props) {
           <div className="rounded-xl bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Supplier Info</p>
             <p className="mt-1 font-semibold text-slate-900">{getSupplierName(purchase.supplierId)}</p>
-            <p className="text-sm text-slate-500">Location: {getLocationName(purchase.locationId)}</p>
           </div>
           <div className="rounded-xl bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Warehouse</p>

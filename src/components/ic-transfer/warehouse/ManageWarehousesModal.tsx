@@ -48,6 +48,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
     regionId: string;
     email: string;
     address: string;
+    sendDeliveryProofToCustomer?: boolean;
   }) => {
     if (data.id) {
       await updateICWarehouse(
@@ -58,6 +59,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
         '',
         data.email,
         data.address,
+        data.sendDeliveryProofToCustomer,
       );
     } else {
       await addICWarehouse(
@@ -67,6 +69,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
         '',
         data.email,
         data.address,
+        data.sendDeliveryProofToCustomer,
       );
     }
     setFormOpen(false);
@@ -126,6 +129,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
                     <p className="mt-0.5 text-xs text-slate-500">
                       {warehouse.phone || 'No phone'}
                       {warehouse.commission != null ? ` · ${warehouse.commission}% commission` : ''}
+                      {warehouse.sendDeliveryProofToCustomer === false ? ' · Admin verifies delivery' : ''}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -166,6 +170,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
         }}
         title={editingWarehouse ? 'Edit Warehouse' : 'Add Warehouse'}
         showCommission
+        showDeliveryProofToggle
         showRate={false}
         showPassword={false}
         showRegion={false}

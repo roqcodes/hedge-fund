@@ -29,17 +29,25 @@ import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { PriorityBadge } from '@/components/warehouse/shared';
 import { portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
+import { tabBtn, tabBtnActive } from '@/lib/ui';
+import { adminBulkVerifyDeliveryAction } from '@/app/actions/icTransferActions';
 
 const icCompactTd = (align: 'left'|'center'|'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
+const verifyCheckboxClass =
+  'h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer';
+
 const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDigits: 2 })}`;
+
+type SalesTab = 'all' | 'awaiting_verification';
 
 const SALE_COLUMNS = [
   'Date', 'Customer', 'Units', 'Total AED', 'Delivered Units', 'Remaining Units', 'Warehouse', 'Priority', 'Status', 'Actions'
 ];
 
 export default function ICTransferSales() {
-  const { icSales, icWarehouses, deleteICSale, branches } = useApp();
+  const { icSales, icWarehouses, deleteICSale, branches, currentSlug, refetchData, showToast } = useApp();
+  const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -48,6 +56,7 @@ export default function ICTransferSales() {
   
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterWarehouse, setFilterWarehouse] = useState('All');
+  const [tab, setTab] = useState<SalesTab>('all');
 
   const [sortField, setSortField] = useState<string>('Priority');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -56,6 +65,14 @@ export default function ICTransferSales() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [saleToDelete, setSaleToDelete] = useState<ICSale | null>(null);
+
+  const [selectedVerifyIds, setSelectedVerifyIds] = useState<Set<string>>(new Set());
+  const [bulkVerifyOpen, setBulkVerifyOpen] = useState(false);
+  const [bulkVerifyLoading, setBulkVerifyLoading] = useState(false);
+
+  const isVerificationTab = tab === 'awaiting_verification';
+  const tableColumns = isVerificationTab ? ['Select', ...SALE_COLUMNS] : SALE_COLUMNS;
+  const selectedVerifyCount = selectedVerifyIds.size;
 
   const {
     dateFilter,
@@ -68,7 +85,7 @@ export default function ICTransferSales() {
 
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || 'None';
 
-  const filteredSales = useMemo<ICSale[]>(() => {
+  const baseFilteredSales = useMemo<ICSale[]>(() => {
     const range = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);
 
     return icSales.filter((s: ICSale) => {
@@ -77,9 +94,9 @@ export default function ICTransferSales() {
       }
 
       const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
-      if (search && 
-          !formattedId.toLowerCase().includes(search.toLowerCase()) && 
-          !s.id.toLowerCase().includes(search.toLowerCase()) && 
+      if (search &&
+          !formattedId.toLowerCase().includes(search.toLowerCase()) &&
+          !s.id.toLowerCase().includes(search.toLowerCase()) &&
           !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
       if (!matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds)) {
         return false;
@@ -100,6 +117,22 @@ export default function ICTransferSales() {
       return true;
     });
   }, [icSales, search, selectedRegionIds, icWarehouses, filterStatus, filterWarehouse, dateFilter, customStartDate, customEndDate, branches]);
+
+  const tabCounts = useMemo(() => ({
+    all: baseFilteredSales.length,
+    awaitingVerification: baseFilteredSales.filter(
+      s => normalizeOrderStatus(s.orderStatus) === 'delivery_pending_admin',
+    ).length,
+  }), [baseFilteredSales]);
+
+  const filteredSales = useMemo<ICSale[]>(() => {
+    if (tab === 'awaiting_verification') {
+      return baseFilteredSales.filter(
+        s => normalizeOrderStatus(s.orderStatus) === 'delivery_pending_admin',
+      );
+    }
+    return baseFilteredSales;
+  }, [baseFilteredSales, tab]);
 
   const handleHeaderClick = (colName: string) => {
     const map: Record<string, string> = {
@@ -175,6 +208,9 @@ export default function ICTransferSales() {
     const avgRate = totalUnits > 0 ? totalValue / totalUnits : 0;
     
     const pendingCount = filteredSales.filter((s: ICSale) => normalizeOrderStatus(s.orderStatus) === 'pending').length;
+    const pendingVerificationCount = filteredSales.filter(
+      (s: ICSale) => normalizeOrderStatus(s.orderStatus) === 'delivery_pending_admin',
+    ).length;
     const partialCount = filteredSales.filter((s: ICSale) => getCustomerOrderStatus(s) === 'Partial').length;
     const completedCount = filteredSales.filter((s: ICSale) => normalizeOrderStatus(s.orderStatus) === 'completed').length;
     
@@ -188,6 +224,7 @@ export default function ICTransferSales() {
       totalUnits,
       avgRate,
       pendingCount,
+      pendingVerificationCount,
       partialCount,
       completedCount,
       totalPartialUnitsDelivered
@@ -209,6 +246,54 @@ export default function ICTransferSales() {
     const fresh = icSales.find(s => s.id === selectedSale.id);
     if (fresh) setSelectedSale(fresh);
   }, [icSales, viewModalOpen, selectedSale?.id]);
+
+  useEffect(() => {
+    setSelectedVerifyIds(new Set());
+  }, [tab]);
+
+  const toggleVerifySelection = (id: string) => {
+    setSelectedVerifyIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allVerifySelected =
+    sortedSales.length > 0 && sortedSales.every(s => selectedVerifyIds.has(s.id));
+
+  const toggleSelectAllVerify = () => {
+    if (allVerifySelected) {
+      setSelectedVerifyIds(new Set());
+    } else {
+      setSelectedVerifyIds(new Set(sortedSales.map(s => s.id)));
+    }
+  };
+
+  const handleBulkVerifyConfirm = async () => {
+    const ids = [...selectedVerifyIds];
+    if (ids.length === 0) return;
+    setBulkVerifyLoading(true);
+    const res = await adminBulkVerifyDeliveryAction(ids, branchSlug);
+    setBulkVerifyLoading(false);
+    if (res.success && res.data) {
+      const { verifiedCount, failedCount } = res.data;
+      if (failedCount > 0) {
+        showToast(
+          `Verified ${verifiedCount} order(s). ${failedCount} could not be verified.`,
+          verifiedCount > 0 ? 'success' : 'error',
+        );
+      } else {
+        showToast(`Verified ${verifiedCount} order(s)`, 'success');
+      }
+      setBulkVerifyOpen(false);
+      setSelectedVerifyIds(new Set());
+      await refetchData();
+    } else {
+      showToast(res.error || 'Failed to verify deliveries', 'error');
+    }
+  };
 
   const handleDeleteClick = (e: React.MouseEvent, s: ICSale) => {
     e.stopPropagation();
@@ -294,8 +379,8 @@ export default function ICTransferSales() {
           } 
         />
         <PhysicalSplitKPICard 
-          top={{ label: 'Active Orders', value: `${stats.pendingCount + stats.partialCount} Active` }}
-          bottom={{ label: 'Paid Orders', value: `${stats.completedCount} Paid` }}
+          top={{ label: 'Active Orders', value: `${stats.pendingCount + stats.partialCount + stats.pendingVerificationCount} Active` }}
+          bottom={{ label: 'Awaiting Verification', value: `${stats.pendingVerificationCount} Delivery` }}
           color="var(--pending)" 
           bgColor="var(--pending-light)" 
           icon={
@@ -318,6 +403,29 @@ export default function ICTransferSales() {
         />
       </div>
 
+      <div className="mb-4 flex items-center gap-1 border-b border-slate-200 pb-px overflow-x-auto scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setTab('all')}
+          className={tab === 'all' ? tabBtnActive : tabBtn}
+        >
+          All Sales
+          <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">
+            {tabCounts.all}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('awaiting_verification')}
+          className={tab === 'awaiting_verification' ? tabBtnActive : tabBtn}
+        >
+          Awaiting Verification
+          <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">
+            {tabCounts.awaitingVerification}
+          </span>
+        </button>
+      </div>
+
       <div className="mb-5">
         <DataTableSection
           title="Sales Matrix"
@@ -330,16 +438,44 @@ export default function ICTransferSales() {
       </div>
 
       <DataTableSection
-        title="All Sales"
-        columns={SALE_COLUMNS}
+        title={tab === 'awaiting_verification' ? 'Awaiting Verification' : 'All Sales'}
+        columns={tableColumns}
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search sales..."
         onHeaderClick={handleHeaderClick}
         sortField={sortField}
         sortOrder={sortOrder}
+        headerCellContent={
+          isVerificationTab
+            ? {
+                Select: (
+                  <input
+                    type="checkbox"
+                    checked={allVerifySelected}
+                    onChange={toggleSelectAllVerify}
+                    onClick={e => e.stopPropagation()}
+                    className={verifyCheckboxClass}
+                    aria-label="Select all orders for verification"
+                  />
+                ),
+              }
+            : undefined
+        }
         toolbar={
           <div className="flex gap-2 items-center flex-wrap">
+            {isVerificationTab && selectedVerifyCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setBulkVerifyOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 active:scale-95"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Verify Selected ({selectedVerifyCount})
+              </button>
+            )}
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -368,7 +504,11 @@ export default function ICTransferSales() {
         }
         mobileView={
           sortedSales.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">No sales found.</div>
+            <div className="py-8 text-center text-sm text-slate-400">
+              {tab === 'awaiting_verification'
+                ? 'No orders awaiting delivery verification.'
+                : 'No sales found.'}
+            </div>
           ) : (
             sortedSales.map((s: ICSale) => {
               const delivered = getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus);
@@ -378,10 +518,20 @@ export default function ICTransferSales() {
                 <div
                   key={s.id}
                   onClick={() => handleView(s)}
-                  className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer transition-colors ${getAdminCardAccentClass(s.orderStatus) ?? `hover:bg-slate-50 ${highPriorityCardClass(s.priority)}`}`}
+                  className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer transition-colors ${getAdminCardAccentClass(s.orderStatus, s.transactionType) ?? `hover:bg-slate-50 ${highPriorityCardClass(s.priority)}`}`}
                 >
                   <div className="flex justify-between items-start gap-2">
-                    <div className="min-w-0">
+                    {isVerificationTab && (
+                      <input
+                        type="checkbox"
+                        checked={selectedVerifyIds.has(s.id)}
+                        onChange={() => toggleVerifySelection(s.id)}
+                        onClick={e => e.stopPropagation()}
+                        className={`${verifyCheckboxClass} mt-0.5 shrink-0`}
+                        aria-label={`Select ${s.customerName} for verification`}
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-slate-900">{s.customerName}</p>
                       <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</p>
                       <p className="mt-0.5 text-xs text-slate-400">{new Date(s.createdAt || '').toLocaleString()}</p>
@@ -426,8 +576,19 @@ export default function ICTransferSales() {
             <tr
               key={s.id}
               onClick={() => handleView(s)}
-              className={`cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${getAdminRowAccentClass(s.orderStatus) ?? highPriorityRowClass(s.priority)}`}
+              className={`cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${getAdminRowAccentClass(s.orderStatus, s.transactionType) ?? highPriorityRowClass(s.priority)}`}
             >
+              {isVerificationTab && (
+                <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedVerifyIds.has(s.id)}
+                    onChange={() => toggleVerifySelection(s.id)}
+                    className={verifyCheckboxClass}
+                    aria-label={`Select ${s.customerName} for verification`}
+                  />
+                </td>
+              )}
               {/* DATE */}
               <td className={icCompactTd('left')}>
                 <div className="leading-tight">
@@ -443,6 +604,11 @@ export default function ICTransferSales() {
               {/* CUSTOMER */}
               <td className={icCompactTd('left')}>
                 <span className="font-semibold text-slate-900">{s.customerName}</span>
+                {s.transactionType === 'by_hand' && (
+                  <span className="ml-1.5 inline-flex rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700">
+                    By Hand
+                  </span>
+                )}
                 {s.derivedFromSaleId && (
                   <span className="ml-1.5 inline-flex rounded-full bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600" title={`Derived from ${getFormattedTxnId(s.derivedFromSaleId, 'sale', null, branches)}`}>
                     SPLIT
@@ -578,6 +744,25 @@ export default function ICTransferSales() {
         loading={deleteLoading}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setConfirmDeleteOpen(false)}
+      />
+
+      <ConfirmModal
+        open={bulkVerifyOpen}
+        title="Verify Selected Deliveries"
+        message={
+          selectedVerifyCount === 1
+            ? 'Confirm delivery proof and mark this order as completed? The customer will see the order as delivered.'
+            : `Confirm delivery proof and mark ${selectedVerifyCount} orders as completed? Customers will see these orders as delivered.`
+        }
+        confirmLabel={
+          selectedVerifyCount === 1
+            ? 'Verify Delivery'
+            : `Verify ${selectedVerifyCount} Orders`
+        }
+        variant="success"
+        loading={bulkVerifyLoading}
+        onConfirm={handleBulkVerifyConfirm}
+        onCancel={() => setBulkVerifyOpen(false)}
       />
     </PageShell>
   );

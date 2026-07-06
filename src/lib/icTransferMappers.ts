@@ -32,6 +32,7 @@ export function mapICWarehouseRow(row: any): ICWarehouse {
     email: row.email,
     address: row.address,
     currentStock: row.current_stock != null ? parseFloat(row.current_stock) : 0,
+    sendDeliveryProofToCustomer: row.send_delivery_proof_to_customer !== false,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
   };
 }
@@ -89,6 +90,8 @@ export function mapICSaleRow(row: any): ICSale {
     statusUpdatedAt: row.status_updated_at ? new Date(row.status_updated_at).toISOString() : undefined,
     statusUpdatedBy: row.status_updated_by || undefined,
     address: row.address || undefined,
+    location: row.location || undefined,
+    district: row.district || undefined,
     imageUrl: row.image_url || undefined,
     serviceCharge: row.service_charge ? parseFloat(row.service_charge) : undefined,
     bank: row.bank || undefined,

@@ -29,6 +29,11 @@ export function hasFullBranchAccess(user: Pick<User, 'role'> | null | undefined)
   return user?.role === 'branch_manager' || user?.role === 'admin';
 }
 
+/** IC Transfer admin panel — accept/reject orders, verify delivery, etc. */
+export function canPerformICTransferAdminActions(user: Pick<User, 'role'> | null | undefined): boolean {
+  return user?.role === 'admin' || user?.role === 'branch_manager';
+}
+
 export function getManageableBranchPages(hiddenPages?: string[] | null): BranchPageId[] {
   return filterBranchNavPages(PERMISSION_MANAGED_PAGE_IDS, hiddenPages) as BranchPageId[];
 }

@@ -21,7 +21,7 @@ import { computeDeliveryAgentKpis } from '@/lib/warehouse/kpiMetrics';
 import { warehouseOrderMatchesSearch } from '@/lib/warehouse/orderSearch';
 import type { WarehouseOrder } from '@/types/warehouse';
 
-type TabKey = 'Pending' | 'Completed' | 'Rejected';
+type TabKey = 'Pending' | 'AwaitingAdmin' | 'Completed' | 'Rejected';
 type SortField = 'Date' | 'Order ID' | 'Units' | 'Remaining' | 'Priority' | 'Status';
 
 export default function OrderSettlementClient({ branchSlug }: { branchSlug: string }) {
@@ -77,9 +77,11 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
       const matchTab =
         tab === 'Pending'
           ? status === 'wh_processing'
-          : tab === 'Completed'
-            ? isSaleCompleted(o.order_status)
-            : isDeliveryAgentRejected(o.order_status);
+          : tab === 'AwaitingAdmin'
+            ? status === 'delivery_pending_admin'
+            : tab === 'Completed'
+              ? isSaleCompleted(o.order_status)
+              : isDeliveryAgentRejected(o.order_status);
       const matchSearch = warehouseOrderMatchesSearch(o, search, {
         branches,
         includeAgent: false,
@@ -111,6 +113,7 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
   }, [filteredOrders, sortField, sortOrder, branches]);
 
   const pendingCount   = orders.filter(o => normalizeOrderStatus(o.order_status) === 'wh_processing').length;
+  const awaitingAdminCount = orders.filter(o => o.order_status === 'delivery_pending_admin').length;
   const completedCount = orders.filter(o => isSaleCompleted(o.order_status)).length;
   const rejectedCount  = orders.filter(o => isDeliveryAgentRejected(o.order_status)).length;
 
@@ -151,6 +154,10 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
           <button onClick={() => setTab('Completed')} className={tab === 'Completed' ? tabBtnActive : tabBtn}>
             Completed
             <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">{completedCount}</span>
+          </button>
+          <button onClick={() => setTab('AwaitingAdmin')} className={tab === 'AwaitingAdmin' ? tabBtnActive : tabBtn}>
+            Awaiting Admin
+            <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">{awaitingAdminCount}</span>
           </button>
           <button onClick={() => setTab('Rejected')} className={tab === 'Rejected' ? tabBtnActive : tabBtn}>
             Rejected

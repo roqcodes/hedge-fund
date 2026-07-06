@@ -32,6 +32,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
   const [bank, setBank] = useState(initialData?.bank || '');
   const [address, setAddress] = useState(initialData?.address || '');
+  const [location, setLocation] = useState(initialData?.location || '');
+  const [district, setDistrict] = useState(initialData?.district || '');
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
   const [deleteToken, setDeleteToken] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,7 +43,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [editBaseline, setEditBaseline] = useState<Pick<
     ICSaleContentFields,
-    'units' | 'transactionType' | 'address' | 'imageUrl' | 'bank'
+    'units' | 'transactionType' | 'address' | 'location' | 'district' | 'imageUrl' | 'bank'
   > | null>(null);
 
   // Cloudinary credentials from env
@@ -74,6 +76,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       setTransactionType(initialData?.transactionType || 'transfer');
       setBank(initialData?.bank || '');
       setAddress(initialData?.address || '');
+      setLocation(initialData?.location || '');
+      setDistrict(initialData?.district || '');
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
       setSelectedCustomerId(initialData?.orderCustomerId || '');
@@ -84,6 +88,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           units: initialData.units,
           transactionType: initialData.transactionType || 'transfer',
           address: initialData.address,
+          location: initialData.location,
+          district: initialData.district,
           imageUrl: initialData.imageUrl,
           bank: initialData.bank || '',
         });
@@ -145,6 +151,16 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
 
   const isResubmitMode = !!initialData && canBranchResubmitOrder(initialData.orderStatus);
 
+  const isByHand = transactionType === 'by_hand';
+
+  const handleTransactionTypeChange = (value: string) => {
+    setTransactionType(value);
+    if (value !== 'by_hand') {
+      setLocation('');
+      setDistrict('');
+    }
+  };
+
   const trimmedCustomer = customerQuery.trim();
 
   const payload = {
@@ -158,6 +174,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     aedAmount: amounts.aedNetTotal,
     bank: bank || undefined,
     address: address || undefined,
+    location: isByHand ? location.trim() || undefined : undefined,
+    district: isByHand ? district.trim() || undefined : undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
     conversionRate: groupConversionRate,
@@ -171,6 +189,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     aedAmount: amounts.aedNetTotal,
     bank: bank || undefined,
     address: address || undefined,
+    location: isByHand ? location.trim() || undefined : undefined,
+    district: isByHand ? district.trim() || undefined : undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
     conversionRate: groupConversionRate,
@@ -181,6 +201,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     units: unitNum,
     transactionType,
     address: address || undefined,
+    location: isByHand ? location.trim() || undefined : undefined,
+    district: isByHand ? district.trim() || undefined : undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
     bank: bank || undefined,
@@ -308,6 +330,29 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
               />
             </InputField>
 
+            {isByHand ? (
+              <>
+                <InputField label="Location">
+                  <input
+                    type="text"
+                    className={formInput}
+                    value={location}
+                    onChange={e => setLocation(e.target.value)}
+                    placeholder="Enter location"
+                  />
+                </InputField>
+                <InputField label="District">
+                  <input
+                    type="text"
+                    className={formInput}
+                    value={district}
+                    onChange={e => setDistrict(e.target.value)}
+                    placeholder="Enter district"
+                  />
+                </InputField>
+              </>
+            ) : null}
+
             <InputField label="Captured Image">
               <div className="flex items-center gap-3">
                 {imageUrl ? (
@@ -358,7 +403,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => setTransactionType(opt.value)}
+                      onClick={() => handleTransactionTypeChange(opt.value)}
                       className={`flex-1 text-center text-xs font-semibold rounded-lg transition-all flex items-center justify-center ${
                         isActive 
                           ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-bold' 

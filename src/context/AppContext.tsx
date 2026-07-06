@@ -227,8 +227,8 @@ interface AppContextType extends AppState {
   addICSupplier: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   updateICSupplier: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   deleteICSupplier: (id: string) => Promise<boolean>;
-  addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
-  updateICWarehouse: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
+  addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer?: boolean) => Promise<boolean>;
+  updateICWarehouse: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer?: boolean) => Promise<boolean>;
   deleteICWarehouse: (id: string) => Promise<boolean>;
   addICRateGroup: (name: string, country: string, currency: string, saleRate: number, conversionRate: number) => Promise<string | null>;
   updateICRateGroup: (id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number) => Promise<boolean>;
@@ -1495,9 +1495,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const addICWarehouse = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
+  const addICWarehouse = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer: boolean = true) => {
     try {
-      const res = await dbAddICWarehouseAction(name, phone, commission, regionId, email, address);
+      const res = await dbAddICWarehouseAction(name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer);
       if (res.success && res.data) {
         setState(s => ({ ...s, icWarehouses: [...s.icWarehouses, res.data!] }));
         showToast('Warehouse added successfully');
@@ -1512,9 +1512,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const updateICWarehouse = useCallback(async (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
+  const updateICWarehouse = useCallback(async (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer: boolean = true) => {
     try {
-      const res = await dbUpdateICWarehouseAction(id, name, phone, commission, regionId, email, address);
+      const res = await dbUpdateICWarehouseAction(id, name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer);
       if (res.success && res.data) {
         setState(s => ({ ...s, icWarehouses: s.icWarehouses.map(w => w.id === id ? res.data! : w) }));
         showToast('Warehouse updated successfully');

@@ -37,7 +37,7 @@ export function getDeliveredUnits(
   collectedUnits?: number | null,
   orderStatus?: string | null,
 ): number {
-  if (orderStatus === 'completed') {
+  if (orderStatus === 'completed' || orderStatus === 'delivery_pending_admin') {
     return collectedUnits != null && collectedUnits > 0 ? Number(collectedUnits) : Number(units);
   }
   return Number(collectedUnits || 0);
@@ -53,4 +53,9 @@ export function getRemainingUnits(
 
 export function isSaleCompleted(orderStatus?: string | null): boolean {
   return orderStatus === 'completed';
+}
+
+/** Delivery agent finished — includes orders awaiting admin verification. */
+export function isDeliveryAgentFinished(orderStatus?: string | null): boolean {
+  return orderStatus === 'completed' || orderStatus === 'delivery_pending_admin';
 }

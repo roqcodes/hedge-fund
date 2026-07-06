@@ -489,6 +489,8 @@ export interface ICWarehouse {
   email?: string;
   address?: string;
   currentStock?: number;
+  /** When true, delivery proof goes straight to customer on agent completion. */
+  sendDeliveryProofToCustomer?: boolean;
   createdAt?: string;
 }
 
@@ -527,6 +529,7 @@ export type ICOrderStatus =
   | 'wh_rejected'
   | 'wh_processing'
   | 'da_rejected'
+  | 'delivery_pending_admin'
   | 'cancellation_pending'
   | 'cancelled'
   | 'completed';
@@ -553,6 +556,8 @@ export interface ICSale {
   statusUpdatedAt?: string;
   statusUpdatedBy?: string;
   address?: string;
+  location?: string;
+  district?: string;
   imageUrl?: string;
   serviceCharge?: number;
   bank?: string;

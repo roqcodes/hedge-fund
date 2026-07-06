@@ -35,6 +35,8 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
   const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
   const [priority, setPriority] = useState<OrderPriority>(initialData?.priority || 'Normal');
   const [address, setAddress] = useState(initialData?.address || '');
+  const [location, setLocation] = useState(initialData?.location || '');
+  const [district, setDistrict] = useState(initialData?.district || '');
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl || '');
   const [deleteToken, setDeleteToken] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,6 +67,8 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
       setTransactionType(initialData?.transactionType || 'transfer');
       setPriority(initialData?.priority || 'Normal');
       setAddress(initialData?.address || '');
+      setLocation(initialData?.location || '');
+      setDistrict(initialData?.district || '');
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
 
@@ -135,6 +139,16 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
 
   const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate, serviceChargeNum);
 
+  const isByHand = transactionType === 'by_hand';
+
+  const handleTransactionTypeChange = (value: string) => {
+    setTransactionType(value);
+    if (value !== 'by_hand') {
+      setLocation('');
+      setDistrict('');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!unitNum || !rateNum || !customerName) return;
@@ -151,6 +165,8 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
       serviceCharge: serviceChargeNum,
       priority,
       address: address || undefined,
+      location: isByHand ? location.trim() || undefined : undefined,
+      district: isByHand ? district.trim() || undefined : undefined,
       imageUrl: imageUrl || undefined,
       conversionRate: groupConversionRate,
       currency: groupCurrency,
@@ -206,6 +222,29 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
                 rows={3}
               />
             </InputField>
+
+            {isByHand ? (
+              <>
+                <InputField label="Location">
+                  <input
+                    type="text"
+                    className={formInput}
+                    value={location}
+                    onChange={e => setLocation(e.target.value)}
+                    placeholder="Enter location"
+                  />
+                </InputField>
+                <InputField label="District">
+                  <input
+                    type="text"
+                    className={formInput}
+                    value={district}
+                    onChange={e => setDistrict(e.target.value)}
+                    placeholder="Enter district"
+                  />
+                </InputField>
+              </>
+            ) : null}
 
             <InputField label="Captured Image">
               <div className="flex items-center gap-3">
@@ -271,7 +310,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => setTransactionType(opt.value)}
+                        onClick={() => handleTransactionTypeChange(opt.value)}
                         className={`flex-1 text-center text-xs font-semibold rounded-lg transition-all flex items-center justify-center ${
                           isActive 
                             ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-bold' 

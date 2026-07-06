@@ -9,6 +9,8 @@ import {
 } from '@/lib/icTransfer/orderStatus';
 import { AdminOrderStatusCard, AdminOrderWorkflowActions } from './AdminOrderWorkflowPanel';
 import { BranchOrderStatusCard, BranchOrderWorkflowActions } from './BranchOrderStatusCell';
+import { ByHandAdminNotice } from './ByHandAdminActions';
+import { isByHandSale, canAdminCompleteByHand, canAdminReopenByHand } from '@/lib/icTransfer/byHand';
 
 type Props = {
   sale: ICSale;
@@ -21,7 +23,8 @@ function hasAdminActions(sale: ICSale) {
   return (
     canAdminAccept(sale.orderStatus) ||
     canAdminReject(sale.orderStatus) ||
-    canAdminReassignWarehouse(sale.orderStatus)
+    canAdminReassignWarehouse(sale.orderStatus) ||
+    (isByHandSale(sale) && (canAdminCompleteByHand(sale) || canAdminReopenByHand(sale)))
   );
 }
 
@@ -45,12 +48,15 @@ export default function SaleOrderWorkflowSection({ sale, variant, onUpdated, onR
 
         {variant === 'admin' ? (
           hasAdminActions(sale) ? (
-            <AdminOrderWorkflowActions
-              key={actionKey}
-              sale={sale}
-              onUpdated={onUpdated}
-              compact={false}
-            />
+            <>
+              {isByHandSale(sale) ? <ByHandAdminNotice sale={sale} /> : null}
+              <AdminOrderWorkflowActions
+                key={actionKey}
+                sale={sale}
+                onUpdated={onUpdated}
+                compact={false}
+              />
+            </>
           ) : (
             <p className="text-xs text-slate-500">No admin actions available for this order status.</p>
           )

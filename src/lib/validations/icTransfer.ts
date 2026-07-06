@@ -36,6 +36,7 @@ export const addWarehouseSchema = z.object({
   regionId: z.string().optional().nullable(),
   email: z.string().email('Invalid email').optional().nullable().or(z.literal('')),
   address: z.string().optional().nullable(),
+  sendDeliveryProofToCustomer: z.boolean().optional().default(true),
 });
 
 export const updateWarehouseSchema = addWarehouseSchema.extend({
@@ -96,6 +97,8 @@ export const addSaleSchema = z.object({
   aedAmount: z.number().optional().nullable(),
   bank: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
+  location: z.string().optional().nullable(),
+  district: z.string().optional().nullable(),
   imageUrl: z.string().optional().nullable(),
   conversionRate: z.number().positive().default(1.0),
   currency: z.string().default('AED'),
