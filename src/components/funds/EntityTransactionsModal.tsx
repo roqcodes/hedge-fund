@@ -33,6 +33,9 @@ type Props = {
   branches: Branch[];
   setEditingTxn: (txn: Transaction | null) => void;
   setDeletingTxn: (txn: Transaction | null) => void;
+  /** When set, per-row edit/delete follows daily-ledger lock rules. */
+  canEditTxn?: (txn: Transaction) => boolean;
+  writeBlockedReason?: string;
 };
 
 function formatTxnAmount(t: Transaction) {
@@ -125,6 +128,8 @@ export default function EntityTransactionsModal({
   branches,
   setEditingTxn,
   setDeletingTxn,
+  canEditTxn,
+  writeBlockedReason,
 }: Props) {
   const [activeTab, setActiveTab] = useState<EntityTab>('all');
 
@@ -173,8 +178,10 @@ export default function EntityTransactionsModal({
     { id: 'customer-accounts', label: 'Customer Accounts', count: caTxns.length },
   ];
 
-  const isEditable = isBranchView && branches.length === 1;
-  const colSpan = isEditable ? 9 : 8;
+  const showActionsColumn = isBranchView && branches.length === 1;
+  const isTxnEditable = (t: Transaction) =>
+    showActionsColumn && (canEditTxn ? canEditTxn(t) : true);
+  const colSpan = showActionsColumn ? 9 : 8;
 
   const renderOutCell = (t: Transaction) => {
     if (isLedgerTab) {
@@ -312,7 +319,7 @@ export default function EntityTransactionsModal({
                   <th className={txnModalTh}>{outColLabel}</th>
                   <th className={txnModalTh}>{inColLabel}</th>
                   <th className={txnModalTh}>Tags</th>
-                  {isEditable && <th className={`${txnModalTh} text-right`}>Actions</th>}
+                  {showActionsColumn && <th className={`${txnModalTh} text-right`}>Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-800">
@@ -342,8 +349,9 @@ export default function EntityTransactionsModal({
                       <td className={txnModalTd}>
                         <TransactionTagsCell transaction={t} />
                       </td>
-                      {isEditable && (
+                      {showActionsColumn && (
                         <td className={`${txnModalTd} text-right`}>
+                          {isTxnEditable(t) ? (
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
@@ -376,6 +384,14 @@ export default function EntityTransactionsModal({
                               </svg>
                             </button>
                           </div>
+                          ) : (
+                            <span
+                              className="block text-right text-[10px] font-semibold text-slate-400"
+                              title={writeBlockedReason}
+                            >
+                              {writeBlockedReason ? 'Read only' : 'Locked'}
+                            </span>
+                          )}
                         </td>
                       )}
                     </tr>
@@ -425,28 +441,36 @@ export default function EntityTransactionsModal({
                       <div className="font-mono text-xs font-bold text-slate-900">{renderInCell(t)}</div>
                     </div>
                   </div>
-                  {isEditable && (
+                  {showActionsColumn && (
                     <div className="flex justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClose();
-                          setEditingTxn({ ...t });
-                        }}
-                        className="rounded border border-slate-200 p-1 text-xs text-slate-500 hover:border-accent hover:text-accent"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClose();
-                          setDeletingTxn(t);
-                        }}
-                        className="rounded border border-slate-200 p-1 text-xs text-slate-500 hover:border-red-400 hover:text-red-600"
-                      >
-                        Delete
-                      </button>
+                      {isTxnEditable(t) ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              setEditingTxn({ ...t });
+                            }}
+                            className="rounded border border-slate-200 p-1 text-xs text-slate-500 hover:border-accent hover:text-accent"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              setDeletingTxn(t);
+                            }}
+                            className="rounded border border-slate-200 p-1 text-xs text-slate-500 hover:border-red-400 hover:text-red-600"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {writeBlockedReason ? 'Read only' : 'Locked'}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

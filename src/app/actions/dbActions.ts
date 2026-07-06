@@ -5,10 +5,17 @@ import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
 import type { BranchPageId } from '@/lib/branchPages';
 import { isBranchScopedUser } from '@/lib/rbac';
 import { query, pool } from '@/lib/db';
-import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate, parseCalendarDate } from '@/lib/businessTime';
+import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate, parseCalendarDate, todayInTimeZone } from '@/lib/businessTime';
+import {
+  canModifyTransactionsOnDate,
+  LOCKED_TRANSACTION_ERROR,
+  parseDayCloseRow,
+  resolveDailyCloseContext,
+} from '@/lib/dailyClose';
 import {
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES,
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN,
+  SQL_BRANCH_DAY_CLOSE_SELECT,
 } from '@/lib/sql/businessDateSql';
 import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
@@ -30,6 +37,7 @@ import { normalizeHiddenPages } from '@/lib/branchPages';
 import { validateJournalEntry } from '@/lib/journalEntry';
 import {
   Branch,
+  BranchDayClose,
   Transaction,
   Expense,
   Invoice,
@@ -95,6 +103,51 @@ function formatPgError(error: unknown): string {
     return error.message;
   }
   return 'An unknown database error occurred.';
+}
+
+type PgQueryClient = {
+  query: (
+    text: string,
+    params?: unknown[],
+  ) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+};
+
+async function assertLedgerTransactionModifiable(
+  client: PgQueryClient,
+  txnId: string,
+): Promise<DbActionResult<void>> {
+  const txnRes = await client.query(
+    'SELECT branch_id, business_date::text AS business_date, date FROM transactions WHERE id = $1',
+    [txnId],
+  );
+  if (!txnRes.rows.length) return { success: false, error: 'Transaction not found.' };
+
+  const row = txnRes.rows[0];
+  const branchId = row.branch_id ? String(row.branch_id) : null;
+  if (!branchId) return { success: true, data: undefined };
+
+  const tzRes = await client.query('SELECT timezone FROM branches WHERE id = $1', [branchId]);
+  const branchTz = resolveBranchTimeZone(
+    tzRes.rows[0]?.timezone ? String(tzRes.rows[0].timezone) : null,
+  );
+  const businessDate = row.business_date
+    ? parseCalendarDate(row.business_date)
+    : toBusinessDate(new Date(String(row.date)).toISOString(), branchTz);
+
+  const closesRes = await client.query(
+    `${SQL_BRANCH_DAY_CLOSE_SELECT} WHERE branch_id = $1 ORDER BY business_date DESC LIMIT 120`,
+    [branchId],
+  );
+  const dayCloses: BranchDayClose[] = closesRes.rows.map(r =>
+    parseDayCloseRow(r as Record<string, unknown>),
+  );
+  const today = todayInTimeZone(branchTz);
+  const { workingDate } = resolveDailyCloseContext(dayCloses, today);
+
+  if (!canModifyTransactionsOnDate(businessDate, dayCloses, workingDate)) {
+    return { success: false, error: LOCKED_TRANSACTION_ERROR };
+  }
+  return { success: true, data: undefined };
 }
 
 export interface InitialDataPayload {
@@ -1839,6 +1892,11 @@ export async function dbUpdateTransactionMetaAction(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const lockCheck = await assertLedgerTransactionModifiable(client, txnId);
+    if (!lockCheck.success) {
+      await client.query('ROLLBACK');
+      return { success: false, error: lockCheck.error };
+    }
     const txMeta = await client.query('SELECT branch_id FROM transactions WHERE id = $1', [txnId]);
     const branchId = txMeta.rows[0]?.branch_id as string | undefined;
     let branchTz = DEFAULT_BRANCH_TIMEZONE;
@@ -1906,6 +1964,11 @@ export async function dbUpdateLedgerTransactionAction(txn: Transaction, oldAmoun
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const lockCheck = await assertLedgerTransactionModifiable(client, txn.id);
+    if (!lockCheck.success) {
+      await client.query('ROLLBACK');
+      return { success: false, error: lockCheck.error };
+    }
     await client.query(
       `UPDATE transactions SET from_entity = $1, to_entity = $2, amount = $3, notes = $4, category = $5, status = $6, asset_type = $7 WHERE id = $8`,
       [txn.from, txn.to, txn.amount, txn.notes || '', txn.category || null, txn.status, txn.assetType || 'currency', txn.id]
@@ -1931,6 +1994,11 @@ export async function dbDeleteLedgerTransactionAction(id: string, deltaCash: num
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const lockCheck = await assertLedgerTransactionModifiable(client, id);
+    if (!lockCheck.success) {
+      await client.query('ROLLBACK');
+      return { success: false, error: lockCheck.error };
+    }
     await client.query(`DELETE FROM transactions WHERE id = $1`, [id]);
     if (deltaCash !== 0) {
       await client.query(`UPDATE branches SET current_balance = current_balance + $1, cash_balance = cash_balance + $1 WHERE id = $2`, [deltaCash, branchId]);

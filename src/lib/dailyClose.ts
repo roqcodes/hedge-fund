@@ -172,6 +172,9 @@ export function canModifyTransactionsOnDate(
   return businessDate === workingDate;
 }
 
+export const LOCKED_TRANSACTION_ERROR =
+  'This entry is locked — the business day is closed or not the active session.';
+
 export function parseDayCloseRow(row: Record<string, unknown>): BranchDayClose {
   return {
     id: String(row.id),

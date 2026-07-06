@@ -1276,6 +1276,8 @@ export default function FundManagement({ variant = 'default' }: { variant?: 'def
           branches={branches}
           setEditingTxn={setEditingTxn}
           setDeletingTxn={setDeletingTxn}
+          canEditTxn={canEditTxn}
+          writeBlockedReason={writeBlockedReason}
         />
       )}
 
