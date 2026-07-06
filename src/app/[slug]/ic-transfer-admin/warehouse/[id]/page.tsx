@@ -15,7 +15,7 @@ export default async function WarehouseDetailsPage({ params }: { params: Promise
 
   const canManage = user.role === 'branch_manager' || user.role === 'admin';
   if (!canManage) {
-    redirect(`/${slug}/ic-transfer/warehouse`);
+    redirect(`/${slug}/ic-transfer-admin/warehouse`);
   }
 
   const shortWarehouseId = warehouseId.slice(0, 8);

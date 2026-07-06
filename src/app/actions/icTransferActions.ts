@@ -30,6 +30,10 @@ import {
 import { normalizeOrderStatus } from '@/lib/icTransfer/orderStatus';
 import { isByHandSale } from '@/lib/icTransfer/byHand';
 import { isBranchPortalRole } from '@/lib/rbac';
+import {
+  customerOwnsSale,
+  isBranchSubmittedSale,
+} from '@/lib/icTransfer/branchOrderOwnership';
 import { logger } from '@/lib/logger';
 import {
   addRegionSchema,
@@ -409,7 +413,7 @@ export async function dbSetICRateGroupCustomersAction(groupId: string, customerI
       if (parsed.customerIds.length > 0) {
         await client.query(
           `INSERT INTO ic_rate_group_customers (group_id, customer_id)
-           SELECT $1::uuid, unnest($2::text[])`,
+           SELECT $1, unnest($2::text[])`,
           [parsed.groupId, parsed.customerIds]
         );
       }
@@ -454,7 +458,7 @@ export async function dbSetICRateGroupBranchesAction(groupId: string, branchIds:
       if (parsed.branchIds.length > 0) {
         await client.query(
           `INSERT INTO ic_rate_group_branches (group_id, branch_id)
-           SELECT $1::uuid, unnest($2::text[])`,
+           SELECT $1, unnest($2::text[])`,
           [parsed.groupId, parsed.branchIds]
         );
       }
@@ -526,12 +530,41 @@ export async function dbAddICPurchaseAction(
 }
 
 export async function dbAddICSaleAction(
-  sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>
+  sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>,
+  branchSlug?: string,
 ): Promise<DbActionResult<ICSale>> {
   try {
     const parsed = addSaleSchema.parse(sale);
+    const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
+    const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
+    const user = userRes.success ? userRes.data : null;
+
+    let salePayload = { ...parsed };
+
+    if (user?.role === 'customer') {
+      if (!user.customerId) {
+        return { success: false, error: 'Customer profile is not linked to this account' };
+      }
+      const customerName = user.name?.trim() || parsed.customerName;
+      salePayload = {
+        ...salePayload,
+        customerName,
+        orderCustomerId: user.customerId,
+        orderCustomerName: customerName,
+        warehouseId: undefined,
+      };
+    } else if (user && slug && (user.role === 'branch_manager' || user.role === 'staff')) {
+      const branchRes = await query(`SELECT name FROM branches WHERE slug = $1 LIMIT 1`, [slug]);
+      if (branchRes.rows.length > 0) {
+        salePayload = {
+          ...salePayload,
+          customerName: String(branchRes.rows[0].name || salePayload.customerName),
+        };
+      }
+    }
+
     const { enteredBy, enteredByName, enteredByUserId } = await resolveEnteredBy();
-    const initialOrderStatus = parsed.warehouseId ? 'accepted' : 'pending';
+    const initialOrderStatus = salePayload.warehouseId ? 'accepted' : 'pending';
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -541,28 +574,28 @@ export async function dbAddICSaleAction(
           entered_by, entered_by_name, entered_by_user_id, address, location, district, image_url, service_charge, order_status, priority, bank, conversion_rate, currency
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING *`,
         [
-          parsed.customerName,
-          parsed.orderCustomerName || null,
-          parsed.orderCustomerId || null,
-          parsed.warehouseId || null,
-          parsed.transactionType || null,
-          parsed.units,
-          parsed.unitRate,
-          parsed.convertedAmount || null,
-          parsed.aedAmount || null,
+          salePayload.customerName,
+          salePayload.orderCustomerName || null,
+          salePayload.orderCustomerId || null,
+          salePayload.warehouseId || null,
+          salePayload.transactionType || null,
+          salePayload.units,
+          salePayload.unitRate,
+          salePayload.convertedAmount || null,
+          salePayload.aedAmount || null,
           enteredBy,
           enteredByName,
           enteredByUserId,
-          parsed.address || null,
-          parsed.location || null,
-          parsed.district || null,
-          parsed.imageUrl || null,
-          parsed.serviceCharge || 0.00,
+          salePayload.address || null,
+          salePayload.location || null,
+          salePayload.district || null,
+          salePayload.imageUrl || null,
+          salePayload.serviceCharge || 0.00,
           initialOrderStatus,
-          parsed.priority || 'Normal',
-          parsed.bank || null,
-          parsed.conversionRate ?? 1.0,
-          parsed.currency || 'AED',
+          salePayload.priority || 'Normal',
+          salePayload.bank || null,
+          salePayload.conversionRate ?? 1.0,
+          salePayload.currency || 'AED',
         ]
       );
       await client.query('COMMIT');
@@ -808,7 +841,17 @@ async function assertBranchOwnsSale(
     return { error: 'Order not found' };
   }
 
-  if (sale.customerName.toLowerCase() !== branchName.toLowerCase()) {
+  if (user.role === 'customer') {
+    if (!user.customerId) {
+      return { error: 'Customer profile is not linked to this account' };
+    }
+    if (!customerOwnsSale(sale, user.customerId, user.name, branchName)) {
+      return { error: 'You can only modify your own orders' };
+    }
+    return { sale, updatedBy: user.email || user.name || 'customer' };
+  }
+
+  if (!isBranchSubmittedSale(sale, branchName)) {
     return { error: 'You can only modify orders submitted by your branch' };
   }
 
@@ -1309,9 +1352,15 @@ export async function autoCompleteByHandOrdersCronAction(): Promise<DbActionResu
   }
 }
 
-export async function dbGetCustomerCurrencyAction(customerName: string): Promise<DbActionResult<string>> {
+export async function dbGetCustomerCurrencyAction(
+  opts: string | { customerId?: string | null; customerName?: string | null },
+): Promise<DbActionResult<string>> {
   try {
-    const parsedName = z.string().min(1).parse(customerName);
+    const customerId = typeof opts === 'string' ? null : (opts.customerId?.trim() || null);
+    const customerName = typeof opts === 'string' ? opts.trim() : (opts.customerName?.trim() || null);
+    if (!customerId && !customerName) {
+      return { success: false, error: 'Customer id or name is required' };
+    }
     const res = await query(
       `SELECT COALESCE(
          (
@@ -1319,7 +1368,8 @@ export async function dbGetCustomerCurrencyAction(customerName: string): Promise
            FROM ic_rate_group_customers c
            JOIN customers cust ON c.customer_id = cust.id
            JOIN ic_rate_groups g ON c.group_id = g.id
-           WHERE LOWER(cust.name) = LOWER($1)
+           WHERE ($1::text IS NOT NULL AND cust.id = $1)
+              OR ($1::text IS NULL AND $2::text IS NOT NULL AND LOWER(cust.name) = LOWER($2))
            LIMIT 1
          ),
          (
@@ -1327,17 +1377,17 @@ export async function dbGetCustomerCurrencyAction(customerName: string): Promise
            FROM ic_rate_group_branches b
            JOIN branches br ON b.branch_id = br.id
            JOIN ic_rate_groups g ON b.group_id = g.id
-           WHERE LOWER(br.name) = LOWER($1)
+           WHERE $2::text IS NOT NULL AND LOWER(br.name) = LOWER($2)
            LIMIT 1
          ),
          'Currency'
        ) AS currency`,
-      [parsedName]
+      [customerId, customerName]
     );
     const currency = res.rows.length > 0 ? res.rows[0].currency : 'Currency';
     return { success: true, data: currency };
   } catch (error: unknown) {
-    logger.error({ error, customerName }, 'Error in dbGetCustomerCurrencyAction');
+    logger.error({ error, opts }, 'Error in dbGetCustomerCurrencyAction');
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   }
 }

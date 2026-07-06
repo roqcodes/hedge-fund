@@ -37,6 +37,65 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  async redirects() {
+    return [
+      {
+        source: '/:slug/ic-transfer-branch',
+        destination: '/:slug/ic-transfer',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/purchase',
+        destination: '/:slug/ic-transfer-admin/purchase',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/sales',
+        destination: '/:slug/ic-transfer-admin/sales',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/warehouse',
+        destination: '/:slug/ic-transfer-admin/warehouse',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/warehouse/:id',
+        destination: '/:slug/ic-transfer-admin/warehouse/:id',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/regions',
+        destination: '/:slug/ic-transfer-admin/regions',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/transactions',
+        destination: '/:slug/ic-transfer-admin/transactions',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/settings/:path*',
+        destination: '/:slug/ic-transfer-admin/settings/:path*',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/finance',
+        destination: '/:slug/ic-transfer-admin/finance',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/metal',
+        destination: '/:slug/ic-transfer-admin/metal',
+        permanent: true,
+      },
+      {
+        source: '/:slug/ic-transfer/non-stock-deals',
+        destination: '/:slug/ic-transfer-admin/non-stock-deals',
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

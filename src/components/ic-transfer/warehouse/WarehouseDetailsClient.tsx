@@ -45,7 +45,7 @@ export default function WarehouseDetailsClient({ branchSlug, warehouseId, initia
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-3">
             <Link
-              href={`/${branchSlug}/ic-transfer/warehouse`}
+              href={`/${branchSlug}/ic-transfer-admin/warehouse`}
               className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
               aria-label="Back to warehouse"
             >

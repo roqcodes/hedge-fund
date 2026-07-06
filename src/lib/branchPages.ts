@@ -3,6 +3,7 @@ export type BranchPageId =
   | 'deals'
   | 'funds'
   | 'transactions-beta'
+  | 'ic-transfer-admin'
   | 'ic-transfer'
   | 'finance'
   | 'physical'
@@ -12,8 +13,7 @@ export type BranchPageId =
   | 'investors'
   | 'usdt'
   | 'settings'
-  | 'warehouse'
-  | 'ic-transfer-branch';
+  | 'warehouse';
 
 export type BranchNavPage = {
   id: BranchPageId;
@@ -29,7 +29,7 @@ export const BRANCH_NAV_PAGES: BranchNavPage[] = [
   { id: 'deals', label: 'Group & Deals', path: '/group', hideable: true },
   { id: 'funds', label: 'Transaction', path: '/funds', hideable: true },
   { id: 'transactions-beta', label: 'Daily Ledger', path: '/transactions', hideable: true },
-  { id: 'ic-transfer', label: 'IC Transfer & Reverse', path: '/ic-transfer', hideable: true },
+  { id: 'ic-transfer-admin', label: 'IC Transfer (Admin)', path: '/ic-transfer-admin', hideable: true },
   { id: 'finance', label: 'Finance - Reports', path: '/finance', hideable: true },
   { id: 'physical', label: 'Physical Deals', path: '/physical-deals', hideable: true },
   { id: 'marketplace', label: 'Physical', path: '/physical', hideable: true },
@@ -38,7 +38,7 @@ export const BRANCH_NAV_PAGES: BranchNavPage[] = [
   { id: 'customers', label: 'Customers', path: '/customers', hideable: true },
   { id: 'investors', label: 'Investors', path: '/investors', hideable: true },
   { id: 'warehouse', label: 'Warehouse Portal', path: '/warehouse', hideable: false },
-  { id: 'ic-transfer-branch', label: 'IC Transfer (Branch)', path: '/ic-transfer-branch', hideable: true },
+  { id: 'ic-transfer', label: 'IC Transfer', path: '/ic-transfer', hideable: true },
   { id: 'settings', label: 'Settings', path: '/settings', hideable: false },
 ];
 
@@ -46,10 +46,14 @@ export const BRANCH_NAV_PAGE_IDS = BRANCH_NAV_PAGES.map(p => p.id);
 
 export const HIDEABLE_BRANCH_PAGE_IDS = BRANCH_NAV_PAGES.filter(p => p.hideable).map(p => p.id);
 
+/** Pages customer-role users may access (extensible for future customer portals). */
+export const CUSTOMER_PORTAL_PAGE_IDS: BranchPageId[] = ['ic-transfer'];
+
 const PATH_SEGMENT_TO_PAGE_ID: Record<string, BranchPageId> = {
   group: 'deals',
   funds: 'funds',
   transactions: 'transactions-beta',
+  'ic-transfer-admin': 'ic-transfer-admin',
   'ic-transfer': 'ic-transfer',
   finance: 'finance',
   physical: 'marketplace',
@@ -61,14 +65,26 @@ const PATH_SEGMENT_TO_PAGE_ID: Record<string, BranchPageId> = {
   settings: 'settings',
   reports: 'finance',
   warehouse: 'warehouse',
-  'ic-transfer-branch': 'ic-transfer-branch',
 };
+
+/** Map legacy hidden page IDs stored in the database to current page IDs. */
+export function normalizeHiddenPageId(pageId: string): string {
+  if (pageId === 'ic-transfer-branch') return 'ic-transfer';
+  if (pageId === 'ic-transfer') return 'ic-transfer-admin';
+  return pageId;
+}
+
+export function normalizeHiddenPages(hiddenPages?: string[] | null): string[] {
+  if (!hiddenPages?.length) return [];
+  return hiddenPages.map(normalizeHiddenPageId);
+}
 
 export function isBranchPageEnabled(pageId: string, hiddenPages?: string[] | null): boolean {
   const page = BRANCH_NAV_PAGES.find(p => p.id === pageId);
   if (!page) return true;
   if (!page.hideable) return true;
-  return !(hiddenPages ?? []).includes(pageId);
+  const normalized = normalizeHiddenPages(hiddenPages);
+  return !normalized.includes(pageId);
 }
 
 export function getPageIdFromBranchPathname(pathname: string, slug: string): BranchPageId | null {

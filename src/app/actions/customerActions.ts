@@ -3,12 +3,69 @@
 import { query } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
+import { getSessionUser } from '@/lib/auth';
+import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
+import { createCustomerCognitoUser, deleteCognitoUserByEmail, updateCognitoUserName } from '@/app/actions/cognitoActions';
+import { PASSWORD_INVALID_MESSAGE, validatePassword } from '@/lib/passwordValidation';
+
+const CUSTOMER_DELETE_BLOCKED_MESSAGE =
+  'This customer cannot be deleted because they have existing orders or transactions.';
+
+function customerHasOrdersExpr(customerIdRef: string): string {
+  return `(
+    EXISTS (SELECT 1 FROM ic_sales WHERE order_customer_id = ${customerIdRef} LIMIT 1)
+    OR EXISTS (SELECT 1 FROM physical_buys WHERE customer_id = ${customerIdRef} LIMIT 1)
+    OR EXISTS (SELECT 1 FROM physical_sells WHERE customer_id = ${customerIdRef} LIMIT 1)
+    OR EXISTS (SELECT 1 FROM usdt_buys WHERE customer_id = ${customerIdRef} LIMIT 1)
+    OR EXISTS (SELECT 1 FROM usdt_sells WHERE customer_id = ${customerIdRef} LIMIT 1)
+    OR EXISTS (SELECT 1 FROM tax_invoices WHERE customer_id = ${customerIdRef} LIMIT 1)
+  )`;
+}
+
+async function customerHasAnyOrders(customerId: string): Promise<boolean> {
+  const res = await query(`SELECT ${customerHasOrdersExpr('$1')} AS has_orders`, [customerId]);
+  return Boolean(res.rows[0]?.has_orders);
+}
+
+function mapCustomerRow(r: Record<string, unknown>) {
+  return {
+    id: String(r.id),
+    branchId: String(r.branch_id),
+    name: String(r.name),
+    phone: r.phone ? String(r.phone) : undefined,
+    email: r.email ? String(r.email) : undefined,
+    balance: parseFloat(String(r.balance ?? 0)),
+    status: String(r.status ?? 'active'),
+    createdAt: r.created_at ? new Date(String(r.created_at)).toISOString() : undefined,
+    cognitoUserId: r.cognito_user_id ? String(r.cognito_user_id) : undefined,
+    hasOrders: Boolean(r.has_orders),
+  };
+}
+
+async function assertCustomerWriteAccess(slug: string) {
+  const user = await getSessionUser(slug);
+  if (!user) return { error: 'You must be signed in.' as const, user: null };
+  if (user.role === 'customer') {
+    return { error: 'Customers cannot manage customer records.' as const, user: null };
+  }
+  const branchRes = await query(`SELECT id FROM branches WHERE slug = $1 LIMIT 1`, [slug]);
+  if (branchRes.rows.length === 0) {
+    return { error: 'Branch not found' as const, user: null };
+  }
+  const branchId = String(branchRes.rows[0].id);
+  if (user.branchId && user.branchId !== branchId) {
+    return { error: 'You are not authorized for this branch.' as const, user: null };
+  }
+  const denied = await assertStaffWriteAccess(user, 'customers', branchId);
+  if (denied) return { error: denied, user: null };
+  return { user, branchId };
+}
 
 export async function getCustomersBySlug(slug: string) {
   try {
     const res = await query(
       `
-      SELECT c.*
+      SELECT c.*, ${customerHasOrdersExpr('c.id')} AS has_orders
       FROM customers c
       LEFT JOIN branches b ON c.branch_id = b.id
       WHERE b.slug = $1
@@ -16,10 +73,27 @@ export async function getCustomersBySlug(slug: string) {
     `,
       [slug],
     );
-    return { success: true, customers: res.rows };
+    return { success: true, customers: res.rows.map(mapCustomerRow) };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error({ error: err, slug }, 'getCustomers error');
+    return { success: false, error: message };
+  }
+}
+
+export async function getCustomerByCognitoUserId(cognitoUserId: string) {
+  try {
+    const res = await query(
+      `SELECT c.* FROM customers c WHERE c.cognito_user_id = $1 LIMIT 1`,
+      [cognitoUserId],
+    );
+    if (res.rows.length === 0) {
+      return { success: false, error: 'Customer not found' };
+    }
+    return { success: true, customer: mapCustomerRow(res.rows[0]) };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    logger.error({ error: err, cognitoUserId }, 'getCustomerByCognitoUserId error');
     return { success: false, error: message };
   }
 }
@@ -33,7 +107,7 @@ export async function getAllCustomers() {
       ORDER BY c.name ASC
     `
     );
-    return { success: true, customers: res.rows };
+    return { success: true, customers: res.rows.map(mapCustomerRow) };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error({ error: err }, 'getAllCustomers error');
@@ -57,20 +131,7 @@ export async function getCustomerById(customerId: string, slug?: string) {
     if (res.rows.length === 0) {
       return { success: false, error: 'Customer not found' };
     }
-    const r = res.rows[0];
-    return {
-      success: true,
-      customer: {
-        id: String(r.id),
-        branchId: String(r.branch_id),
-        name: String(r.name),
-        phone: r.phone ? String(r.phone) : undefined,
-        email: r.email ? String(r.email) : undefined,
-        balance: parseFloat(String(r.balance ?? 0)),
-        status: String(r.status ?? 'active'),
-        createdAt: r.created_at ? new Date(String(r.created_at)).toISOString() : undefined,
-      },
-    };
+    return { success: true, customer: mapCustomerRow(res.rows[0]) };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error({ error: err, customerId, slug }, 'getCustomerById error');
@@ -85,42 +146,90 @@ export async function saveCustomer(
     name: string;
     phone?: string;
     email?: string;
+    password?: string;
     balance?: number | string;
     status?: string;
   },
 ) {
   try {
-    const branchRes = await query(`SELECT id FROM branches WHERE slug = $1`, [slug]);
-    if (branchRes.rowCount === 0) throw new Error('Branch not found');
-    const branchId = branchRes.rows[0].id;
+    const access = await assertCustomerWriteAccess(slug);
+    if ('error' in access && access.error) {
+      return { success: false, error: access.error };
+    }
+
+    const branchId = access.branchId!;
+    const isNew = !data.id;
+    const email = data.email?.trim() || '';
+    const password = data.password?.trim() || '';
+
+    if (isNew) {
+      if (!email) {
+        return { success: false, error: 'Email is required to create a customer portal account.' };
+      }
+      if (!validatePassword(password).isValid) {
+        return { success: false, error: PASSWORD_INVALID_MESSAGE };
+      }
+    }
+
+    let existingCognitoUserId: string | null = null;
+    if (!isNew && data.id) {
+      const existing = await query(
+        `SELECT cognito_user_id, email FROM customers WHERE id = $1 AND branch_id = $2 LIMIT 1`,
+        [data.id, branchId],
+      );
+      if (existing.rows.length === 0) {
+        return { success: false, error: 'Customer not found' };
+      }
+      existingCognitoUserId = existing.rows[0].cognito_user_id
+        ? String(existing.rows[0].cognito_user_id)
+        : null;
+    }
 
     const id = data.id || `cust_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const balance = data.balance !== undefined && data.balance !== '' ? Number(data.balance) : 0;
     const status = data.status || 'active';
+    let cognitoUserId = existingCognitoUserId;
+
+    if (isNew) {
+      const cognitoRes = await createCustomerCognitoUser({
+        email,
+        name: data.name.trim(),
+        branchId,
+        password,
+      });
+      if (!cognitoRes.success || !cognitoRes.userId) {
+        return { success: false, error: cognitoRes.error || 'Failed to create customer login account.' };
+      }
+      cognitoUserId = cognitoRes.userId;
+    } else if (existingCognitoUserId && email) {
+      await updateCognitoUserName(email, data.name.trim());
+    }
 
     await query(
       `
-      INSERT INTO customers (id, branch_id, name, phone, email, balance, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO customers (id, branch_id, name, phone, email, balance, status, cognito_user_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         phone = EXCLUDED.phone,
         email = EXCLUDED.email,
         balance = EXCLUDED.balance,
-        status = EXCLUDED.status
+        status = EXCLUDED.status,
+        cognito_user_id = COALESCE(EXCLUDED.cognito_user_id, customers.cognito_user_id)
     `,
       [
         id,
         branchId,
         data.name.trim(),
         data.phone?.trim() || null,
-        data.email?.trim() || null,
+        email || null,
         balance,
         status,
+        cognitoUserId,
       ],
     );
 
-    revalidatePath('/[slug]/customers');
+    revalidatePath(`/${slug}/customers`);
     return { success: true, id };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -129,14 +238,36 @@ export async function saveCustomer(
   }
 }
 
-export async function deleteCustomer(id: string) {
+export async function deleteCustomer(id: string, slug: string) {
   try {
+    const access = await assertCustomerWriteAccess(slug);
+    if ('error' in access && access.error) {
+      return { success: false, error: access.error };
+    }
+
+    const existing = await query(
+      `SELECT email, cognito_user_id FROM customers WHERE id = $1 AND branch_id = $2 LIMIT 1`,
+      [id, access.branchId],
+    );
+    if (existing.rows.length === 0) {
+      return { success: false, error: 'Customer not found' };
+    }
+
+    if (await customerHasAnyOrders(id)) {
+      return { success: false, error: CUSTOMER_DELETE_BLOCKED_MESSAGE };
+    }
+
+    const email = existing.rows[0].email ? String(existing.rows[0].email) : '';
+    if (email) {
+      await deleteCognitoUserByEmail(email);
+    }
+
     await query(`DELETE FROM customers WHERE id = $1`, [id]);
-    revalidatePath('/[slug]/customers');
+    revalidatePath(`/${slug}/customers`);
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    logger.error({ error: err, id }, 'deleteCustomer error');
+    logger.error({ error: err, id, slug }, 'deleteCustomer error');
     return { success: false, error: message };
   }
 }

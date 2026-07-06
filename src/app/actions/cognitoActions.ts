@@ -17,6 +17,8 @@ import {
 import { seedDefaultStaffPermissions } from '@/lib/userPermissions';
 import { logger } from '@/lib/logger';
 
+const CUSTOMER_ROLE = 'customer';
+
 const cognitoClient = env.COGNITO_REGION 
   ? new CognitoIdentityProviderClient({ region: env.COGNITO_REGION })
   : null;
@@ -90,6 +92,8 @@ export async function fetchCognitoUsersAction(branchSlug?: string) {
         created: u.UserCreateDate ? u.UserCreateDate.toISOString() : new Date().toISOString()
       };
     });
+
+    users = users.filter(u => u.role !== CUSTOMER_ROLE);
 
     if (access.user?.role === 'branch_manager' && access.user.branchId) {
       users = users.filter(u => u.branchId === access.user!.branchId);
@@ -328,5 +332,113 @@ export async function deleteCognitoUserAction(email: string, branchSlug?: string
   } catch (error: unknown) {
     logger.error({ error, email, branchSlug }, 'Error deleting Cognito user');
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete user' };
+  }
+}
+
+/** Create a Cognito login for a branch customer (not listed in branch staff users). */
+export async function createCustomerCognitoUser(input: {
+  email: string;
+  name: string;
+  branchId: string;
+  password: string;
+}): Promise<{ success: boolean; userId?: string; error?: string }> {
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) {
+    return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
+  }
+
+  try {
+    const createCommand = new AdminCreateUserCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: input.email,
+      UserAttributes: [
+        { Name: 'email', Value: input.email },
+        { Name: 'email_verified', Value: 'true' },
+        { Name: 'name', Value: input.name },
+        { Name: 'custom:role', Value: CUSTOMER_ROLE },
+        { Name: 'custom:branchId', Value: input.branchId },
+      ],
+      MessageAction: 'SUPPRESS',
+    });
+    await cognitoClient.send(createCommand);
+
+    const setPasswordCommand = new AdminSetUserPasswordCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: input.email,
+      Password: input.password,
+      Permanent: true,
+    });
+    await cognitoClient.send(setPasswordCommand);
+
+    const userId = await lookupCognitoUserIdByEmail(input.email);
+    if (!userId) {
+      return { success: false, error: 'Customer account was created but user id could not be resolved.' };
+    }
+
+    return { success: true, userId };
+  } catch (error: unknown) {
+    logger.error({ error, email: input.email, branchId: input.branchId }, 'Error creating customer Cognito user');
+    const errName = (error as { name?: string })?.name;
+    if (errName === 'UsernameExistsException') {
+      return { success: false, error: 'A user with this email already exists.' };
+    }
+    if (errName === 'InvalidPasswordException') {
+      return { success: false, error: 'Password does not meet Cognito requirements.' };
+    }
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to create customer account' };
+  }
+}
+
+export async function updateCognitoUserName(email: string, name: string) {
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) {
+    return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
+  }
+
+  try {
+    const updateCommand = new AdminUpdateUserAttributesCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: email,
+      UserAttributes: [{ Name: 'name', Value: name }],
+    });
+    await cognitoClient.send(updateCommand);
+    return { success: true };
+  } catch (error: unknown) {
+    logger.error({ error, email, name }, 'Error updating Cognito user name');
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update user name' };
+  }
+}
+
+export async function deleteCognitoUserByEmail(email: string) {
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) {
+    return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
+  }
+
+  try {
+    const listRes = await cognitoClient.send(new ListUsersCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Filter: `email = "${email}"`,
+      Limit: 1,
+    }));
+    const target = listRes.Users?.[0];
+    const targetRole = getAttribute(target?.Attributes, 'custom:role');
+    if (targetRole !== CUSTOMER_ROLE) {
+      return { success: false, error: 'Refusing to delete non-customer Cognito account.' };
+    }
+
+    const userId = getAttribute(target?.Attributes, 'sub');
+    const command = new AdminDeleteUserCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: email,
+    });
+    await cognitoClient.send(command);
+
+    if (userId) {
+      const { deleteUserPermissions } = await import('@/lib/userPermissions');
+      await deleteUserPermissions(userId);
+    }
+
+    return { success: true };
+  } catch (error: unknown) {
+    logger.error({ error, email }, 'Error deleting customer Cognito user');
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete customer account' };
   }
 }

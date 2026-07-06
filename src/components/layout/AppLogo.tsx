@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
-import { isBranchPortalRole } from '@/lib/rbac';
+import { isBranchPortalRole, isCustomerRole } from '@/lib/rbac';
 
 type Props = {
   variant?: 'sidebar' | 'header';
@@ -24,9 +24,13 @@ export default function AppLogo({ variant = 'sidebar', collapsed = false, href }
   const logoSrc = isBranchUser && branch?.logo_url ? branch.logo_url : '/logo.png';
   const brandName = isBranchUser && branch ? branch.name : 'AIBAK';
   const tagline = isBranchUser
-    ? user?.role === 'staff'
-      ? 'Staff Portal'
-      : 'Branch Portal'
+    ? isCustomerRole(user?.role)
+      ? 'Customer Portal'
+      : user?.role === 'staff'
+        ? 'Staff Portal'
+        : user?.role?.startsWith('delivery') || user?.role?.startsWith('warehouse_')
+          ? 'Warehouse Portal'
+          : 'Branch Portal'
     : 'Capital Management';
 
   const isHeader = variant === 'header';

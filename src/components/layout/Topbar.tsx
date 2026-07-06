@@ -6,10 +6,6 @@ import AppLogo from '@/components/layout/AppLogo';
 import GlobalSearch from '@/components/layout/GlobalSearch';
 import CurrencySwitcher from '@/components/ui/CurrencySwitcher';
 
-function resolveWarehouseHome(currentSlug: string): string {
-  return currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/warehouse` : '/warehouse';
-}
-
 type SearchFieldProps = {
   searchWrapRef: React.RefObject<HTMLDivElement | null>;
   searchQuery: string;
@@ -213,8 +209,8 @@ export default function Topbar() {
     logout,
     user,
     refetchData,
-    isWarehouseRoute,
-    currentSlug,
+    hideMainSidebar,
+    compactPortalHome,
   } = useApp();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -263,13 +259,13 @@ export default function Topbar() {
     onRefresh: handleRefresh,
   };
 
-  if (isWarehouseRoute) {
+  if (hideMainSidebar) {
     return (
       <header
         className={`max-sm:grid max-sm:grid-cols-[1fr_auto] max-sm:grid-rows-[auto_auto] max-sm:items-center max-sm:gap-x-3 max-sm:gap-y-2.5 sm:flex sm:items-center sm:gap-4 ${headerShell}`}
       >
         <div className="max-sm:col-start-1 max-sm:row-start-1 shrink-0">
-          <AppLogo variant="header" href={resolveWarehouseHome(currentSlug)} />
+          <AppLogo variant="header" href={compactPortalHome} />
         </div>
 
         <div className="max-sm:col-start-2 max-sm:row-start-1 shrink-0 sm:order-3">

@@ -97,7 +97,12 @@ import {
   setLiveCurrencyRates,
   type CurrencyCode,
 } from '@/lib/currency';
-import { isBranchScopedUser } from '@/lib/rbac';
+import { isBranchScopedUser, isBranchPortalRole } from '@/lib/rbac';
+import {
+  getVisibleMainNavItems,
+  resolveCompactPortalHome,
+  shouldHideMainSidebar,
+} from '@/lib/navigation/mainNav';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
 
@@ -189,6 +194,8 @@ interface AppContextType extends AppState {
   isICTransferRoute: boolean;
   isICTransferBranchRoute: boolean;
   isWarehouseRoute: boolean;
+  hideMainSidebar: boolean;
+  compactPortalHome: string;
   selectBranch: (id: string | null) => void;
   selectInvestor: (id: string | null) => void;
   addInvestor: (input: AddInvestorInput) => void;
@@ -1680,7 +1687,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addICSale = useCallback(async (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => {
     try {
-      const res = await dbAddICSaleAction(sale);
+      const res = await dbAddICSaleAction(sale, currentSlug);
       if (res.success && res.data) {
         setState(s => ({ ...s, icSales: [res.data!, ...s.icSales] }));
         showToast('Sale recorded successfully');
@@ -1693,7 +1700,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error recording sale', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const updateICPurchase = useCallback(async (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => {
     try {
@@ -1900,9 +1907,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const isBranchView = !!filterBranchId || isBranchScopedUser(filteredState.user);
-    const isICTransferRoute = pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-branch');
-    const isICTransferBranchRoute = pathname.includes('/ic-transfer-branch');
+    const isICTransferAdminRoute = pathname.includes('/ic-transfer-admin');
+    const isICTransferRoute = pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-admin');
+    const isICTransferBranchRoute = isICTransferRoute;
     const isWarehouseRoute = pathname.split('/').includes('warehouse') && !pathname.split('/').includes('ic-transfer');
+
+    const navBranch = filteredState.user && isBranchPortalRole(filteredState.user.role) && filteredState.user.branchId
+      ? filteredState.branches.find(b => b.id === filteredState.user!.branchId)
+      : currentSlug !== 'superadmin'
+        ? findBranchBySlug(filteredState.branches, currentSlug)
+        : null;
+
+    const visibleMainNavItems = getVisibleMainNavItems({
+      currentSlug,
+      user: filteredState.user,
+      branch: navBranch,
+    });
+    const hideMainSidebar = shouldHideMainSidebar(visibleMainNavItems.length, isWarehouseRoute);
+    const compactPortalHome = isWarehouseRoute
+      ? (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/warehouse` : '/warehouse')
+      : resolveCompactPortalHome(visibleMainNavItems, currentSlug, filteredState.user);
 
     const viewBranchSlug = resolveViewBranchSlug(pathname, currentSlug);
     let enabledCurrencies: CurrencyCode[] = sanitizeEnabledCurrencies(['AED', 'USD', 'INR']);
@@ -1923,6 +1947,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isICTransferRoute,
       isICTransferBranchRoute,
       isWarehouseRoute,
+      hideMainSidebar,
+      compactPortalHome,
       currentSlug,
       enabledCurrencies,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,

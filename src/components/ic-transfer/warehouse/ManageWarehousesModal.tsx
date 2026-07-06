@@ -86,7 +86,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
 
   const openUsers = (warehouseId: string) => {
     onClose();
-    router.push(`/${branchSlug}/ic-transfer/warehouse/${warehouseId}`);
+    router.push(`/${branchSlug}/ic-transfer-admin/warehouse/${warehouseId}`);
   };
 
   return (

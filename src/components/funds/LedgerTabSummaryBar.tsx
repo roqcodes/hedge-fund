@@ -40,7 +40,7 @@ type Props = {
 };
 
 export default function LedgerTabSummaryBar({ totals, fixed = false, tableRef, watchKey }: Props) {
-  const { sidebarCollapsed } = useApp();
+  const { sidebarCollapsed, hideMainSidebar } = useApp();
   const tableInView = useElementInView(tableRef ?? EMPTY_REF, fixed && !!tableRef, watchKey);
   const dockVisible = !fixed || !tableRef || tableInView;
 
@@ -68,7 +68,7 @@ export default function LedgerTabSummaryBar({ totals, fixed = false, tableRef, w
     return (
       <div
         className={`fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/90 shadow-[0_-4px_16px_-6px_rgba(15,23,42,0.1)] backdrop-blur-xl transition-[transform,left] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          sidebarCollapsed ? 'lg:left-[80px]' : 'lg:left-[240px]'
+          hideMainSidebar ? 'lg:left-0' : sidebarCollapsed ? 'lg:left-[80px]' : 'lg:left-[240px]'
         } ${dockVisible ? 'translate-y-0' : 'translate-y-full pointer-events-none'}`}
         aria-hidden={!dockVisible}
       >

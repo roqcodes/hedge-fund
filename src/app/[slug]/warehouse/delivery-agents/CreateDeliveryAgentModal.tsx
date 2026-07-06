@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { createDeliveryAgent } from '@/app/actions/warehouseActions';
 import Modal from '@/components/ui/Modal';
+import PasswordInput from '@/components/ui/PasswordInput';
 import { btnPrimary, btnSecondary } from '@/lib/ui';
 
 type Props = {
@@ -85,12 +86,11 @@ export default function CreateDeliveryAgentModal({ warehouseId, onClose, onSucce
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Password *</label>
-            <input
+            <PasswordInput
               required
-              type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
+              inputClassName="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
               placeholder="Min 8 chars, 1 upper, 1 special"
             />
           </div>

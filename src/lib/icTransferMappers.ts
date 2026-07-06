@@ -130,7 +130,8 @@ export function getFormattedTxnId(
   id: string,
   type: 'sale' | 'purchase',
   record?: unknown,
-  branchesList?: { name: string }[]
+  branchesList?: { name: string }[],
+  branchName?: string,
 ): string {
   if (!id) return '';
   const shortId = id.includes('-') ? id.split('-')[0] : id.substring(0, 8);
@@ -147,11 +148,27 @@ export function getFormattedTxnId(
     return `IC-SA-DV-${shortId}`;
   }
 
-  // Check if it's from a branch side
   const custName = r?.customerName || r?.customer_name;
+  const orderCustName = (r as { orderCustomerName?: string; order_customer_name?: string } | null)
+    ?.orderCustomerName
+    || (r as { order_customer_name?: string } | null)?.order_customer_name;
+  const orderCustId = (r as { orderCustomerId?: string; order_customer_id?: string } | null)
+    ?.orderCustomerId
+    || (r as { order_customer_id?: string } | null)?.order_customer_id;
+
+  if (branchName && custName) {
+    const isBranchSubmitted = custName.toLowerCase() === branchName.toLowerCase();
+    return isBranchSubmitted ? `IC-SA-BR-${shortId}` : `IC-SA-CU-${shortId}`;
+  }
+
   const isBranch = branchesList?.some(b => b.name === custName) || false;
   if (isBranch) {
     return `IC-SA-BR-${shortId}`;
+  }
+
+  // Customer-portal orders store the end customer in customer_name (not branch name).
+  if (orderCustId && !orderCustName) {
+    return `IC-SA-CU-${shortId}`;
   }
 
   return `IC-SA-AD-${shortId}`;

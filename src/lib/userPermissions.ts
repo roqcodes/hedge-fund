@@ -1,6 +1,6 @@
 import 'server-only';
 import { query } from '@/lib/db';
-import { defaultStaffPermissions } from '@/lib/rbac';
+import { defaultStaffPermissions, migrateLegacyPermissionMap } from '@/lib/rbac';
 import type { PageAccessLevel, PagePermissionMap } from '@/types';
 
 export async function fetchUserPermissionsFromDb(
@@ -19,12 +19,13 @@ export async function fetchUserPermissionsFromDb(
       map[row.page_id] = level;
     }
   }
-  return map;
+  return migrateLegacyPermissionMap(map);
 }
 
 export async function fetchBranchHiddenPages(branchId: string): Promise<string[]> {
   const res = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [branchId]);
-  return (res.rows[0]?.hidden_pages as string[]) ?? [];
+  const { normalizeHiddenPages } = await import('@/lib/branchPages');
+  return normalizeHiddenPages((res.rows[0]?.hidden_pages as string[]) ?? []);
 }
 
 export async function upsertUserPermissions(

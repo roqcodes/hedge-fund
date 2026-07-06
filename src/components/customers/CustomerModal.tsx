@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
+import PasswordInput from '@/components/ui/PasswordInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { saveCustomer } from '@/app/actions/customerActions';
+import { PasswordRequirements } from '@/components/users/UserModals';
+import { validatePassword } from '@/lib/passwordValidation';
 
 interface CustomerModalProps {
   slug: string;
@@ -13,6 +16,7 @@ interface CustomerModalProps {
     email?: string | null;
     balance?: string | number;
     status?: string;
+    cognitoUserId?: string | null;
   } | null;
   onClose: () => void;
   onSave: () => void;
@@ -23,10 +27,12 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
     name: '',
     phone: '',
     email: '',
+    password: '',
     balance: '0',
     status: 'active',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const isNew = !customer;
 
   useEffect(() => {
     if (customer) {
@@ -34,6 +40,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
         name: customer.name || '',
         phone: customer.phone || '',
         email: customer.email || '',
+        password: '',
         balance: String(customer.balance ?? '0'),
         status: customer.status || 'active',
       });
@@ -42,6 +49,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
         name: '',
         phone: '',
         email: '',
+        password: '',
         balance: '0',
         status: 'active',
       });
@@ -58,6 +66,13 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
       alert('Customer name is required');
       return;
     }
+    if (isNew && !formData.email.trim()) {
+      alert('Email is required to create a customer portal account');
+      return;
+    }
+    if (isNew && !validatePassword(formData.password).isValid) {
+      return;
+    }
 
     setIsSaving(true);
     const res = await saveCustomer(slug, {
@@ -65,6 +80,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
       name: formData.name,
       phone: formData.phone,
       email: formData.email,
+      password: isNew ? formData.password : undefined,
       balance: formData.balance,
       status: formData.status,
     });
@@ -91,8 +107,8 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving}
-            className={`${btnPrimary} ${isSaving ? 'cursor-not-allowed opacity-50' : ''}`}
+            disabled={isSaving || (isNew && !validatePassword(formData.password).isValid)}
+            className={`${btnPrimary} ${isSaving || (isNew && !validatePassword(formData.password).isValid) ? 'cursor-not-allowed opacity-50' : ''}`}
           >
             {isSaving ? 'Saving...' : customer ? 'Save Changes' : 'Create Customer'}
           </button>
@@ -131,7 +147,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
 
         <div>
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Email
+            Email {isNew ? '*' : ''}
           </label>
           <input
             type="email"
@@ -140,8 +156,33 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
             onChange={handleChange}
             className={formInput}
             placeholder="customer@example.com"
+            required={isNew}
+            readOnly={!isNew && !!customer?.cognitoUserId}
           />
+          {!isNew && customer?.cognitoUserId ? (
+            <p className="mt-1 text-xs text-slate-400">Portal login email cannot be changed after account creation.</p>
+          ) : isNew ? (
+            <p className="mt-1 text-xs text-slate-400">Used for customer portal sign-in. A Cognito account will be created.</p>
+          ) : null}
         </div>
+
+        {isNew ? (
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Portal Password *
+            </label>
+            <PasswordInput
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter secure password"
+              required
+              autoComplete="new-password"
+            />
+            <PasswordRequirements pw={formData.password} />
+            <p className="mt-1 text-xs text-slate-400">Customer signs in at the branch portal with this email and password.</p>
+          </div>
+        ) : null}
 
         <div>
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">

@@ -1,12 +1,13 @@
 import type { BranchPageId } from '@/lib/branchPages';
 import {
   BRANCH_NAV_PAGES,
+  CUSTOMER_PORTAL_PAGE_IDS,
   filterBranchNavPages,
   isBranchPageEnabled,
 } from '@/lib/branchPages';
 import type { PageAccessLevel, PagePermissionMap, User, UserRole } from '@/types';
 
-export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff', 'delivery'];
+export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff', 'delivery', 'customer'];
 
 /** Shown on disabled write controls for read-only staff. */
 export const READ_ONLY_ACCESS_MESSAGE =
@@ -17,8 +18,18 @@ export const PERMISSION_MANAGED_PAGE_IDS: BranchPageId[] = BRANCH_NAV_PAGES.filt
   p => p.hideable,
 ).map(p => p.id);
 
-export function isBranchPortalRole(role: UserRole): boolean {
-  return role === 'branch_manager' || role === 'staff' || role.startsWith('delivery') || role.startsWith('warehouse_');
+export function isCustomerRole(role: UserRole | string | undefined): boolean {
+  return role === 'customer';
+}
+
+export function isBranchPortalRole(role: UserRole | string): boolean {
+  return (
+    role === 'branch_manager' ||
+    role === 'staff' ||
+    role === 'customer' ||
+    role.startsWith('delivery') ||
+    role.startsWith('warehouse_')
+  );
 }
 
 export function isBranchScopedUser(user: Pick<User, 'role' | 'branchId'> | null | undefined): boolean {
@@ -45,6 +56,10 @@ export function getEffectivePageAccess(
 ): PageAccessLevel {
   if (!user) return 'none';
   if (!isBranchPageEnabled(pageId, hiddenPages)) return 'none';
+
+  if (isCustomerRole(user.role)) {
+    return CUSTOMER_PORTAL_PAGE_IDS.includes(pageId) ? 'write' : 'none';
+  }
 
   if (user.role === 'branch_manager' && pageId === 'warehouse') return 'none';
 
@@ -103,15 +118,35 @@ export function defaultDeliveryPermissions(): PagePermissionMap {
   return { dashboard: 'none', warehouse: 'write' };
 }
 
+export function migrateLegacyPermissionMap(input: PagePermissionMap | undefined): PagePermissionMap {
+  if (!input) return {};
+  const result = { ...input };
+  const legacyBranch = result['ic-transfer-branch'];
+  const legacyAdmin = result['ic-transfer'];
+
+  if (legacyBranch !== undefined) {
+    result['ic-transfer'] = legacyBranch;
+  }
+  if (legacyAdmin !== undefined) {
+    result['ic-transfer-admin'] = legacyAdmin;
+    if (legacyBranch === undefined) {
+      delete result['ic-transfer'];
+    }
+  }
+  delete result['ic-transfer-branch'];
+  return result;
+}
+
 export function normalizePermissionMap(
   input: PagePermissionMap | undefined,
   hiddenPages?: string[] | null,
 ): PagePermissionMap {
+  const migrated = migrateLegacyPermissionMap(input);
   const manageable = new Set(getManageableBranchPages(hiddenPages));
-  const result: PagePermissionMap = { dashboard: input?.dashboard ?? 'read' };
+  const result: PagePermissionMap = { dashboard: migrated?.dashboard ?? 'read' };
 
   for (const pageId of manageable) {
-    const level = input?.[pageId];
+    const level = migrated?.[pageId];
     if (level === 'read' || level === 'write' || level === 'none') {
       result[pageId] = level;
     } else {

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { updateDeliveryAgent } from '@/app/actions/warehouseActions';
 import Modal from '@/components/ui/Modal';
+import PasswordInput from '@/components/ui/PasswordInput';
 import { btnPrimary, btnSecondary } from '@/lib/ui';
 
 type Props = {
@@ -96,11 +97,10 @@ export default function EditDeliveryAgentModal({ agent, warehouseId, onClose, on
               <span>Reset Password</span>
               <span className="text-xs font-normal text-slate-400 font-mono">(Optional)</span>
             </label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
+              inputClassName="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent"
               placeholder="Leave blank to keep current password"
             />
           </div>

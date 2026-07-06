@@ -21,7 +21,11 @@ type CustomerRow = {
   balance: string | number;
   status: string;
   created_at?: string;
+  hasOrders?: boolean;
 };
+
+const CUSTOMER_DELETE_BLOCKED_TOOLTIP =
+  'Cannot delete: this customer has existing orders or transactions';
 
 export default function CustomersPage() {
   const params = useParams();
@@ -66,8 +70,13 @@ export default function CustomersPage() {
   const handleDelete = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!canWrite) return;
+    const customer = customers.find(c => c.id === id);
+    if (customer?.hasOrders) {
+      alert(CUSTOMER_DELETE_BLOCKED_TOOLTIP);
+      return;
+    }
     if (confirm('Are you sure you want to delete this customer?')) {
-      const res = await deleteCustomer(id);
+      const res = await deleteCustomer(id, slug);
       if (res.success) {
         fetchData();
       } else {
@@ -341,9 +350,15 @@ export default function CustomersPage() {
                             </button>
                             <button
                               onClick={e => handleDelete(customer.id, e)}
-                              disabled={!canWrite}
-                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
-                              title={!canWrite ? writeBlockedReason : 'Delete'}
+                              disabled={!canWrite || customer.hasOrders}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600${!canWrite || customer.hasOrders ? ' cursor-not-allowed opacity-50' : ''}`}
+                              title={
+                                customer.hasOrders
+                                  ? CUSTOMER_DELETE_BLOCKED_TOOLTIP
+                                  : !canWrite
+                                    ? writeBlockedReason
+                                    : 'Delete'
+                              }
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />

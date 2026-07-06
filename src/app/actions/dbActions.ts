@@ -26,6 +26,7 @@ import {
 import { logger } from '@/lib/logger';
 
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
+import { normalizeHiddenPages } from '@/lib/branchPages';
 import { validateJournalEntry } from '@/lib/journalEntry';
 import {
   Branch,
@@ -223,7 +224,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       dailyPL: parseFloat(r.daily_pl),
       status: r.status,
       timezone: resolveBranchTimeZone(r.timezone ? String(r.timezone) : null),
-      hiddenPages: Array.isArray(r.hidden_pages) ? r.hidden_pages.map(String) : [],
+      hiddenPages: normalizeHiddenPages(Array.isArray(r.hidden_pages) ? r.hidden_pages.map(String) : []),
       enabledCurrencies: sanitizeEnabledCurrencies(r.enabled_currencies),
       lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),

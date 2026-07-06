@@ -1,23 +1,18 @@
 'use client';
 import React, { useState } from 'react';
 import Modal from '@/components/ui/Modal';
+import PasswordInput from '@/components/ui/PasswordInput';
 import { useApp } from '@/context/AppContext';
 import { btnPrimary, btnSecondary, formGroup, formLabel, formInput, formHint } from '@/lib/ui';
+import {
+  PASSWORD_REQUIREMENTS_HINT,
+  validatePassword,
+} from '@/lib/passwordValidation';
 
-export function validatePassword(pw: string) {
-  const checks = {
-    length: pw.length >= 8,
-    upper: /[A-Z]/.test(pw),
-    lower: /[a-z]/.test(pw),
-    number: /[0-9]/.test(pw),
-    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+/.test(pw),
-  };
-  const isValid = Object.values(checks).every(Boolean);
-  return { checks, isValid };
-}
+export { validatePassword } from '@/lib/passwordValidation';
 
 export function PasswordRequirements({ pw }: { pw: string }) {
-  if (!pw) return <p className={formHint}>Must be at least 8 characters with numbers and symbols</p>;
+  if (!pw) return <p className={formHint}>{PASSWORD_REQUIREMENTS_HINT}</p>;
   const { checks } = validatePassword(pw);
   return (
     <ul className="mt-2 text-[11px] space-y-1 font-medium">
@@ -104,7 +99,7 @@ export function CreateUserModal({
       </div>
       <div className={formGroup}>
         <label className={formLabel}>Permanent Password</label>
-        <input type="password" className={formInput} placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
+        <PasswordInput placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
         <PasswordRequirements pw={password} />
       </div>
       {!fixedBranchId && (
@@ -216,9 +211,7 @@ export function ChangePasswordModal({
     >
       <div className={formGroup}>
         <label className={formLabel}>Current password</label>
-        <input
-          type="password"
-          className={formInput}
+        <PasswordInput
           value={currentPassword}
           onChange={e => setCurrentPassword(e.target.value)}
           disabled={loading}
@@ -227,9 +220,7 @@ export function ChangePasswordModal({
       </div>
       <div className={formGroup}>
         <label className={formLabel}>New password</label>
-        <input
-          type="password"
-          className={formInput}
+        <PasswordInput
           placeholder="Enter secure password"
           value={password}
           onChange={e => setPassword(e.target.value)}
@@ -286,7 +277,7 @@ export function ResetPasswordModal({
       </div>
       <div className={formGroup}>
         <label className={formLabel}>New Permanent Password</label>
-        <input type="password" className={formInput} placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
+        <PasswordInput placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
         <PasswordRequirements pw={password} />
       </div>
     </Modal>

@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import KPICard from '@/components/ui/KPICard';
 import { portalKpiGrid } from '@/lib/icTransfer/layoutConstants';
 import { pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
 import { ChartCard, PageShell } from '../ui';
 import { useApp } from '@/context/AppContext';
+import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
 import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
 import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
-import { getWarehouseRegionId, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
+import { matchesSaleRegionFilter, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
+import { scopeSalesForBranchAdmin, saleMatchesDateFilter } from '@/lib/icTransfer/branchOrderOwnership';
 import { formatAEDStr } from '@/data/mockData';
 import Card from '@/components/ui/Card';
 
@@ -76,12 +78,39 @@ function RankingList({ title, data, colorClass = "bg-accent" }: { title: string,
 }
 
 export default function ICTransferDashboard() {
-  const { icPurchases, icSales, icSuppliers, icRegions, icWarehouses } = useApp();
+  const { icPurchases, icSales, icSuppliers, icRegions, icWarehouses, branches, currentSlug } = useApp();
   const { selectedRegionIds } = useICTransferRegionFilter();
+  const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
+  const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || '';
 
   const [dateFilter, setDateFilter] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [customEndDate, setCustomEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [branchCustomers, setBranchCustomers] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!branchSlug) return;
+    getCustomersBySlug(branchSlug).then(res => {
+      if (res.success && res.customers) {
+        setBranchCustomers(res.customers.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      }
+    });
+  }, [branchSlug]);
+
+  const branchCustomerIds = useMemo(
+    () => new Set(branchCustomers.map(c => c.id)),
+    [branchCustomers],
+  );
+
+  const branchCustomerNames = useMemo(
+    () => new Set(branchCustomers.map(c => c.name.trim().toLowerCase())),
+    [branchCustomers],
+  );
+
+  const scopedSales = useMemo(() => {
+    if (!branchSlug) return icSales;
+    return scopeSalesForBranchAdmin(icSales, branchName, branchCustomerIds, branchCustomerNames);
+  }, [icSales, branchSlug, branchName, branchCustomerIds, branchCustomerNames]);
 
   const range = useMemo(() => resolveDateFilterRange(dateFilter, customStartDate, customEndDate), [dateFilter, customStartDate, customEndDate]);
 
@@ -93,13 +122,13 @@ export default function ICTransferDashboard() {
           isFiltered(p.createdAt || '') &&
           matchesSelectedRegions(p.locationId, selectedRegionIds),
       ),
-      filteredSales: icSales.filter(
+      filteredSales: scopedSales.filter(
         s =>
-          isFiltered(s.createdAt || '') &&
-          matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds),
+          saleMatchesDateFilter(s, range) &&
+          matchesSaleRegionFilter(s, icWarehouses, selectedRegionIds),
       ),
     };
-  }, [icPurchases, icSales, icWarehouses, range, selectedRegionIds]);
+  }, [icPurchases, scopedSales, icWarehouses, range, selectedRegionIds]);
 
   const { kpis, trendData, supplierData, regionData } = useMemo(() => {
     let totalPurchaseVol = 0;

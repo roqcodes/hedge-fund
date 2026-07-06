@@ -6,6 +6,7 @@ import { User, UserRole, PagePermissionMap } from '@/types';
 import { env } from '@/lib/env';
 import { fetchBranchHiddenPages, fetchUserPermissionsFromDb } from '@/lib/userPermissions';
 import { defaultStaffPermissions, normalizePermissionMap } from '@/lib/rbac';
+import { query } from '@/lib/db';
 
 const encodedKey = new TextEncoder().encode(env.SESSION_SECRET);
 
@@ -20,6 +21,7 @@ export interface SessionPayload {
   role: UserRole;
   name: string;
   branchId?: string;
+  customerId?: string;
   permissions?: PagePermissionMap;
   idToken?: string;
   expiresAt: string;
@@ -109,6 +111,7 @@ export async function authenticateWithCognito(email: string, securityKey: string
       roleAttr !== 'admin' && 
       roleAttr !== 'branch_manager' && 
       roleAttr !== 'staff' && 
+      roleAttr !== 'customer' &&
       !roleAttr.startsWith('warehouse_') && 
       !roleAttr.startsWith('delivery_')
     )) {
@@ -149,6 +152,28 @@ export async function authenticateWithCognito(email: string, securityKey: string
 }
 
 /**
+ * Loads linked customer profile for customer-role users.
+ */
+async function loadCustomerProfile(user: User): Promise<User> {
+  if (user.role !== 'customer' || !user.id) return user;
+
+  try {
+    const res = await query(
+      `SELECT id, name FROM customers WHERE cognito_user_id = $1 LIMIT 1`,
+      [user.id],
+    );
+    if (res.rows.length === 0) return user;
+    return {
+      ...user,
+      customerId: String(res.rows[0].id),
+      name: String(res.rows[0].name || user.name),
+    };
+  } catch {
+    return user;
+  }
+}
+
+/**
  * Loads staff permissions from the database (always fresh on session read).
  */
 async function loadStaffPermissions(user: User): Promise<User> {
@@ -170,7 +195,12 @@ async function loadStaffPermissions(user: User): Promise<User> {
  * Creates a session cookie with the authenticated user data.
  */
 export async function createSession(user: User, branchSlug?: string) {
-  const enriched = user.role === 'staff' ? await loadStaffPermissions(user) : user;
+  let enriched = user;
+  if (user.role === 'staff') {
+    enriched = await loadStaffPermissions(user);
+  } else if (user.role === 'customer') {
+    enriched = await loadCustomerProfile(user);
+  }
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
   const session = await encrypt({
     ...enriched,
@@ -230,11 +260,16 @@ export async function getSessionUser(branchSlug?: string): Promise<User | null> 
     name: payload.name,
     role: payload.role,
     branchId: payload.branchId,
+    customerId: payload.customerId,
     permissions: payload.permissions,
   };
 
   if (baseUser.role === 'staff') {
     return loadStaffPermissions(baseUser);
+  }
+
+  if (baseUser.role === 'customer') {
+    return loadCustomerProfile(baseUser);
   }
 
   return baseUser;

@@ -433,10 +433,13 @@ CREATE TABLE IF NOT EXISTS customers (
     email VARCHAR(255),
     balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    cognito_user_id VARCHAR(128) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_customers_branch_id ON customers(branch_id);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS cognito_user_id VARCHAR(128) UNIQUE;
+CREATE INDEX IF NOT EXISTS idx_customers_cognito_user_id ON customers(cognito_user_id);
 
 -- Physical buy/sell extended fields
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS txn_id VARCHAR(50);
@@ -611,7 +614,7 @@ ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS current_stock NUMERIC(15, 4) 
 ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS send_delivery_proof_to_customer BOOLEAN NOT NULL DEFAULT true;
 
 CREATE TABLE IF NOT EXISTS ic_rate_groups (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     country VARCHAR(255) NOT NULL,
     currency VARCHAR(10) NOT NULL,
@@ -622,13 +625,13 @@ CREATE TABLE IF NOT EXISTS ic_rate_groups (
 );
 
 CREATE TABLE IF NOT EXISTS ic_rate_group_customers (
-    group_id UUID REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
+    group_id VARCHAR(50) REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
     customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE CASCADE,
     PRIMARY KEY (group_id, customer_id)
 );
 
 CREATE TABLE IF NOT EXISTS ic_rate_group_branches (
-    group_id UUID REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
+    group_id VARCHAR(50) REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
     branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE,
     PRIMARY KEY (group_id, branch_id)
 );

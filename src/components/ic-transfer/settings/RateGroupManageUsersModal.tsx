@@ -85,7 +85,7 @@ export default function RateGroupManageUsersModal({
 
   const visibleBranches = useMemo(
     () =>
-      allBranches.filter(b => !b.hiddenPages?.includes('ic-transfer-branch')),
+      allBranches.filter(b => !b.hiddenPages?.includes('ic-transfer') && !b.hiddenPages?.includes('ic-transfer-branch')),
     [allBranches],
   );
 

@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { getPageIdFromBranchPathname, isBranchPageEnabled } from '@/lib/branchPages';
-import { canReadPage, isBranchPortalRole } from '@/lib/rbac';
+import { canReadPage, isBranchPortalRole, isCustomerRole } from '@/lib/rbac';
 
 /** Redirects branch users away from disabled or unauthorized pages. */
 export default function BranchPageGuard() {
@@ -23,6 +23,15 @@ export default function BranchPageGuard() {
     if (!branch) return;
 
     const pageId = getPageIdFromBranchPathname(pathname, currentSlug);
+
+    if (isCustomerRole(user.role)) {
+      const customerHome = `/${currentSlug}/ic-transfer`;
+      if (!pageId || pageId !== 'ic-transfer' || !isBranchPageEnabled('ic-transfer', branch.hiddenPages)) {
+        router.replace(customerHome);
+      }
+      return;
+    }
+
     if (!pageId) return;
 
     const hiddenPages = branch.hiddenPages;

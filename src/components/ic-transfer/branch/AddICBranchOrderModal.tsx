@@ -5,6 +5,7 @@ import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
+import { isCustomerRole } from '@/lib/rbac';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { ICSale } from '@/types';
 import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
@@ -27,7 +28,10 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
 );
 
 export default function AddICBranchOrderModal({ open, onClose, initialData }: Props) {
-  const { addICSale, resubmitICSale, branches, currentSlug, icRateGroups } = useApp();
+  const { addICSale, resubmitICSale, branches, currentSlug, icRateGroups, user } = useApp();
+  const isCustomer = isCustomerRole(user?.role);
+  const linkedCustomerId = user?.customerId;
+  const linkedCustomerName = user?.name;
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
   const [bank, setBank] = useState(initialData?.bank || '');
@@ -55,7 +59,10 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const branchName = currentBranch?.name || currentSlug || 'Branch Customer';
   const currentBranchId = currentBranch?.id;
 
-  const applicableGroup = resolveApplicableRateGroup(icRateGroups, { branchId: currentBranchId });
+  const applicableGroup = resolveApplicableRateGroup(icRateGroups, {
+    branchId: isCustomer ? undefined : currentBranchId,
+    customerId: isCustomer ? linkedCustomerId : (selectedCustomerId || undefined),
+  });
 
   const groupConversionRate = applicableGroup?.conversionRate || 1;
   const groupCurrency = applicableGroup?.currency || 'Currency';
@@ -80,8 +87,13 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       setDistrict(initialData?.district || '');
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
-      setSelectedCustomerId(initialData?.orderCustomerId || '');
-      setCustomerQuery(initialData?.orderCustomerName || '');
+      if (isCustomer && linkedCustomerId && !initialData) {
+        setSelectedCustomerId(linkedCustomerId);
+        setCustomerQuery(linkedCustomerName || '');
+      } else {
+        setSelectedCustomerId(initialData?.orderCustomerId || '');
+        setCustomerQuery(initialData?.orderCustomerName || '');
+      }
 
       if (initialData && canBranchResubmitOrder(initialData.orderStatus)) {
         setEditBaseline({
@@ -97,7 +109,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
         setEditBaseline(null);
       }
     }
-  }, [open, initialData]);
+  }, [open, initialData, isCustomer, linkedCustomerId, linkedCustomerName]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -162,11 +174,16 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   };
 
   const trimmedCustomer = customerQuery.trim();
+  const recordedCustomerName = isCustomer
+    ? (linkedCustomerName || trimmedCustomer)
+    : branchName;
 
   const payload = {
-    customerName: branchName,
-    orderCustomerName: trimmedCustomer || undefined,
-    orderCustomerId: selectedCustomerId || undefined,
+    customerName: recordedCustomerName,
+    orderCustomerName: isCustomer
+      ? (linkedCustomerName || trimmedCustomer || undefined)
+      : (trimmedCustomer || undefined),
+    orderCustomerId: isCustomer ? (linkedCustomerId || selectedCustomerId || undefined) : (selectedCustomerId || undefined),
     transactionType,
     unitRate: rateNum,
     units: unitNum,
@@ -216,7 +233,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     isUploading ||
     !unitNum ||
     !rateNum ||
-    (!initialData && !trimmedCustomer) ||
+    (!initialData && !trimmedCustomer && !isCustomer) ||
     (isResubmitMode && !canResubmit);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -241,7 +258,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       title={
         <div className="flex flex-col gap-0.5">
           <span>{isResubmitMode ? 'Edit & Resubmit Order' : 'Create Transfer Order'}</span>
-          <span className="text-xs font-semibold text-accent">{branchName}</span>
+          <span className="text-xs font-semibold text-accent">
+            {isCustomer ? (linkedCustomerName || 'Customer') : branchName}
+          </span>
         </div>
       }
       maxWidth="max-w-[1100px] w-[95vw]"
@@ -282,10 +301,10 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
             <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Customer</h3>
 
             <InputField label="Customer">
-              {isResubmitMode ? (
+              {isResubmitMode || isCustomer ? (
                 <input
                   className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`}
-                  value={customerQuery || branchName}
+                  value={customerQuery || linkedCustomerName || branchName}
                   disabled
                   readOnly
                 />
@@ -306,7 +325,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                 />
               )}
               <p className="mt-1 text-[11px] text-slate-400">
-                Order will be recorded under {branchName}.
+                {isCustomer
+                  ? `Your order will be recorded under ${linkedCustomerName || 'your name'}.`
+                  : `Order will be recorded under ${branchName}. Select the end customer above.`}
               </p>
             </InputField>
 

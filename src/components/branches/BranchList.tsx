@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import KPICard from '@/components/ui/KPICard';
 import Modal from '@/components/ui/Modal';
+import PasswordInput from '@/components/ui/PasswordInput';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatDateTime } from '@/data/mockData';
 import { Branch, Transaction, Deal } from '@/types';
@@ -910,7 +911,7 @@ function CreateBranchUserModal({
       </div>
       <div className={formGroup}>
         <label className={formLabel}>Permanent Password</label>
-        <input type="password" className={formInput} placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
+        <PasswordInput placeholder="Enter secure password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} />
         <PasswordRequirements pw={password} />
       </div>
     </Modal>

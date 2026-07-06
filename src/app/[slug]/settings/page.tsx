@@ -28,6 +28,10 @@ export default async function BranchSettingsPage({ params }: { params: Promise<{
     redirect(`/${slug}`);
   }
 
+  if (user.role === 'customer') {
+    redirect(`/${slug}/ic-transfer`);
+  }
+
   const isManager = user.role === 'branch_manager';
   const isStaff = user.role === 'staff';
 

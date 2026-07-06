@@ -50,6 +50,21 @@ export async function loginAction(email: string, securityKey: string, branchSlug
     }
 
     await createSession(user, branchSlug);
+
+    if (user.role === 'customer' && user.id) {
+      const customerRes = await query(
+        `SELECT status FROM customers WHERE cognito_user_id = $1 LIMIT 1`,
+        [user.id],
+      );
+      if (customerRes.rows.length === 0) {
+        await deleteSession(branchSlug);
+        return { success: false, error: 'Customer account is not linked to a customer record.' };
+      }
+      if (String(customerRes.rows[0].status) === 'inactive') {
+        await deleteSession(branchSlug);
+        return { success: false, error: 'Your customer account is inactive. Contact your branch.' };
+      }
+    }
     
     return { success: true, data: user };
   } catch (error: unknown) {

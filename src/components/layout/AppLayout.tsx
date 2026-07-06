@@ -16,7 +16,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     isInitialLoading,
     toasts,
     sidebarCollapsed,
-    isWarehouseRoute,
+    hideMainSidebar,
   } = useApp();
   const pathname = usePathname();
 
@@ -26,7 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <LoginPage branchSlug={slug} />;
   }
 
-  const contentMargin = isWarehouseRoute
+  const contentMargin = hideMainSidebar
     ? 'lg:ml-0'
     : sidebarCollapsed
       ? 'lg:ml-[80px]'
@@ -35,7 +35,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       <BranchPageGuard />
-      {!isWarehouseRoute && <Sidebar />}
+      {!hideMainSidebar && <Sidebar />}
       <div
         className={`flex min-w-0 flex-1 flex-col transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-lg:ml-0 ${contentMargin}`}
       >

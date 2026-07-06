@@ -6,5 +6,5 @@ export default async function LegacyWarehouseDetailsPage({
   params: Promise<{ slug: string; id: string }>;
 }) {
   const { slug, id } = await params;
-  redirect(`/${slug}/ic-transfer/warehouse/${id}`);
+  redirect(`/${slug}/ic-transfer-admin/warehouse/${id}`);
 }

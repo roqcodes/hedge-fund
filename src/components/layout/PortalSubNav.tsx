@@ -13,17 +13,17 @@ type NavLink = {
   href: string;
 };
 
-function resolveICTransferBase(currentSlug: string): string {
-  return currentSlug === 'superadmin' ? '/ic-transfer' : `/${currentSlug}/ic-transfer`;
+function resolveICTransferAdminBase(currentSlug: string): string {
+  return currentSlug === 'superadmin' ? '/ic-transfer-admin' : `/${currentSlug}/ic-transfer-admin`;
 }
 
 function resolveWarehouseBase(currentSlug: string): string {
   return currentSlug === 'superadmin' ? '/warehouse' : `/${currentSlug}/warehouse`;
 }
 
-function isICTransferActive(pathname: string, href: string): boolean {
-  if (href.endsWith('/ic-transfer') || href === '/ic-transfer') {
-    return pathname === href || pathname.endsWith('/ic-transfer');
+function isICTransferAdminActive(pathname: string, href: string): boolean {
+  if (href.endsWith('/ic-transfer-admin') || href === '/ic-transfer-admin') {
+    return pathname === href || pathname.includes('/ic-transfer-admin');
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -128,10 +128,11 @@ function SubNavBar({ label, links, isActive, variant = 'default' }: SubNavBarPro
 }
 
 export default function PortalSubNav() {
-  const { currentSlug, user, isICTransferRoute, isWarehouseRoute } = useApp();
+  const pathname = usePathname();
+  const { currentSlug, user, isWarehouseRoute } = useApp();
 
-  const icTransferLinks = useMemo(() => {
-    const base = resolveICTransferBase(currentSlug);
+  const icTransferAdminLinks = useMemo(() => {
+    const base = resolveICTransferAdminBase(currentSlug);
     const primaryLinks = IC_TRANSFER_NAV.filter(item => !item.children).map(item => ({
       id: item.id,
       label: item.label,
@@ -162,6 +163,7 @@ export default function PortalSubNav() {
   }, [currentSlug, user]);
 
   const isDeliveryAgent = user?.role?.startsWith('delivery_');
+  const isICTransferAdminRoute = pathname.includes('/ic-transfer-admin');
 
   const showWarehouseSubNav =
     isWarehouseRoute &&
@@ -169,11 +171,17 @@ export default function PortalSubNav() {
     user?.role !== 'staff' &&
     !isDeliveryAgent;
 
-  if (isICTransferRoute) {
-    return <SubNavBar label="IC Transfer" links={icTransferLinks} isActive={isICTransferActive} />;
+  if (isICTransferAdminRoute && icTransferAdminLinks.length > 1) {
+    return (
+      <SubNavBar
+        label="IC Transfer (Admin)"
+        links={icTransferAdminLinks}
+        isActive={isICTransferAdminActive}
+      />
+    );
   }
 
-  if (showWarehouseSubNav) {
+  if (showWarehouseSubNav && warehouseLinks.length > 1) {
     return (
       <SubNavBar
         label="Warehouse"

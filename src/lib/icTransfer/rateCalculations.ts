@@ -5,6 +5,27 @@ export function getCurrencyUnitRate(saleRateAed: number, conversionRate: number 
   return saleRateAed * conversionRate;
 }
 
+export function deriveConversionRate(saleRateAed: number, convertedRate: number): number | null {
+  if (!Number.isFinite(saleRateAed) || saleRateAed <= 0 || !Number.isFinite(convertedRate)) return null;
+  return convertedRate / saleRateAed;
+}
+
+export function deriveConvertedRate(saleRateAed: number, conversionRate: number): number | null {
+  if (!Number.isFinite(saleRateAed) || !Number.isFinite(conversionRate)) return null;
+  return getCurrencyUnitRate(saleRateAed, conversionRate);
+}
+
+export function formatRateInputValue(value: number, fractionDigits = 6): string {
+  if (!Number.isFinite(value)) return '';
+  return String(Number(value.toFixed(fractionDigits)));
+}
+
+export function parseRateInputValue(value: string): number | null {
+  if (value.trim() === '') return null;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function computeICSaleAmounts(
   units: number,
   saleRateAed: number,

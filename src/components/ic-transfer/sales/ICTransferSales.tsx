@@ -3,11 +3,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
 import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
-import { getWarehouseRegionId, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
+import { matchesSaleRegionFilter } from '@/lib/icTransfer/regionFilter';
 import { useApp } from '@/context/AppContext';
+import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
-import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
-import { toBusinessDate } from '@/lib/businessTime';
+import {
+  getAdminSaleCustomerName,
+  scopeSalesForBranchAdmin,
+  saleMatchesDateFilter,
+  saleMatchesSearchQuery,
+} from '@/lib/icTransfer/branchOrderOwnership';
+import { resolveDateFilterRange } from '@/lib/dateFilterRange';
 import {
   DataTableSection,
   ExportButtons,
@@ -69,6 +75,7 @@ export default function ICTransferSales() {
   const [selectedVerifyIds, setSelectedVerifyIds] = useState<Set<string>>(new Set());
   const [bulkVerifyOpen, setBulkVerifyOpen] = useState(false);
   const [bulkVerifyLoading, setBulkVerifyLoading] = useState(false);
+  const [branchCustomers, setBranchCustomers] = useState<{ id: string; name: string }[]>([]);
 
   const isVerificationTab = tab === 'awaiting_verification';
   const tableColumns = isVerificationTab ? ['Select', ...SALE_COLUMNS] : SALE_COLUMNS;
@@ -85,26 +92,56 @@ export default function ICTransferSales() {
 
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || 'None';
 
+  const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || '';
+  const isBranchAdminView = !!branchSlug;
+  const txnBranchName = isBranchAdminView ? branchName : undefined;
+
+  const branchCustomerIds = useMemo(
+    () => new Set(branchCustomers.map(c => c.id)),
+    [branchCustomers],
+  );
+
+  const branchCustomerNames = useMemo(
+    () => new Set(branchCustomers.map(c => c.name.trim().toLowerCase())),
+    [branchCustomers],
+  );
+
+  useEffect(() => {
+    if (!branchSlug) return;
+    getCustomersBySlug(branchSlug).then(res => {
+      if (res.success && res.customers) {
+        setBranchCustomers(res.customers.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      }
+    });
+  }, [branchSlug]);
+
+  useEffect(() => {
+    void refetchData();
+  }, [refetchData]);
+
+  const scopedSales = useMemo(() => {
+    if (!isBranchAdminView) return icSales;
+    return scopeSalesForBranchAdmin(icSales, branchName, branchCustomerIds, branchCustomerNames);
+  }, [icSales, isBranchAdminView, branchName, branchCustomerIds, branchCustomerNames]);
+
   const baseFilteredSales = useMemo<ICSale[]>(() => {
     const range = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);
 
-    return icSales.filter((s: ICSale) => {
-      if (s.createdAt && !isDateInRange(toBusinessDate(s.createdAt, 'Asia/Dubai'), range)) {
+    return scopedSales.filter((s: ICSale) => {
+      if (!saleMatchesDateFilter(s, range)) {
         return false;
       }
 
-      const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
-      if (search &&
-          !formattedId.toLowerCase().includes(search.toLowerCase()) &&
-          !s.id.toLowerCase().includes(search.toLowerCase()) &&
-          !s.customerName.toLowerCase().includes(search.toLowerCase())) return false;
-      if (!matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds)) {
+      if (search && !saleMatchesSearchQuery(s, search, branches, branchName)) {
+        return false;
+      }
+
+      if (!matchesSaleRegionFilter(s, icWarehouses, selectedRegionIds)) {
         return false;
       }
 
       if (filterStatus !== 'All') {
         if (filterStatus === 'paid') return s.paymentStatus === 'paid';
-        if (filterStatus === 'pending') return s.paymentStatus === 'pending';
         if (filterStatus === 'Partial') return getCustomerOrderStatus(s) === 'Partial';
         if (IC_ORDER_STATUSES.includes(filterStatus as any)) {
           return normalizeOrderStatus(s.orderStatus) === filterStatus;
@@ -116,7 +153,7 @@ export default function ICTransferSales() {
       }
       return true;
     });
-  }, [icSales, search, selectedRegionIds, icWarehouses, filterStatus, filterWarehouse, dateFilter, customStartDate, customEndDate, branches]);
+  }, [scopedSales, search, selectedRegionIds, icWarehouses, filterStatus, filterWarehouse, dateFilter, customStartDate, customEndDate, branches, branchName]);
 
   const tabCounts = useMemo(() => ({
     all: baseFilteredSales.length,
@@ -162,8 +199,8 @@ export default function ICTransferSales() {
       let valB: any;
 
       if (sortField === 'Customer') {
-        valA = a.customerName || '';
-        valB = b.customerName || '';
+        valA = getAdminSaleCustomerName(a, branchName) || '';
+        valB = getAdminSaleCustomerName(b, branchName) || '';
       } else if (sortField === 'Units') {
         valA = Number(a.units || 0);
         valB = Number(b.units || 0);
@@ -199,7 +236,7 @@ export default function ICTransferSales() {
       return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
     });
     return sorted;
-  }, [filteredSales, sortField, sortOrder]);
+  }, [filteredSales, sortField, sortOrder, branchName]);
 
   const stats = useMemo(() => {
     const totalOrders = filteredSales.length;
@@ -312,11 +349,15 @@ export default function ICTransferSales() {
 
   const { salesColumns, matrixRows } = React.useMemo(() => {
     const columns = ['Sales Vol', 'Sales Rate', 'Status'];
-    const uniqueCustomers = Array.from(new Set(icSales.map(s => s.customerName).filter(Boolean)));
+    const uniqueCustomers = Array.from(
+      new Set(scopedSales.map(s => getAdminSaleCustomerName(s, branchName)).filter(Boolean)),
+    );
     uniqueCustomers.sort((a, b) => a.localeCompare(b));
 
     const mRows = uniqueCustomers.map(custName => {
-      const customerSales = icSales.filter(s => s.customerName === custName);
+      const customerSales = scopedSales.filter(
+        s => getAdminSaleCustomerName(s, branchName) === custName,
+      );
       const vol = customerSales.reduce((acc, s) => acc + s.units, 0);
       const rate = customerSales.length > 0 ? customerSales[0].unitRate : 0;
       const hasActive = customerSales.some(s => normalizeOrderStatus(s.orderStatus) !== 'completed');
@@ -332,7 +373,7 @@ export default function ICTransferSales() {
       };
     });
     return { salesColumns: columns, matrixRows: mRows };
-  }, [icSales]);
+  }, [scopedSales, branchName]);
 
   return (
     <PageShell>
@@ -514,6 +555,7 @@ export default function ICTransferSales() {
               const delivered = getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus);
               const remaining = getRemainingUnits(s.units, s.collectedUnits, s.orderStatus);
               const warehouseName = getWarehouseName(s.warehouseId);
+              const customerLabel = getAdminSaleCustomerName(s, branchName);
               return (
                 <div
                   key={s.id}
@@ -528,12 +570,12 @@ export default function ICTransferSales() {
                         onChange={() => toggleVerifySelection(s.id)}
                         onClick={e => e.stopPropagation()}
                         className={`${verifyCheckboxClass} mt-0.5 shrink-0`}
-                        aria-label={`Select ${s.customerName} for verification`}
+                        aria-label={`Select ${customerLabel} for verification`}
                       />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-900">{s.customerName}</p>
-                      <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</p>
+                      <p className="truncate text-sm font-semibold text-slate-900">{customerLabel}</p>
+                      <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches, txnBranchName)}</p>
                       <p className="mt-0.5 text-xs text-slate-400">{new Date(s.createdAt || '').toLocaleString()}</p>
                     </div>
                     <PriorityBadge priority={s.priority} />
@@ -568,6 +610,7 @@ export default function ICTransferSales() {
           const total = s.aedAmount || 0;
           const delivered = getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus);
           const remaining = getRemainingUnits(s.units, s.collectedUnits, s.orderStatus);
+          const customerLabel = getAdminSaleCustomerName(s, branchName);
 
           const hasWarehouse = !!s.warehouseId;
           const warehouseName = getWarehouseName(s.warehouseId);
@@ -585,7 +628,7 @@ export default function ICTransferSales() {
                     checked={selectedVerifyIds.has(s.id)}
                     onChange={() => toggleVerifySelection(s.id)}
                     className={verifyCheckboxClass}
-                    aria-label={`Select ${s.customerName} for verification`}
+                    aria-label={`Select ${customerLabel} for verification`}
                   />
                 </td>
               )}
@@ -603,14 +646,14 @@ export default function ICTransferSales() {
 
               {/* CUSTOMER */}
               <td className={icCompactTd('left')}>
-                <span className="font-semibold text-slate-900">{s.customerName}</span>
+                <span className="font-semibold text-slate-900">{customerLabel}</span>
                 {s.transactionType === 'by_hand' && (
                   <span className="ml-1.5 inline-flex rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700">
                     By Hand
                   </span>
                 )}
                 {s.derivedFromSaleId && (
-                  <span className="ml-1.5 inline-flex rounded-full bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600" title={`Derived from ${getFormattedTxnId(s.derivedFromSaleId, 'sale', null, branches)}`}>
+                  <span className="ml-1.5 inline-flex rounded-full bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600" title={`Derived from ${getFormattedTxnId(s.derivedFromSaleId, 'sale', null, branches, txnBranchName)}`}>
                     SPLIT
                   </span>
                 )}

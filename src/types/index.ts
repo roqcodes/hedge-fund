@@ -2,7 +2,7 @@
 // HEDGE Capital Management — Type Definitions
 // ═══════════════════════════════════════════════════════════
 
-export type UserRole = 'admin' | 'branch_manager' | 'staff' | 'delivery';
+export type UserRole = 'admin' | 'branch_manager' | 'staff' | 'delivery' | 'customer';
 
 /** Per-page access for branch staff (none = hidden, read = view-only, write = full). */
 export type PageAccessLevel = 'none' | 'read' | 'write';
@@ -18,6 +18,8 @@ export interface User {
   branchId?: string;
   /** Loaded for staff — page-level permissions within their branch. */
   permissions?: PagePermissionMap;
+  /** Linked customers record — present for customer-role users after sign-in. */
+  customerId?: string;
 }
 
 export interface Branch {
@@ -124,6 +126,8 @@ export interface Customer {
   balance: number;
   status: 'active' | 'inactive' | string;
   createdAt?: string;
+  /** Cognito `sub` when this customer has portal login credentials. */
+  cognitoUserId?: string;
 }
 
 export interface Invoice {

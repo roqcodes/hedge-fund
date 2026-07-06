@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { btnPrimary, formInput, formLabel } from '@/lib/ui';
 import RateGroupMultiSelect from './RateGroupMultiSelect';
-import { getCurrencyUnitRate, formatAmount } from '@/lib/icTransfer/rateCalculations';
+import { useLinkedRateFields } from '@/lib/icTransfer/useLinkedRateFields';
 import type { ICRateGroup } from '@/types';
 
 type Props = {
@@ -15,39 +15,34 @@ type Props = {
 const inlineFieldClass = 'min-w-0 shrink-0';
 
 export default function RateGroupBulkUpdateBar({ groups, isSaving, onSave }: Props) {
-  const [saleRate, setSaleRate] = useState('');
-  const [conversionRate, setConversionRate] = useState('');
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const {
+    saleRate,
+    conversionRate,
+    convertedRate,
+    saleRateNum,
+    conversionRateNum,
+    hasValidRates,
+    onSaleChange,
+    onConversionChange,
+    onConvertedChange,
+    reset,
+  } = useLinkedRateFields();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedGroupIds.length === 0) return;
-    const saleRateNum = parseFloat(saleRate);
-    const conversionRateNum = parseFloat(conversionRate);
-    if (!Number.isFinite(saleRateNum) || !Number.isFinite(conversionRateNum)) return;
+    if (selectedGroupIds.length === 0 || !hasValidRates) return;
+    if (saleRateNum === null || conversionRateNum === null) return;
 
     const success = await onSave(selectedGroupIds, saleRateNum, conversionRateNum);
     if (success) {
       setSelectedGroupIds([]);
-      setSaleRate('');
-      setConversionRate('');
+      reset();
     }
   };
 
-  const canSave =
-    selectedGroupIds.length > 0 &&
-    saleRate.trim() !== '' &&
-    conversionRate.trim() !== '' &&
-    Number.isFinite(parseFloat(saleRate)) &&
-    Number.isFinite(parseFloat(conversionRate)) &&
-    !isSaving;
-
-  const convertedRate = useMemo(() => {
-    const saleRateNum = parseFloat(saleRate);
-    const conversionRateNum = parseFloat(conversionRate);
-    if (!Number.isFinite(saleRateNum) || !Number.isFinite(conversionRateNum)) return 0;
-    return getCurrencyUnitRate(saleRateNum, conversionRateNum);
-  }, [saleRate, conversionRate]);
+  const canSave = selectedGroupIds.length > 0 && hasValidRates && !isSaving;
+  const hasAedRate = saleRateNum !== null && saleRateNum > 0;
 
   return (
     <form
@@ -57,7 +52,7 @@ export default function RateGroupBulkUpdateBar({ groups, isSaving, onSave }: Pro
       <div className="mb-4">
         <h3 className="text-sm font-bold text-slate-900">Bulk rate update</h3>
         <p className="mt-0.5 text-xs text-slate-500">
-          Apply sale rate and conversion to selected groups. Last updated time is recorded on save.
+          Enter the AED rate first, then set conversion or converted rate — the other field updates automatically.
         </p>
       </div>
 
@@ -70,9 +65,10 @@ export default function RateGroupBulkUpdateBar({ groups, isSaving, onSave }: Pro
             id="bulk-sale-rate"
             type="number"
             step="0.000001"
+            min="0"
             className={formInput}
             value={saleRate}
-            onChange={e => setSaleRate(e.target.value)}
+            onChange={e => onSaleChange(e.target.value)}
             placeholder="0.000000"
             required
           />
@@ -86,19 +82,31 @@ export default function RateGroupBulkUpdateBar({ groups, isSaving, onSave }: Pro
             id="bulk-conversion-rate"
             type="number"
             step="0.000001"
+            min="0"
             className={formInput}
             value={conversionRate}
-            onChange={e => setConversionRate(e.target.value)}
+            onChange={e => onConversionChange(e.target.value)}
             placeholder="1.000000"
+            disabled={!hasAedRate}
             required
           />
         </div>
 
         <div className={`${inlineFieldClass} w-full md:w-[132px]`}>
-          <label className={formLabel}>Converted Rate</label>
-          <div className={`${formInput} flex items-center bg-slate-50 font-semibold tabular-nums text-slate-900`}>
-            {formatAmount(convertedRate, 6)}
-          </div>
+          <label className={formLabel} htmlFor="bulk-converted-rate">
+            Converted Rate
+          </label>
+          <input
+            id="bulk-converted-rate"
+            type="number"
+            step="0.000001"
+            min="0"
+            className={`${formInput} tabular-nums`}
+            value={convertedRate}
+            onChange={e => onConvertedChange(e.target.value)}
+            placeholder="0.000000"
+            disabled={!hasAedRate}
+          />
         </div>
 
         <RateGroupMultiSelect

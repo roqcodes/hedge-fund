@@ -13,6 +13,12 @@ import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits
 import { isBranchScopedUser } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import { dbGetCustomerCurrencyAction, dbGetCustomerPhoneAction } from '@/app/actions/icTransferActions';
+import {
+  getAdminSaleCustomerName,
+  getSaleEndCustomerId,
+  getSaleEndCustomerName,
+  getSaleOrderImageLabel,
+} from '@/lib/icTransfer/branchOrderOwnership';
 
 type Props = {
   open: boolean;
@@ -24,7 +30,7 @@ type Props = {
 };
 
 export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVariant = 'auto' }: Props) {
-  const { icWarehouses, deleteICSale, user, branches, icSales, refetchData, showToast } = useApp();
+  const { icWarehouses, deleteICSale, user, branches, icSales, refetchData, showToast, currentSlug } = useApp();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -33,21 +39,25 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
   const [customerPhone, setCustomerPhone] = useState<string | null>(null);
   const [phoneChecked, setPhoneChecked] = useState(false);
 
-  const customerName = liveSale?.customerName;
-  const orderCustomerId = liveSale?.orderCustomerId;
-  const orderCustomerName = liveSale?.orderCustomerName;
+  const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || '';
+  const isBranchAdminView = currentSlug !== 'superadmin';
+  const txnBranchName = isBranchAdminView ? branchName : undefined;
+  const displayCustomerName = liveSale ? getAdminSaleCustomerName(liveSale, branchName) : '';
+  const endCustomerId = liveSale ? getSaleEndCustomerId(liveSale, branchName) : undefined;
+  const endCustomerName = liveSale ? getSaleEndCustomerName(liveSale, branchName) : '';
+  const orderImageLabel = liveSale ? getSaleOrderImageLabel(liveSale, branchName) : 'Original Order Image';
 
   React.useEffect(() => {
     if (liveSale?.currency) {
       setCurrency(liveSale.currency);
-    } else if (open && customerName) {
-      dbGetCustomerCurrencyAction(customerName).then(res => {
+    } else if (open && (endCustomerId || endCustomerName)) {
+      dbGetCustomerCurrencyAction({ customerId: endCustomerId, customerName: endCustomerName }).then(res => {
         if (res.success && res.data) {
           setCurrency(res.data);
         }
       });
     }
-  }, [open, customerName, liveSale?.currency]);
+  }, [open, endCustomerId, endCustomerName, liveSale?.currency]);
 
   React.useEffect(() => {
     if (!open) {
@@ -57,13 +67,13 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
     }
     setPhoneChecked(false);
     dbGetCustomerPhoneAction({
-      customerId: orderCustomerId,
-      customerName: orderCustomerName || customerName,
+      customerId: endCustomerId,
+      customerName: endCustomerName,
     }).then(res => {
       setCustomerPhone(res.success ? res.data ?? null : null);
       setPhoneChecked(true);
     });
-  }, [open, orderCustomerId, orderCustomerName, customerName]);
+  }, [open, endCustomerId, endCustomerName]);
 
   if (!sale || !liveSale) return null;
 
@@ -134,7 +144,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Transaction ID</p>
-                <p className="font-mono text-sm font-semibold text-slate-900 mt-0.5">{getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}</p>
+                <p className="font-mono text-sm font-semibold text-slate-900 mt-0.5">{getFormattedTxnId(liveSale.id, 'sale', liveSale, branches, txnBranchName)}</p>
               </div>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Date</p>
@@ -145,7 +155,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
             {liveSale.derivedFromSaleId && (
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-800">
                 <span className="font-bold">Derived from order: </span>
-                <span className="font-mono">{getFormattedTxnId(liveSale.derivedFromSaleId, 'sale', null, branches)}</span>
+                <span className="font-mono">{getFormattedTxnId(liveSale.derivedFromSaleId, 'sale', null, branches, txnBranchName)}</span>
                 <span className="text-indigo-600"> — created from a partial delivery split</span>
               </div>
             )}
@@ -153,7 +163,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer</p>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5">{liveSale.customerName}</p>
+                <p className="text-sm font-semibold text-slate-900 mt-0.5">{displayCustomerName}</p>
               </div>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Transaction Type</p>
@@ -286,7 +296,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
           <div className="flex flex-col gap-6 lg:border-l lg:pl-8 lg:border-slate-100">
             {/* Original Order Image */}
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Original Order Image (Branch Upload)</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">{orderImageLabel}</p>
               {liveSale.imageUrl ? (
                 <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                   <a href={liveSale.imageUrl} target="_blank" rel="noopener noreferrer">
@@ -316,13 +326,13 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                   </div>
                   <ProofImageActions
                     imageUrl={liveSale.deliveryImageUrl!}
-                    downloadFilename={`payment-proof-${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}`}
+                    downloadFilename={`payment-proof-${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches, txnBranchName)}`}
                     enableShare
                     shareTitle="Payment proof"
-                    shareText={`Payment proof for order ${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}`}
+                    shareText={`Payment proof for order ${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches, txnBranchName)}`}
                     enableWhatsApp={phoneChecked}
                     whatsappPhone={customerPhone ?? undefined}
-                    whatsappMessage={`Hello ${orderCustomerName || customerName || ''}, here is the payment proof for your order ${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches)}: ${liveSale.deliveryImageUrl}`.trim()}
+                    whatsappMessage={`Hello ${endCustomerName}, here is the payment proof for your order ${getFormattedTxnId(liveSale.id, 'sale', liveSale, branches, txnBranchName)}: ${liveSale.deliveryImageUrl}`.trim()}
                     onCopySuccess={() => showToast('Image copied')}
                     onCopyError={msg => showToast(msg, 'error')}
                     onDownloadError={msg => showToast(msg, 'error')}

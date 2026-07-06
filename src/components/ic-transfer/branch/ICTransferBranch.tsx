@@ -4,8 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
-import { getWarehouseRegionId, matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
+import { matchesSaleRegionFilter } from '@/lib/icTransfer/regionFilter';
 import { useApp } from '@/context/AppContext';
+import { isCustomerRole } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import {
   DataTableSection,
@@ -23,6 +24,11 @@ import { BranchOrderStatusCell, BranchOrderWorkflowActions } from '../shared/Bra
 import { getBranchOrderStatus, canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits } from '@/lib/icTransfer/saleUnits';
 import { ConfirmModal } from '@/components/warehouse/shared';
+import {
+  customerOwnsSale,
+  getBranchPortalOrderCustomerName,
+  saleBelongsToBranchPortal,
+} from '@/lib/icTransfer/branchOrderOwnership';
 
 const icCompactTd = (align: 'left' | 'center' | 'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
@@ -31,9 +37,6 @@ const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDig
 const ORDER_COLUMNS = [
   'Date', 'ID', 'Customer', 'Address', 'Units', 'Total AED', 'Status', 'Actions'
 ];
-
-// The end-customer chosen by the branch manager, falling back to the branch name for legacy orders.
-const getOrderCustomer = (s: ICSale) => s.orderCustomerName || s.customerName;
 
 type SortField = 'date' | 'customer' | 'units' | 'totalaed';
 const SORTABLE_COLUMNS: Record<string, SortField> = {
@@ -44,7 +47,9 @@ const SORTABLE_COLUMNS: Record<string, SortField> = {
 };
 
 export default function ICTransferBranch() {
-  const { icSales, icWarehouses, currentSlug, branches, branchDeleteICSale, branchRequestCancelICSale } = useApp();
+  const { icSales, icWarehouses, currentSlug, branches, branchDeleteICSale, branchRequestCancelICSale, user } = useApp();
+  const isCustomer = isCustomerRole(user?.role);
+  const customerId = user?.customerId;
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -66,6 +71,18 @@ export default function ICTransferBranch() {
 
   const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || 'Branch Customer';
 
+  const getOrderCustomer = (s: ICSale) => getBranchPortalOrderCustomerName(s, branchName);
+
+  const branchCustomerIds = useMemo(
+    () => new Set(branchCustomers.map(c => c.id)),
+    [branchCustomers],
+  );
+
+  const branchCustomerNames = useMemo(
+    () => new Set(branchCustomers.map(c => c.name.trim().toLowerCase())),
+    [branchCustomers],
+  );
+
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || 'None';
 
   useEffect(() => {
@@ -77,33 +94,36 @@ export default function ICTransferBranch() {
     });
   }, [currentSlug]);
 
-  // Orders belonging to this branch (customerName holds the owning branch name).
-  const branchSales = useMemo(
-    () => icSales.filter(s => s.customerName.toLowerCase() === branchName.toLowerCase()),
-    [icSales, branchName],
-  );
+  const branchSales = useMemo(() => {
+    if (isCustomer && customerId) {
+      return icSales.filter(s =>
+        customerOwnsSale(s, customerId, user?.name || '', branchName),
+      );
+    }
+    return icSales.filter(s => saleBelongsToBranchPortal(s, branchName, branchCustomerIds, branchCustomerNames));
+  }, [icSales, branchName, branchCustomerIds, branchCustomerNames, isCustomer, customerId, user?.name]);
 
-  // Customer filter options: branch customers plus any names already present on orders.
   const customerOptions = useMemo(() => {
     const names = new Set<string>();
     branchCustomers.forEach(c => names.add(c.name));
     branchSales.forEach(s => {
-      if (s.orderCustomerName) names.add(s.orderCustomerName);
+      const name = getBranchPortalOrderCustomerName(s, branchName);
+      if (name) names.add(name);
     });
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [branchCustomers, branchSales]);
+  }, [branchCustomers, branchSales, branchName]);
 
   const filteredSales = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = branchSales.filter(s => {
       const orderCustomer = getOrderCustomer(s);
-      const formattedId = getFormattedTxnId(s.id, 'sale', s, branches);
+      const formattedId = getFormattedTxnId(s.id, 'sale', s, branches, branchName);
       if (q &&
           !formattedId.toLowerCase().includes(q) &&
           !s.id.toLowerCase().includes(q) &&
           !orderCustomer.toLowerCase().includes(q)) return false;
       if (customerFilter && orderCustomer !== customerFilter) return false;
-      if (!matchesSelectedRegions(getWarehouseRegionId(s.warehouseId, icWarehouses), selectedRegionIds)) {
+      if (!matchesSaleRegionFilter(s, icWarehouses, selectedRegionIds)) {
         return false;
       }
       return true;
@@ -203,8 +223,12 @@ export default function ICTransferBranch() {
   return (
     <PageShell>
       <PageHeader
-        title="IC Transfer (Branch)"
-        subtitle="Submit and track transfer orders from your branch"
+        title={isCustomer ? 'IC Transfer' : 'IC Transfer'}
+        subtitle={
+          isCustomer
+            ? 'Submit and track your transfer orders'
+            : 'Submit and track transfer orders from your branch'
+        }
         actions={
           <div className="flex items-center gap-3">
             <AddButton label="Create Order" onClick={handleCreateOrder} />
@@ -279,6 +303,7 @@ export default function ICTransferBranch() {
         sortField={sortField}
         sortOrder={sortOrder}
         toolbar={
+          !isCustomer ? (
           <div className="relative">
             <select
               value={customerFilter}
@@ -304,6 +329,7 @@ export default function ICTransferBranch() {
               <path d="M6 9l6 6 6-6" />
             </svg>
           </div>
+          ) : undefined
         }
         mobileView={
           filteredSales.length === 0 ? (
@@ -317,7 +343,7 @@ export default function ICTransferBranch() {
               >
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900">{getOrderCustomer(s)}</p>
-                  <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</p>
+                  <p className="mt-0.5 text-xs font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches, branchName)}</p>
                   <p className="mt-0.5 text-xs text-slate-400">{new Date(s.createdAt || '').toLocaleString()}</p>
                 </div>
                 <div className="flex justify-between items-center rounded-xl bg-slate-50/70 p-2.5 text-xs text-slate-500">
@@ -348,7 +374,7 @@ export default function ICTransferBranch() {
         {filteredSales.map((s) => (
           <tr key={s.id} onClick={() => handleView(s)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">
             <td className={icCompactTd('left')}>{new Date(s.createdAt || '').toLocaleDateString()}</td>
-            <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches)}</span></td>
+            <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches, branchName)}</span></td>
             <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{getOrderCustomer(s)}</span></td>
             <td className={icCompactTd('left')}>{s.address || '—'}</td>
             <td className={icCompactTd('right')}>{s.units.toLocaleString()}</td>
