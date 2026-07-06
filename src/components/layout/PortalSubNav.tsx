@@ -22,17 +22,25 @@ function resolveWarehouseBase(currentSlug: string): string {
 }
 
 function isICTransferAdminActive(pathname: string, href: string): boolean {
-  if (href.endsWith('/ic-transfer-admin') || href === '/ic-transfer-admin') {
-    return pathname === href || pathname.includes('/ic-transfer-admin');
+  const normalizedPath = pathname.replace(/\/$/, '');
+  const normalizedHref = href.replace(/\/$/, '');
+
+  if (normalizedHref.endsWith('/ic-transfer-admin') || normalizedHref === '/ic-transfer-admin') {
+    return normalizedPath === normalizedHref;
   }
-  return pathname === href || pathname.startsWith(`${href}/`);
+
+  return normalizedPath === normalizedHref || normalizedPath.startsWith(`${normalizedHref}/`);
 }
 
 function isWarehouseActive(pathname: string, href: string): boolean {
-  if (href.endsWith('/warehouse') || href === '/warehouse') {
-    return pathname === href || pathname.endsWith('/warehouse');
+  const normalizedPath = pathname.replace(/\/$/, '');
+  const normalizedHref = href.replace(/\/$/, '');
+
+  if (normalizedHref.endsWith('/warehouse') || normalizedHref === '/warehouse') {
+    return normalizedPath === normalizedHref;
   }
-  return pathname === href || pathname.startsWith(`${href}/`);
+
+  return normalizedPath === normalizedHref || normalizedPath.startsWith(`${normalizedHref}/`);
 }
 
 type SubNavVariant = 'default' | 'centered';
