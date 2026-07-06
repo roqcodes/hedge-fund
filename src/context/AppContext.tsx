@@ -102,6 +102,7 @@ import {
   getVisibleMainNavItems,
   resolveCompactPortalHome,
   shouldHideMainSidebar,
+  isWarehousePortalRoute,
 } from '@/lib/navigation/mainNav';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
@@ -1910,7 +1911,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const isICTransferAdminRoute = pathname.includes('/ic-transfer-admin');
     const isICTransferRoute = pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-admin');
     const isICTransferBranchRoute = isICTransferRoute;
-    const isWarehouseRoute = pathname.split('/').includes('warehouse') && !pathname.split('/').includes('ic-transfer');
+    const isWarehouseRoute = isWarehousePortalRoute(pathname);
 
     const navBranch = filteredState.user && isBranchPortalRole(filteredState.user.role) && filteredState.user.branchId
       ? filteredState.branches.find(b => b.id === filteredState.user!.branchId)

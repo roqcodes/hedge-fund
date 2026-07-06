@@ -124,6 +124,17 @@ export function resolveCompactPortalHome(
   return resolveMainNavItemHref(items[0], currentSlug, user);
 }
 
-export function shouldHideMainSidebar(visibleNavCount: number, isWarehouseRoute: boolean): boolean {
-  return isWarehouseRoute || visibleNavCount <= 1;
+export function shouldHideMainSidebar(visibleNavCount: number, isWarehousePortalRoute: boolean): boolean {
+  return isWarehousePortalRoute || visibleNavCount <= 1;
+}
+
+/** True only for the standalone Warehouse Portal (`/warehouse`), not IC Transfer admin warehouse pages. */
+export function isWarehousePortalRoute(pathname: string): boolean {
+  const segments = pathname.split('/').filter(Boolean);
+  const warehouseIndex = segments.indexOf('warehouse');
+  if (warehouseIndex === -1) return false;
+  if (warehouseIndex > 0 && segments[warehouseIndex - 1] === 'ic-transfer-admin') {
+    return false;
+  }
+  return true;
 }
