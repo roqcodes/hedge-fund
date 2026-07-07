@@ -7,6 +7,7 @@ import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
 import { isCustomerRole } from '@/lib/rbac';
 import { shouldRecordCustomerOrderUnderBranch } from '@/lib/icTransfer/branchOrderOwnership';
+import { normalizeHiddenPages } from '@/lib/branchPages';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { ICSale } from '@/types';
 import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
@@ -56,13 +57,20 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'meal_payments';
 
   // Retrieve branch info
-  const currentBranch = branches.find(b => b.slug === currentSlug);
+  const currentBranch =
+    branches.find(b => b.slug === currentSlug)
+    ?? (user?.branchId ? branches.find(b => b.id === user.branchId) : undefined);
   const branchName = currentBranch?.name || currentSlug || 'Branch Customer';
   const currentBranchId = currentBranch?.id;
 
+  const branchHiddenPages = normalizeHiddenPages(currentBranch?.hiddenPages);
+  const recordCustomerUnderBranch = isCustomer && shouldRecordCustomerOrderUnderBranch(branchHiddenPages);
+
   const applicableGroup = resolveApplicableRateGroup(icRateGroups, {
-    branchId: isCustomer ? undefined : currentBranchId,
-    customerId: isCustomer ? linkedCustomerId : (selectedCustomerId || undefined),
+    branchId: currentBranchId,
+    customerId: isCustomer
+      ? (recordCustomerUnderBranch ? undefined : linkedCustomerId)
+      : (selectedCustomerId || undefined),
   });
 
   const groupConversionRate = applicableGroup?.conversionRate || 1;
@@ -175,7 +183,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   };
 
   const trimmedCustomer = customerQuery.trim();
-  const recordCustomerUnderBranch = isCustomer && shouldRecordCustomerOrderUnderBranch(currentBranch?.hiddenPages);
+  const orderRecordingName = recordCustomerUnderBranch
+    ? branchName
+    : (linkedCustomerName || trimmedCustomer || 'your name');
   const recordedCustomerName = isCustomer
     ? (recordCustomerUnderBranch ? branchName : (linkedCustomerName || trimmedCustomer))
     : branchName;
@@ -261,7 +271,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
         <div className="flex flex-col gap-0.5">
           <span>{isResubmitMode ? 'Edit & Resubmit Order' : 'Create Transfer Order'}</span>
           <span className="text-xs font-semibold text-accent">
-            {isCustomer ? (linkedCustomerName || 'Customer') : branchName}
+            {isCustomer
+              ? (recordCustomerUnderBranch ? branchName : (linkedCustomerName || 'Customer'))
+              : branchName}
           </span>
         </div>
       }
@@ -295,7 +307,12 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           </WorkflowNotice>
         )}
 
-        {applicableGroup && <RateGroupBanner group={applicableGroup} />}
+        {applicableGroup && (
+          <RateGroupBanner
+            group={applicableGroup}
+            displayName={recordCustomerUnderBranch ? branchName : undefined}
+          />
+        )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left Column: Customer details, Address and Upload */}
@@ -328,7 +345,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
               )}
               <p className="mt-1 text-[11px] text-slate-400">
                 {isCustomer
-                  ? `Your order will be recorded under ${linkedCustomerName || 'your name'}.`
+                  ? recordCustomerUnderBranch
+                    ? `Your order will be recorded under ${branchName}. You are ordering as ${linkedCustomerName || 'Customer'}.`
+                    : `Your order will be recorded under ${orderRecordingName}.`
                   : `Order will be recorded under ${branchName}. Select the end customer above.`}
               </p>
             </InputField>

@@ -6,15 +6,23 @@ import { formatAmount, getCurrencyUnitRate } from '@/lib/icTransfer/rateCalculat
 
 type Props = {
   group: ICRateGroup;
+  /** When set, shows this label instead of the rate group name (e.g. branch name for customer portal). */
+  displayName?: string;
 };
 
-export default function RateGroupBanner({ group }: Props) {
+export default function RateGroupBanner({ group, displayName }: Props) {
   const currencyUnitRate = getCurrencyUnitRate(group.saleRate, group.conversionRate || 1);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs">
       <span className="font-semibold text-slate-500 uppercase tracking-wider">
-        Applicable Rate Group: <strong className="text-slate-700">{group.name}</strong>
+        {displayName ? (
+          <strong className="text-slate-700 normal-case">{displayName}</strong>
+        ) : (
+          <>
+            Applicable Rate Group: <strong className="text-slate-700">{group.name}</strong>
+          </>
+        )}
       </span>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <span>
