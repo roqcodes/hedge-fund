@@ -42,9 +42,9 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
   const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || '';
   const isBranchAdminView = currentSlug !== 'superadmin';
   const txnBranchName = isBranchAdminView ? branchName : undefined;
-  const displayCustomerName = liveSale ? getAdminSaleCustomerName(liveSale, branchName) : '';
+  const displayCustomerName = liveSale ? getAdminSaleCustomerName(liveSale, branchName, branches) : '';
   const endCustomerId = liveSale ? getSaleEndCustomerId(liveSale, branchName) : undefined;
-  const endCustomerName = liveSale ? getSaleEndCustomerName(liveSale, branchName) : '';
+  const endCustomerName = liveSale ? getSaleEndCustomerName(liveSale, branchName, branches) : '';
   const orderImageLabel = liveSale ? getSaleOrderImageLabel(liveSale, branchName) : 'Original Order Image';
 
   React.useEffect(() => {

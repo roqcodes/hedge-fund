@@ -4,15 +4,28 @@ import { normalizeOrderStatus } from '@/lib/icTransfer/orderStatus';
 import { isDateInRange } from '@/lib/dateFilterRange';
 import { toBusinessDate } from '@/lib/businessTime';
 import type { DateFilterRange } from '@/lib/dateFilterRange';
+import { isBranchPageEnabled } from '@/lib/branchPages';
 
 /** Order placed by branch staff/manager on behalf of an end customer. */
 export function isBranchSubmittedSale(sale: ICSale, branchName: string): boolean {
   return sale.customerName.toLowerCase() === branchName.toLowerCase();
 }
 
-/** Order placed directly by a customer via the portal (not branch staff). */
-export function isCustomerPortalSubmittedSale(sale: ICSale, branchName: string): boolean {
+/** True when customer orders should be stored under the branch name (no IC Transfer Admin page). */
+export function shouldRecordCustomerOrderUnderBranch(hiddenPages?: string[] | null): boolean {
+  return !isBranchPageEnabled('ic-transfer-admin', hiddenPages);
+}
+
+/** Sale recorded with the end customer in customer_name (branch has IC Transfer Admin). */
+export function isDirectCustomerNamedSale(sale: ICSale, branchName: string): boolean {
   return !isBranchSubmittedSale(sale, branchName);
+}
+
+/** Customer-portal order stored under branch name (entered by the customer, not branch staff). */
+export function isCustomerPortalOrderUnderBranch(sale: ICSale, branchName: string): boolean {
+  if (!isBranchSubmittedSale(sale, branchName) || !sale.orderCustomerId) return false;
+  if (!sale.enteredByName || !sale.orderCustomerName) return false;
+  return sale.enteredByName.toLowerCase() === sale.orderCustomerName.toLowerCase();
 }
 
 /** Order placed directly by a logged-in customer (recorded under their name). */
@@ -20,9 +33,8 @@ export function isCustomerSubmittedSale(
   sale: ICSale,
   customerId: string,
   customerName: string,
-  branchName: string,
+  _branchName: string,
 ): boolean {
-  if (isBranchSubmittedSale(sale, branchName)) return false;
   if (sale.orderCustomerId === customerId) return true;
   if (customerName && sale.customerName.toLowerCase() === customerName.toLowerCase()) return true;
   return false;
@@ -64,10 +76,23 @@ export function getBranchPortalOrderCustomerName(sale: ICSale, branchName: strin
 }
 
 /** Display name for the end customer on the admin sales page. */
-export function getAdminSaleCustomerName(sale: ICSale, branchName: string): string {
+export function getAdminSaleCustomerName(
+  sale: ICSale,
+  branchName: string,
+  branches?: { name: string }[],
+): string {
   if (isBranchSubmittedSale(sale, branchName)) {
     return sale.orderCustomerName || sale.customerName;
   }
+
+  // HQ view: customer_name may be a branch while order_customer_name holds the end customer.
+  if (
+    branches?.some(b => b.name === sale.customerName) &&
+    sale.orderCustomerName
+  ) {
+    return sale.orderCustomerName;
+  }
+
   return sale.customerName;
 }
 
@@ -80,16 +105,16 @@ export function getSaleEndCustomerId(sale: ICSale, branchName: string): string |
 }
 
 /** End-customer name for phone, currency, and messaging lookups. */
-export function getSaleEndCustomerName(sale: ICSale, branchName: string): string {
-  return getAdminSaleCustomerName(sale, branchName);
+export function getSaleEndCustomerName(sale: ICSale, branchName: string, branches?: { name: string }[]): string {
+  return getAdminSaleCustomerName(sale, branchName, branches);
 }
 
 /** Label for the original order proof image based on who submitted the order. */
 export function getSaleOrderImageLabel(sale: ICSale, branchName: string): string {
-  if (isBranchSubmittedSale(sale, branchName)) {
-    return 'Original Order Image (Branch Upload)';
+  if (isDirectCustomerNamedSale(sale, branchName) || isCustomerPortalOrderUnderBranch(sale, branchName)) {
+    return 'Original Order Image (Customer Upload)';
   }
-  return 'Original Order Image (Customer Upload)';
+  return 'Original Order Image (Branch Upload)';
 }
 
 /** Scope sales visible on a branch-admin IC Transfer view (branch + portal customer orders). */
@@ -122,7 +147,7 @@ export function saleMatchesSearchQuery(
   if (!q) return true;
 
   const formattedId = getFormattedTxnId(sale.id, 'sale', sale, branches, branchName).toLowerCase();
-  const displayName = getAdminSaleCustomerName(sale, branchName).toLowerCase();
+  const displayName = getAdminSaleCustomerName(sale, branchName, branches).toLowerCase();
 
   return (
     formattedId.includes(q) ||

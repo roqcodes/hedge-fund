@@ -199,8 +199,8 @@ export default function ICTransferSales() {
       let valB: any;
 
       if (sortField === 'Customer') {
-        valA = getAdminSaleCustomerName(a, branchName) || '';
-        valB = getAdminSaleCustomerName(b, branchName) || '';
+        valA = getAdminSaleCustomerName(a, branchName, branches) || '';
+        valB = getAdminSaleCustomerName(b, branchName, branches) || '';
       } else if (sortField === 'Units') {
         valA = Number(a.units || 0);
         valB = Number(b.units || 0);
@@ -350,13 +350,13 @@ export default function ICTransferSales() {
   const { salesColumns, matrixRows } = React.useMemo(() => {
     const columns = ['Sales Vol', 'Sales Rate', 'Status'];
     const uniqueCustomers = Array.from(
-      new Set(scopedSales.map(s => getAdminSaleCustomerName(s, branchName)).filter(Boolean)),
+      new Set(scopedSales.map(s => getAdminSaleCustomerName(s, branchName, branches)).filter(Boolean)),
     );
     uniqueCustomers.sort((a, b) => a.localeCompare(b));
 
     const mRows = uniqueCustomers.map(custName => {
       const customerSales = scopedSales.filter(
-        s => getAdminSaleCustomerName(s, branchName) === custName,
+        s => getAdminSaleCustomerName(s, branchName, branches) === custName,
       );
       const vol = customerSales.reduce((acc, s) => acc + s.units, 0);
       const rate = customerSales.length > 0 ? customerSales[0].unitRate : 0;
@@ -555,7 +555,7 @@ export default function ICTransferSales() {
               const delivered = getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus);
               const remaining = getRemainingUnits(s.units, s.collectedUnits, s.orderStatus);
               const warehouseName = getWarehouseName(s.warehouseId);
-              const customerLabel = getAdminSaleCustomerName(s, branchName);
+              const customerLabel = getAdminSaleCustomerName(s, branchName, branches);
               return (
                 <div
                   key={s.id}
@@ -610,7 +610,7 @@ export default function ICTransferSales() {
           const total = s.aedAmount || 0;
           const delivered = getDeliveredUnits(s.units, s.collectedUnits, s.orderStatus);
           const remaining = getRemainingUnits(s.units, s.collectedUnits, s.orderStatus);
-          const customerLabel = getAdminSaleCustomerName(s, branchName);
+          const customerLabel = getAdminSaleCustomerName(s, branchName, branches);
 
           const hasWarehouse = !!s.warehouseId;
           const warehouseName = getWarehouseName(s.warehouseId);

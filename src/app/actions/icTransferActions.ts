@@ -33,6 +33,7 @@ import { isBranchPortalRole } from '@/lib/rbac';
 import {
   customerOwnsSale,
   isBranchSubmittedSale,
+  shouldRecordCustomerOrderUnderBranch,
 } from '@/lib/icTransfer/branchOrderOwnership';
 import { logger } from '@/lib/logger';
 import {
@@ -94,14 +95,25 @@ const SALE_COLUMNS: Record<string, string> = {
   deliveryImageUrl: 'delivery_image_url',
 };
 
-async function resolveEnteredBy() {
-  const userRes = await getCurrentUserAction();
+async function resolveEnteredByForBranch(branchSlug?: string) {
+  const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
+  const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
   const user = userRes.success ? userRes.data : null;
   return {
     enteredBy: user?.email || 'system',
     enteredByName: user?.name || 'System',
-    enteredByUserId: user?.id || 'system_id'
+    enteredByUserId: user?.id || 'system_id',
   };
+}
+
+async function isCustomerEnteredSale(sale: ICSale): Promise<boolean> {
+  if (!sale.orderCustomerId || !sale.enteredByUserId) return false;
+  const res = await query(
+    `SELECT cognito_user_id FROM customers WHERE id = $1 LIMIT 1`,
+    [sale.orderCustomerId],
+  );
+  const cognitoUserId = res.rows[0]?.cognito_user_id;
+  return Boolean(cognitoUserId && String(cognitoUserId) === String(sale.enteredByUserId));
 }
 
 /** Resolve the authenticated user for IC Transfer admin actions (superadmin or branch portal). */
@@ -540,30 +552,42 @@ export async function dbAddICSaleAction(
     const user = userRes.success ? userRes.data : null;
 
     let salePayload = { ...parsed };
+    let branchName = '';
+    let branchHiddenPages: string[] | null = null;
+
+    if (slug) {
+      const branchRes = await query(
+        `SELECT name, hidden_pages FROM branches WHERE slug = $1 LIMIT 1`,
+        [slug],
+      );
+      if (branchRes.rows.length > 0) {
+        branchName = String(branchRes.rows[0].name || '');
+        branchHiddenPages = branchRes.rows[0].hidden_pages ?? null;
+      }
+    }
 
     if (user?.role === 'customer') {
       if (!user.customerId) {
         return { success: false, error: 'Customer profile is not linked to this account' };
       }
       const customerName = user.name?.trim() || parsed.customerName;
+      const recordUnderBranch = Boolean(branchName && shouldRecordCustomerOrderUnderBranch(branchHiddenPages));
+
       salePayload = {
         ...salePayload,
-        customerName,
+        customerName: recordUnderBranch ? branchName : customerName,
         orderCustomerId: user.customerId,
         orderCustomerName: customerName,
         warehouseId: undefined,
       };
-    } else if (user && slug && (user.role === 'branch_manager' || user.role === 'staff')) {
-      const branchRes = await query(`SELECT name FROM branches WHERE slug = $1 LIMIT 1`, [slug]);
-      if (branchRes.rows.length > 0) {
-        salePayload = {
-          ...salePayload,
-          customerName: String(branchRes.rows[0].name || salePayload.customerName),
-        };
-      }
+    } else if (user && slug && (user.role === 'branch_manager' || user.role === 'staff') && branchName) {
+      salePayload = {
+        ...salePayload,
+        customerName: branchName,
+      };
     }
 
-    const { enteredBy, enteredByName, enteredByUserId } = await resolveEnteredBy();
+    const { enteredBy, enteredByName, enteredByUserId } = await resolveEnteredByForBranch(branchSlug);
     const initialOrderStatus = salePayload.warehouseId ? 'accepted' : 'pending';
     const client = await pool.connect();
     try {
@@ -853,6 +877,10 @@ async function assertBranchOwnsSale(
 
   if (!isBranchSubmittedSale(sale, branchName)) {
     return { error: 'You can only modify orders submitted by your branch' };
+  }
+
+  if (await isCustomerEnteredSale(sale)) {
+    return { error: 'This order was submitted by the customer and can only be modified by them' };
   }
 
   return { sale, updatedBy: user.email || user.name || 'branch' };

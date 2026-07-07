@@ -6,6 +6,7 @@ import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
 import { isCustomerRole } from '@/lib/rbac';
+import { shouldRecordCustomerOrderUnderBranch } from '@/lib/icTransfer/branchOrderOwnership';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { ICSale } from '@/types';
 import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
@@ -174,8 +175,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   };
 
   const trimmedCustomer = customerQuery.trim();
+  const recordCustomerUnderBranch = isCustomer && shouldRecordCustomerOrderUnderBranch(currentBranch?.hiddenPages);
   const recordedCustomerName = isCustomer
-    ? (linkedCustomerName || trimmedCustomer)
+    ? (recordCustomerUnderBranch ? branchName : (linkedCustomerName || trimmedCustomer))
     : branchName;
 
   const payload = {
