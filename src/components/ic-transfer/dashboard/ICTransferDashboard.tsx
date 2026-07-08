@@ -78,10 +78,13 @@ function RankingList({ title, data, colorClass = "bg-accent" }: { title: string,
 }
 
 export default function ICTransferDashboard() {
-  const { icPurchases, icSales, icSuppliers, icRegions, icWarehouses, branches, currentSlug } = useApp();
+  const { icPurchases, icSales, icSuppliers, icRegions, icWarehouses, branches, allBranches, currentSlug } = useApp();
   const { selectedRegionIds } = useICTransferRegionFilter();
   const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
-  const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || '';
+  const branchName = branches.find(b => b.slug === currentSlug)?.name
+    || allBranches.find(b => b.slug === currentSlug)?.name
+    || currentSlug
+    || '';
 
   const [dateFilter, setDateFilter] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -109,8 +112,14 @@ export default function ICTransferDashboard() {
 
   const scopedSales = useMemo(() => {
     if (!branchSlug) return icSales;
-    return scopeSalesForBranchAdmin(icSales, branchName, branchCustomerIds, branchCustomerNames);
-  }, [icSales, branchSlug, branchName, branchCustomerIds, branchCustomerNames]);
+    return scopeSalesForBranchAdmin(
+      icSales,
+      branchName,
+      branchCustomerIds,
+      branchCustomerNames,
+      allBranches,
+    );
+  }, [icSales, branchSlug, branchName, branchCustomerIds, branchCustomerNames, allBranches]);
 
   const range = useMemo(() => resolveDateFilterRange(dateFilter, customStartDate, customEndDate), [dateFilter, customStartDate, customEndDate]);
 

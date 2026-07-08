@@ -52,7 +52,7 @@ const SALE_COLUMNS = [
 ];
 
 export default function ICTransferSales() {
-  const { icSales, icWarehouses, deleteICSale, branches, currentSlug, refetchData, showToast } = useApp();
+  const { icSales, icWarehouses, deleteICSale, branches, allBranches, currentSlug, refetchData, showToast } = useApp();
   const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
@@ -92,7 +92,10 @@ export default function ICTransferSales() {
 
   const getWarehouseName = (id?: string) => icWarehouses.find(w => w.id === id)?.name || 'None';
 
-  const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || '';
+  const branchName = branches.find(b => b.slug === currentSlug)?.name
+    || allBranches.find(b => b.slug === currentSlug)?.name
+    || currentSlug
+    || '';
   const isBranchAdminView = !!branchSlug;
   const txnBranchName = isBranchAdminView ? branchName : undefined;
 
@@ -121,8 +124,14 @@ export default function ICTransferSales() {
 
   const scopedSales = useMemo(() => {
     if (!isBranchAdminView) return icSales;
-    return scopeSalesForBranchAdmin(icSales, branchName, branchCustomerIds, branchCustomerNames);
-  }, [icSales, isBranchAdminView, branchName, branchCustomerIds, branchCustomerNames]);
+    return scopeSalesForBranchAdmin(
+      icSales,
+      branchName,
+      branchCustomerIds,
+      branchCustomerNames,
+      allBranches,
+    );
+  }, [icSales, isBranchAdminView, branchName, branchCustomerIds, branchCustomerNames, allBranches]);
 
   const baseFilteredSales = useMemo<ICSale[]>(() => {
     const range = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);

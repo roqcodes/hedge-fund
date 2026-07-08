@@ -117,15 +117,60 @@ export function getSaleOrderImageLabel(sale: ICSale, branchName: string): string
   return 'Original Order Image (Branch Upload)';
 }
 
+/** Branches whose customers place orders under the branch name (no IC Transfer Admin page). */
+export function getAdminLessBranches(
+  allBranches: { name: string; hiddenPages?: string[] | null }[],
+): { name: string; hiddenPages?: string[] | null }[] {
+  return allBranches.filter(b => shouldRecordCustomerOrderUnderBranch(b.hiddenPages));
+}
+
+/** Sale recorded under an admin-less branch name (customer portal without IC Transfer Admin). */
+export function isSaleFromAdminLessBranch(
+  sale: ICSale,
+  allBranches: { name: string; hiddenPages?: string[] | null }[],
+): boolean {
+  const customerName = sale.customerName?.trim().toLowerCase();
+  if (!customerName) return false;
+  return getAdminLessBranches(allBranches).some(
+    b => b.name.trim().toLowerCase() === customerName,
+  );
+}
+
+export function saleBelongsToICTransferAdminView(
+  sale: ICSale,
+  branchName: string,
+  branchCustomerIds: Set<string>,
+  branchCustomerNames: Set<string> | undefined,
+  allBranches: { name: string; hiddenPages?: string[] | null }[],
+): boolean {
+  if (saleBelongsToBranchPortal(sale, branchName, branchCustomerIds, branchCustomerNames)) {
+    return true;
+  }
+
+  // Central admin processes customer-portal orders from branches without their own admin panel.
+  if (isSaleFromAdminLessBranch(sale, allBranches)) {
+    return true;
+  }
+
+  return false;
+}
+
 /** Scope sales visible on a branch-admin IC Transfer view (branch + portal customer orders). */
 export function scopeSalesForBranchAdmin(
   sales: ICSale[],
   branchName: string,
   branchCustomerIds: Set<string>,
-  branchCustomerNames?: Set<string>,
+  branchCustomerNames: Set<string> | undefined,
+  allBranches: { name: string; hiddenPages?: string[] | null }[] = [],
 ): ICSale[] {
   return sales.filter(s =>
-    saleBelongsToBranchPortal(s, branchName, branchCustomerIds, branchCustomerNames) ||
+    saleBelongsToICTransferAdminView(
+      s,
+      branchName,
+      branchCustomerIds,
+      branchCustomerNames,
+      allBranches,
+    ) ||
     (branchCustomerIds.size === 0 && Boolean(s.orderCustomerId)),
   );
 }

@@ -30,6 +30,7 @@ import {
 import { normalizeOrderStatus } from '@/lib/icTransfer/orderStatus';
 import { isByHandSale } from '@/lib/icTransfer/byHand';
 import { isBranchPortalRole } from '@/lib/rbac';
+import { normalizeHiddenPages } from '@/lib/branchPages';
 import {
   customerOwnsSale,
   isBranchSubmittedSale,
@@ -562,7 +563,11 @@ export async function dbAddICSaleAction(
       );
       if (branchRes.rows.length > 0) {
         branchName = String(branchRes.rows[0].name || '');
-        branchHiddenPages = branchRes.rows[0].hidden_pages ?? null;
+        branchHiddenPages = normalizeHiddenPages(
+          Array.isArray(branchRes.rows[0].hidden_pages)
+            ? branchRes.rows[0].hidden_pages.map(String)
+            : [],
+        );
       }
     }
 
