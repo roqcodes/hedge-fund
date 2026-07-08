@@ -72,7 +72,6 @@ export function getVisibleMainNavItems({ currentSlug, user, branch }: VisibleNav
       if (!BRANCH_PAGE_IDS.has(item.id)) return false;
       if (branch && !isBranchPageEnabled(item.id, branch.hiddenPages)) return false;
       if (user?.role === 'branch_manager' && item.id === 'warehouse') return false;
-      if (user?.role === 'branch_manager' && item.id === 'ic-transfer-admin') return false;
       if (
         user?.role === 'staff' &&
         !canReadPage(user, item.id as import('@/lib/branchPages').BranchPageId, branch?.hiddenPages)

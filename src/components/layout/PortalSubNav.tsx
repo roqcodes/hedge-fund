@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { IC_TRANSFER_NAV, IC_TRANSFER_BRANCH_PORTAL_NAV } from '@/lib/icTransfer/nav';
+import { getBranchPortalDisplayName } from '@/lib/icTransfer/branchPortalScope';
 import { WAREHOUSE_NAV } from '@/lib/warehouse/nav';
 
 type NavLink = {
@@ -76,13 +77,25 @@ const centeredTabClass = (active: boolean) =>
 
 type SubNavBarProps = {
   label: string;
+  sublabel?: string;
   links: NavLink[];
   isActive: (pathname: string, href: string) => boolean;
   variant?: SubNavVariant;
 };
 
-function SubNavBar({ label, links, isActive, variant = 'default' }: SubNavBarProps) {
+function SubNavBar({ label, sublabel, links, isActive, variant = 'default' }: SubNavBarProps) {
   const pathname = usePathname();
+
+  const labelBlock = sublabel ? (
+    <div className="hidden shrink-0 sm:block">
+      <p className="text-[13px] font-bold leading-tight text-slate-800">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{sublabel}</p>
+    </div>
+  ) : (
+    <p className="hidden shrink-0 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 sm:block">
+      {label}
+    </p>
+  );
 
   if (variant === 'centered') {
     return (
@@ -129,9 +142,7 @@ function SubNavBar({ label, links, isActive, variant = 'default' }: SubNavBarPro
       aria-label={`${label} navigation`}
     >
       <div className="mx-auto flex max-w-[1680px] items-center gap-3 px-4 py-2 sm:px-6 lg:px-8">
-        <p className="hidden shrink-0 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 sm:block">
-          {label}
-        </p>
+        {labelBlock}
         <div className="-mx-1 min-w-0 flex-1 overflow-x-auto overscroll-x-contain px-1">
           <div className="flex min-w-max gap-1">
             {links.map(link => (
@@ -152,7 +163,20 @@ function SubNavBar({ label, links, isActive, variant = 'default' }: SubNavBarPro
 
 export default function PortalSubNav() {
   const pathname = usePathname();
-  const { currentSlug, user, isWarehouseRoute } = useApp();
+  const { currentSlug, user, isWarehouseRoute, branches } = useApp();
+
+  const currentBranch = useMemo(() => {
+    if (!currentSlug || currentSlug === 'superadmin') return undefined;
+    return (
+      branches.find(b => b.slug === currentSlug) ??
+      (user?.branchId ? branches.find(b => b.id === user.branchId) : undefined)
+    );
+  }, [branches, currentSlug, user?.branchId]);
+
+  const branchPortalDisplay = useMemo(
+    () => getBranchPortalDisplayName(currentBranch),
+    [currentBranch],
+  );
 
   const icTransferBranchLinks = useMemo(() => {
     const base = resolveICTransferBranchBase(currentSlug);
@@ -223,7 +247,8 @@ export default function PortalSubNav() {
   if (showBranchPortalSubNav) {
     return (
       <SubNavBar
-        label="IC Transfer"
+        label={branchPortalDisplay.title}
+        sublabel={branchPortalDisplay.subtitle}
         links={icTransferBranchLinks}
         isActive={isICTransferBranchActive}
       />

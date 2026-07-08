@@ -95,3 +95,23 @@ export function warehouseBelongsToBranch(
 ): boolean {
   return !!warehouse && warehouse.branchId === branchId;
 }
+
+/** Country shown on the branch IC Transfer portal (falls back to location). */
+export function resolveBranchPortalCountry(
+  branch: { country?: string | null; location?: string | null } | null | undefined,
+): string | undefined {
+  const country = branch?.country?.trim();
+  if (country) return country;
+  const location = branch?.location?.trim();
+  return location || undefined;
+}
+
+export function getBranchPortalDisplayName(
+  branch: { name?: string | null; country?: string | null; location?: string | null } | null | undefined,
+  fallback = 'IC Transfer',
+): { title: string; subtitle?: string } {
+  const name = branch?.name?.trim();
+  if (!name) return { title: fallback };
+  const country = resolveBranchPortalCountry(branch);
+  return country ? { title: name, subtitle: country } : { title: name };
+}

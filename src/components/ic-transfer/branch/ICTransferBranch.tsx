@@ -31,6 +31,7 @@ import {
   getBranchPortalOrderCustomerName,
   saleBelongsToBranchPortal,
 } from '@/lib/icTransfer/branchOrderOwnership';
+import { getBranchPortalDisplayName } from '@/lib/icTransfer/branchPortalScope';
 
 const icCompactTd = (align: 'left' | 'center' | 'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
@@ -71,8 +72,10 @@ export default function ICTransferBranch() {
     setCustomEndDate,
   } = useICTransferFilters();
 
-  const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || 'Branch Customer';
-  const currentBranchId = branches.find(b => b.slug === currentSlug)?.id ?? user?.branchId;
+  const currentBranch = branches.find(b => b.slug === currentSlug) ?? branches.find(b => b.id === user?.branchId);
+  const branchName = currentBranch?.name || currentSlug || 'Branch Customer';
+  const branchPortalDisplay = getBranchPortalDisplayName(currentBranch);
+  const currentBranchId = currentBranch?.id ?? user?.branchId;
   const isBranchManager = user?.role === 'branch_manager';
 
   const getOrderCustomer = (s: ICSale) => getBranchPortalOrderCustomerName(s, branchName);
@@ -232,11 +235,12 @@ export default function ICTransferBranch() {
   return (
     <PageShell>
       <PageHeader
-        title={isCustomer ? 'IC Transfer' : 'IC Transfer'}
+        title={branchPortalDisplay.title}
         subtitle={
-          isCustomer
+          branchPortalDisplay.subtitle ??
+          (isCustomer
             ? 'Submit and track your transfer orders'
-            : 'Submit and track transfer orders from your branch'
+            : 'Submit and track transfer orders from your branch')
         }
         actions={
           <div className="flex items-center gap-3">

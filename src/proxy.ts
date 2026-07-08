@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
-import { mapBranchManagerAdminRouteToPortal } from '@/lib/icTransfer/branchPortalScope';
 
 /**
  * Server-side auth guard.
@@ -79,13 +78,6 @@ export async function proxy(request: NextRequest) {
       // Superadmin context: the session MUST belong to an admin
       if (payload.role !== 'admin') {
         throw new Error('Role mismatch: branch session used on superadmin path');
-      }
-    }
-
-    if (slug && payload.role === 'branch_manager' && pathname.includes('/ic-transfer-admin')) {
-      const mappedPath = mapBranchManagerAdminRouteToPortal(slug, pathname);
-      if (mappedPath !== pathname) {
-        return NextResponse.redirect(new URL(mappedPath, request.url));
       }
     }
 
