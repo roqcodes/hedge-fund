@@ -8,12 +8,14 @@ import { notFound } from 'next/navigation';
 import WarehouseUsersManagement from '@/components/ic-transfer/settings/WarehouseUsersManagement';
 import { CognitoUser } from '@/app/actions/cognitoActions';
 import { pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
+import { getICTransferWarehouseBase, type ICTransferPortalMode } from '@/lib/icTransfer/branchPortalScope';
 
 interface Props {
   branchSlug: string;
   warehouseId: string;
   initialUsers: CognitoUser[];
   usersError?: string;
+  portalMode?: ICTransferPortalMode;
 }
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -25,7 +27,13 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
-export default function WarehouseDetailsClient({ branchSlug, warehouseId, initialUsers, usersError }: Props) {
+export default function WarehouseDetailsClient({
+  branchSlug,
+  warehouseId,
+  initialUsers,
+  usersError,
+  portalMode = 'admin',
+}: Props) {
   const { icWarehouses, icRegions } = useApp();
 
   const warehouse = icWarehouses.find(w => w.id === warehouseId);
@@ -39,13 +47,15 @@ export default function WarehouseDetailsClient({ branchSlug, warehouseId, initia
   const regionName = icRegions.find(r => r.id === warehouse.regionId)?.name || '—';
   const subtitleParts = [regionName, warehouse.phone, warehouse.email].filter(Boolean);
 
+  const warehouseListHref = getICTransferWarehouseBase(branchSlug, portalMode);
+
   return (
     <PageShell>
       <div className={pageHeader}>
         <div className="min-w-0">
           <div className="mb-2 flex items-center gap-3">
             <Link
-              href={`/${branchSlug}/ic-transfer-admin/warehouse`}
+              href={warehouseListHref}
               className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
               aria-label="Back to warehouse"
             >

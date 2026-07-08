@@ -1,7 +1,7 @@
 import type { ICSale } from '@/types';
 import { normalizeOrderStatus } from './orderStatus';
 
-export function isByHandSale(sale: Pick<ICSale, 'transactionType'>): boolean {
+export function isByHandSale(sale: { transactionType?: string | null }): boolean {
   return sale.transactionType === 'by_hand';
 }
 

@@ -29,6 +29,8 @@ import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
 import { portalKpiGrid } from '@/lib/icTransfer/layoutConstants';
 import { ConfirmModal } from '@/components/warehouse/shared';
 import { AdminOrderStatusCard, AdminOrderWorkflowActions } from '../shared/AdminOrderWorkflowPanel';
+import FulfillmentHandlerControl, { FulfillmentHandlerBadge } from '../shared/FulfillmentHandlerControl';
+import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import SalePriorityControl from '../shared/SalePriorityControl';
 import { IC_ORDER_STATUSES, getAdminStatusLabel, normalizeOrderStatus, canAdminAccept, getCustomerOrderStatus, getAdminRowAccentClass, getAdminCardAccentClass } from '@/lib/icTransfer/orderStatus';
 import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
@@ -48,7 +50,7 @@ const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDig
 type SalesTab = 'all' | 'awaiting_verification';
 
 const SALE_COLUMNS = [
-  'Date', 'Customer', 'Units', 'Total AED', 'Delivered Units', 'Remaining Units', 'Warehouse', 'Priority', 'Status', 'Actions'
+  'Date', 'Customer', 'Handling', 'Units', 'Total AED', 'Delivered Units', 'Remaining Units', 'Warehouse', 'Priority', 'Status', 'Actions'
 ];
 
 export default function ICTransferSales() {
@@ -623,6 +625,7 @@ export default function ICTransferSales() {
 
           const hasWarehouse = !!s.warehouseId;
           const warehouseName = getWarehouseName(s.warehouseId);
+          const branchHandled = isBranchHandledSale(s);
 
           return (
             <tr
@@ -656,6 +659,7 @@ export default function ICTransferSales() {
               {/* CUSTOMER */}
               <td className={icCompactTd('left')}>
                 <span className="font-semibold text-slate-900">{customerLabel}</span>
+                <FulfillmentHandlerBadge sale={s} />
                 {s.transactionType === 'by_hand' && (
                   <span className="ml-1.5 inline-flex rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700">
                     By Hand
@@ -666,6 +670,11 @@ export default function ICTransferSales() {
                     SPLIT
                   </span>
                 )}
+              </td>
+
+              {/* HANDLING (customer orders) */}
+              <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+                <FulfillmentHandlerControl sale={s} />
               </td>
 
               {/* UNITS */}
@@ -698,9 +707,11 @@ export default function ICTransferSales() {
               <td className={icCompactTd('left')}>
                 {hasWarehouse ? (
                   <span className="font-semibold text-slate-700">{warehouseName}</span>
+                ) : branchHandled ? (
+                  <span className="text-[10.5px] font-medium text-teal-600 italic">Branch managed</span>
                 ) : canAdminAccept(s.orderStatus) ? (
                   <span className="text-[10.5px] font-medium text-slate-400 italic">Awaiting acceptance</span>
-                ) : (
+                ) : !branchHandled ? (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -711,12 +722,18 @@ export default function ICTransferSales() {
                   >
                     Assign Warehouse
                   </button>
+                ) : (
+                  <span className="text-[10.5px] text-slate-400">—</span>
                 )}
               </td>
 
               {/* PRIORITY */}
               <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
-                <SalePriorityControl saleId={s.id} priority={s.priority} compact />
+                {branchHandled ? (
+                  <span className="text-[10px] text-slate-400">{s.priority || 'Normal'}</span>
+                ) : (
+                  <SalePriorityControl saleId={s.id} priority={s.priority} compact />
+                )}
               </td>
 
               {/* STATUS */}
@@ -727,7 +744,7 @@ export default function ICTransferSales() {
               {/* ACTIONS */}
               <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
                 <div className="flex flex-col items-center gap-1.5">
-                  <AdminOrderWorkflowActions sale={s} />
+                  {!branchHandled && <AdminOrderWorkflowActions sale={s} />}
                   <div className="flex items-center justify-center gap-1.5">
                   <button
                     type="button"
@@ -743,6 +760,8 @@ export default function ICTransferSales() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
                   </button>
+                  {!branchHandled && (
+                  <>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -766,6 +785,8 @@ export default function ICTransferSales() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
+                  </>
+                  )}
                   </div>
                 </div>
               </td>
@@ -783,7 +804,7 @@ export default function ICTransferSales() {
         open={viewModalOpen}
         onClose={() => { setViewModalOpen(false); setSelectedSale(null); }}
         sale={selectedSale}
-        onEdit={handleEdit}
+        onEdit={selectedSale && isBranchHandledSale(selectedSale) ? undefined : handleEdit}
         workflowVariant="admin"
       />
 

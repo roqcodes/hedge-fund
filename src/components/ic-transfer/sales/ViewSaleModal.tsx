@@ -8,7 +8,8 @@ import { ConfirmModal } from '@/components/warehouse/shared';
 import SalePriorityControl from '../shared/SalePriorityControl';
 import SaleOrderWorkflowSection from '../shared/SaleOrderWorkflowSection';
 import ProofImageActions from '../shared/ProofImageActions';
-import { canBranchResubmitOrder, canCustomerSeeDeliveryProof } from '@/lib/icTransfer/orderStatus';
+import CopyOrderDetailsButton from '../shared/CopyOrderDetailsButton';
+import { canBranchResubmitOrder, canBranchDeleteOrder, canCustomerSeeDeliveryProof } from '@/lib/icTransfer/orderStatus';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { isBranchScopedUser } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
@@ -19,6 +20,8 @@ import {
   getSaleEndCustomerName,
   getSaleOrderImageLabel,
 } from '@/lib/icTransfer/branchOrderOwnership';
+import { isBranchHandledSale, canBranchEditHandledOrder } from '@/lib/icTransfer/fulfillmentHandler';
+import { formatICSaleTransactionTypeLabel } from '@/lib/icTransfer/transactionTypes';
 
 type Props = {
   open: boolean;
@@ -27,10 +30,11 @@ type Props = {
   onEdit?: (sale: ICSale) => void;
   /** Force admin workflow UI on IC Transfer sales page. */
   workflowVariant?: 'admin' | 'branch' | 'auto';
+  branchId?: string;
 };
 
-export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVariant = 'auto' }: Props) {
-  const { icWarehouses, deleteICSale, user, branches, icSales, refetchData, showToast, currentSlug } = useApp();
+export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVariant = 'auto', branchId }: Props) {
+  const { icWarehouses, deleteICSale, branchDeleteICSale, user, branches, icSales, refetchData, showToast, currentSlug } = useApp();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -79,7 +83,11 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
 
   const handleDelete = async () => {
     setDeleteLoading(true);
-    await deleteICSale(liveSale.id);
+    if (isBranchPortalView) {
+      await branchDeleteICSale(liveSale.id, currentSlug !== 'superadmin' ? currentSlug : undefined);
+    } else {
+      await deleteICSale(liveSale.id);
+    }
     setDeleteLoading(false);
     setConfirmDeleteOpen(false);
     onClose();
@@ -96,8 +104,13 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
   const isBranchPortalView = workflowVariant === 'branch'
     || (workflowVariant === 'auto' && isBranchScopedUser(user));
   const workflowUiVariant = isBranchPortalView ? 'branch' : 'admin';
+  const branchHandled = isBranchHandledSale(liveSale);
   const canBranchModifyRejected = isBranchPortalView && canBranchResubmitOrder(liveSale.orderStatus);
-  const showDelete = !isBranchPortalView || canBranchModifyRejected;
+  const canBranchModifyHandled = isBranchPortalView && canBranchEditHandledOrder(liveSale);
+  const showDelete = isBranchPortalView
+    ? (canBranchModifyRejected || (branchHandled && canBranchDeleteOrder(liveSale.orderStatus)))
+    : !branchHandled;
+  const showAdminEdit = !isBranchPortalView && !branchHandled && !!onEdit;
   const canShowDeliveryProof =
     (!isBranchPortalView || canCustomerSeeDeliveryProof(liveSale.orderStatus))
     && !!liveSale.deliveryImageUrl;
@@ -172,7 +185,7 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                     ? 'border border-violet-200 bg-violet-50 text-violet-700'
                     : 'bg-slate-100 text-slate-700'
                 }`}>
-                  {liveSale.transactionType?.replace('_', ' ') || 'Transfer'}
+                  {formatICSaleTransactionTypeLabel(liveSale.transactionType)}
                 </span>
               </div>
             </div>
@@ -258,9 +271,10 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
             <SaleOrderWorkflowSection
               sale={liveSale}
               variant={workflowUiVariant}
+              branchId={branchId}
               onUpdated={handleWorkflowUpdated}
               onResubmit={
-                onEdit
+                onEdit && (canBranchModifyHandled || canBranchModifyRejected)
                   ? s => {
                       onClose();
                       onEdit(s);
@@ -304,8 +318,14 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                   </a>
                 </div>
               ) : (
-                <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-slate-400 text-xs font-medium">
-                  No original image uploaded
+                <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-slate-400 text-xs font-medium">
+                  <span>No original image uploaded</span>
+                  <CopyOrderDetailsButton
+                    address={liveSale.address}
+                    units={Number(liveSale.units)}
+                    onCopySuccess={() => showToast('Details copied')}
+                    onCopyError={msg => showToast(msg, 'error')}
+                  />
                 </div>
               )}
             </div>

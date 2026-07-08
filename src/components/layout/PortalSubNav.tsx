@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
-import { IC_TRANSFER_NAV } from '@/lib/icTransfer/nav';
+import { IC_TRANSFER_NAV, IC_TRANSFER_BRANCH_PORTAL_NAV } from '@/lib/icTransfer/nav';
 import { WAREHOUSE_NAV } from '@/lib/warehouse/nav';
 
 type NavLink = {
@@ -12,6 +12,21 @@ type NavLink = {
   label: string;
   href: string;
 };
+
+function resolveICTransferBranchBase(currentSlug: string): string {
+  return currentSlug === 'superadmin' ? '/ic-transfer' : `/${currentSlug}/ic-transfer`;
+}
+
+function isICTransferBranchActive(pathname: string, href: string): boolean {
+  const normalizedPath = pathname.replace(/\/$/, '');
+  const normalizedHref = href.replace(/\/$/, '');
+
+  if (normalizedHref.endsWith('/ic-transfer') || normalizedHref === '/ic-transfer') {
+    return normalizedPath === normalizedHref;
+  }
+
+  return normalizedPath === normalizedHref || normalizedPath.startsWith(`${normalizedHref}/`);
+}
 
 function resolveICTransferAdminBase(currentSlug: string): string {
   return currentSlug === 'superadmin' ? '/ic-transfer-admin' : `/${currentSlug}/ic-transfer-admin`;
@@ -139,6 +154,15 @@ export default function PortalSubNav() {
   const pathname = usePathname();
   const { currentSlug, user, isWarehouseRoute } = useApp();
 
+  const icTransferBranchLinks = useMemo(() => {
+    const base = resolveICTransferBranchBase(currentSlug);
+    return IC_TRANSFER_BRANCH_PORTAL_NAV.map(item => ({
+      id: item.id,
+      label: item.label,
+      href: item.path ? `${base}${item.path}` : base,
+    }));
+  }, [currentSlug]);
+
   const icTransferAdminLinks = useMemo(() => {
     const base = resolveICTransferAdminBase(currentSlug);
     const primaryLinks = IC_TRANSFER_NAV.filter(item => !item.children).map(item => ({
@@ -172,6 +196,13 @@ export default function PortalSubNav() {
 
   const isDeliveryAgent = user?.role?.startsWith('delivery_');
   const isICTransferAdminRoute = pathname.includes('/ic-transfer-admin');
+  const isICTransferBranchRoute =
+    pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-admin');
+
+  const showBranchPortalSubNav =
+    isICTransferBranchRoute &&
+    user?.role === 'branch_manager' &&
+    icTransferBranchLinks.length > 1;
 
   const showWarehouseSubNav =
     isWarehouseRoute &&
@@ -185,6 +216,16 @@ export default function PortalSubNav() {
         label="IC Transfer (Admin)"
         links={icTransferAdminLinks}
         isActive={isICTransferAdminActive}
+      />
+    );
+  }
+
+  if (showBranchPortalSubNav) {
+    return (
+      <SubNavBar
+        label="IC Transfer"
+        links={icTransferBranchLinks}
+        isActive={isICTransferBranchActive}
       />
     );
   }

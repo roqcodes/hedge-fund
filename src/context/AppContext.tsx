@@ -235,10 +235,17 @@ interface AppContextType extends AppState {
   addICSupplier: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   updateICSupplier: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   deleteICSupplier: (id: string) => Promise<boolean>;
-  addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer?: boolean) => Promise<boolean>;
+  addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer?: boolean, branchId?: string | null) => Promise<boolean>;
   updateICWarehouse: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer?: boolean) => Promise<boolean>;
   deleteICWarehouse: (id: string) => Promise<boolean>;
-  addICRateGroup: (name: string, country: string, currency: string, saleRate: number, conversionRate: number) => Promise<string | null>;
+  addICRateGroup: (
+    name: string,
+    country: string,
+    currency: string,
+    saleRate: number,
+    conversionRate: number,
+    createdByBranchId?: string,
+  ) => Promise<string | null>;
   updateICRateGroup: (id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number) => Promise<boolean>;
   bulkUpdateICRateGroupRates: (groupIds: string[], saleRate: number, conversionRate: number) => Promise<boolean>;
   deleteICRateGroup: (id: string) => Promise<boolean>;
@@ -1503,9 +1510,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const addICWarehouse = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer: boolean = true) => {
+  const addICWarehouse = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer: boolean = true, branchId?: string | null) => {
     try {
-      const res = await dbAddICWarehouseAction(name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer);
+      const res = await dbAddICWarehouseAction(name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer, branchId);
       if (res.success && res.data) {
         setState(s => ({ ...s, icWarehouses: [...s.icWarehouses, res.data!] }));
         showToast('Warehouse added successfully');
@@ -1554,9 +1561,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const addICRateGroup = useCallback(async (name: string, country: string, currency: string, saleRate: number, conversionRate: number) => {
+  const addICRateGroup = useCallback(async (
+    name: string,
+    country: string,
+    currency: string,
+    saleRate: number,
+    conversionRate: number,
+    createdByBranchId?: string,
+  ) => {
     try {
-      const res = await dbAddICRateGroupAction(name, country, currency, saleRate, conversionRate);
+      const res = await dbAddICRateGroupAction(
+        name,
+        country,
+        currency,
+        saleRate,
+        conversionRate,
+        createdByBranchId,
+        createdByBranchId ? currentSlug ?? undefined : undefined,
+      );
       if (res.success && res.data) {
         setState(s => ({ ...s, icRateGroups: [res.data!, ...s.icRateGroups] }));
         showToast('Rate group added successfully');
@@ -1569,7 +1591,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error adding rate group', 'error');
       return null;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const updateICRateGroup = useCallback(async (id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number) => {
     try {
@@ -1670,7 +1692,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addICPurchase = useCallback(async (purchase: Omit<ICPurchase, 'id' | 'createdAt'>) => {
     try {
-      const res = await dbAddICPurchaseAction(purchase);
+      const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
+      const res = await dbAddICPurchaseAction(purchase, branchSlug);
       if (res.success && res.data) {
         setState(s => ({ ...s, icPurchases: [res.data!, ...s.icPurchases] }));
         showToast('Purchase recorded successfully');
@@ -1684,7 +1707,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error recording purchase', 'error');
       return false;
     }
-  }, [showToast, refetchData]);
+  }, [showToast, refetchData, currentSlug]);
 
   const addICSale = useCallback(async (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => {
     try {
@@ -1705,7 +1728,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateICPurchase = useCallback(async (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => {
     try {
-      const res = await dbUpdateICPurchaseAction(id, updates);
+      const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
+      const res = await dbUpdateICPurchaseAction(id, updates, branchSlug);
       if (res.success && res.data) {
         setState(s => ({
           ...s,
@@ -1722,7 +1746,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating purchase', 'error');
       return false;
     }
-  }, [showToast, refetchData]);
+  }, [showToast, refetchData, currentSlug]);
 
   const updateICSale = useCallback(async (id: string, updates: Partial<Omit<ICSale, 'id' | 'createdAt'>>) => {
     try {

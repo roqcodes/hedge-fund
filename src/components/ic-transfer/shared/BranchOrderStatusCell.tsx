@@ -9,6 +9,7 @@ import {
   getBranchOrderStatus,
   CUSTOMER_STATUS_STYLES,
 } from '@/lib/icTransfer/orderStatus';
+import { canBranchEditHandledOrder, isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import {
   OrderWorkflowActionStack,
   WorkflowActionButton,
@@ -65,7 +66,10 @@ export function BranchOrderWorkflowActions({
   inline = false,
   compact = true,
 }: Props) {
-  const showResubmit = canBranchResubmitOrder(sale.orderStatus) && !!onResubmit;
+  const showResubmit =
+    (canBranchResubmitOrder(sale.orderStatus) ||
+      (isBranchHandledSale(sale) && canBranchEditHandledOrder(sale))) &&
+    !!onResubmit;
   const showDelete = canBranchDeleteOrder(sale.orderStatus) && !!onDelete;
   const showCancel = canBranchRequestCancel(sale.orderStatus) && !!onCancelRequest;
   const showView = !!onView;

@@ -35,6 +35,8 @@ type Props = {
   allBranches: Branch[];
   branchCustomers: CustomerOption[];
   isSaving: boolean;
+  /** Branch portal: customers only — no branch assignment UI. */
+  customersOnly?: boolean;
   onClose: () => void;
   onSave: (payload: RateGroupMembersPayload) => void | Promise<void>;
 };
@@ -57,6 +59,7 @@ export default function RateGroupManageUsersModal({
   allBranches,
   branchCustomers,
   isSaving,
+  customersOnly = false,
   onClose,
   onSave,
 }: Props) {
@@ -85,8 +88,12 @@ export default function RateGroupManageUsersModal({
 
   const visibleBranches = useMemo(
     () =>
-      allBranches.filter(b => !b.hiddenPages?.includes('ic-transfer') && !b.hiddenPages?.includes('ic-transfer-branch')),
-    [allBranches],
+      customersOnly
+        ? []
+        : allBranches.filter(
+            b => !b.hiddenPages?.includes('ic-transfer') && !b.hiddenPages?.includes('ic-transfer-branch'),
+          ),
+    [allBranches, customersOnly],
   );
 
   useEffect(() => {
@@ -324,12 +331,17 @@ export default function RateGroupManageUsersModal({
             onSearchChange={setOverviewSearch}
             onEdit={selectGroupById}
             onAssign={requestAssign}
+            customersOnly={customersOnly}
           />
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <MemberPanel
               title="All Members"
-              subtitle="Branches and customers not in this group"
+              subtitle={
+                customersOnly
+                  ? 'Customers not in this group'
+                  : 'Branches and customers not in this group'
+              }
               search={leftSearch}
               onSearchChange={setLeftSearch}
               searchPlaceholder="Search available…"
@@ -341,7 +353,11 @@ export default function RateGroupManageUsersModal({
             />
             <MemberPanel
               title={`In "${selectedGroup.name}"`}
-              subtitle={`${assignedBranchIds.length} branches · ${assignedCustomerIds.length} customers`}
+              subtitle={
+                customersOnly
+                  ? `${assignedCustomerIds.length} customers`
+                  : `${assignedBranchIds.length} branches · ${assignedCustomerIds.length} customers`
+              }
               search={rightSearch}
               onSearchChange={setRightSearch}
               searchPlaceholder="Search assigned…"
@@ -467,12 +483,14 @@ function OverviewPanel({
   onSearchChange,
   onEdit,
   onAssign,
+  customersOnly = false,
 }: {
   items: OverviewItem[];
   search: string;
   onSearchChange: (value: string) => void;
   onEdit: (groupId: string) => void;
   onAssign: (item: OverviewItem) => void;
+  customersOnly?: boolean;
 }) {
   const rowGrid =
     'grid grid-cols-[92px_minmax(0,1fr)_minmax(0,140px)_76px] items-center gap-3 px-3';
@@ -484,7 +502,9 @@ function OverviewPanel({
           <div>
             <h4 className="text-sm font-bold text-slate-900">All Members</h4>
             <p className="text-[11px] text-slate-500">
-              Every branch and customer with its assigned rate group
+              {customersOnly
+                ? 'Every customer with its assigned rate group'
+                : 'Every branch and customer with its assigned rate group'}
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">

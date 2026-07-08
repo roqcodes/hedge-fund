@@ -612,6 +612,8 @@ CREATE INDEX IF NOT EXISTS idx_ic_warehouses_region ON ic_warehouses(region_id);
 
 ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS current_stock NUMERIC(15, 4) NOT NULL DEFAULT 0;
 ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS send_delivery_proof_to_customer BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE ic_warehouses ADD COLUMN IF NOT EXISTS branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_ic_warehouses_branch ON ic_warehouses(branch_id);
 
 CREATE TABLE IF NOT EXISTS ic_rate_groups (
     id VARCHAR(50) PRIMARY KEY,
@@ -620,9 +622,13 @@ CREATE TABLE IF NOT EXISTS ic_rate_groups (
     currency VARCHAR(10) NOT NULL,
     sale_rate DECIMAL(15, 6) NOT NULL DEFAULT 0,
     conversion_rate DECIMAL(15, 6) NOT NULL DEFAULT 1,
+    created_by_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE ic_rate_groups ADD COLUMN IF NOT EXISTS created_by_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_ic_rate_groups_created_by_branch ON ic_rate_groups(created_by_branch_id);
 
 CREATE TABLE IF NOT EXISTS ic_rate_group_customers (
     group_id VARCHAR(50) REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
@@ -666,7 +672,7 @@ CREATE TABLE IF NOT EXISTS ic_sales (
     entered_by_name VARCHAR(255),
     entered_by_user_id VARCHAR(255),
     warehouse_id UUID REFERENCES ic_warehouses(id) ON DELETE SET NULL,
-    transaction_type VARCHAR(50),
+    transaction_type VARCHAR(50), -- transfer | cdm | by_hand | nre
     units NUMERIC(15, 4) NOT NULL,
     unit_rate NUMERIC(15, 4) NOT NULL,
     converted_amount NUMERIC(15, 4),
@@ -754,6 +760,11 @@ ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'AED'
 -- End-customer selected by the branch manager (customer_name still holds the owning branch for association/filtering)
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS order_customer_name VARCHAR(255);
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS order_customer_id VARCHAR(255);
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS fulfillment_handler VARCHAR(20) NOT NULL DEFAULT 'hq_admin';
+ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_fulfillment_handler_check;
+ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_fulfillment_handler_check
+  CHECK (fulfillment_handler IN ('hq_admin', 'branch'));
+CREATE INDEX IF NOT EXISTS idx_ic_sales_fulfillment_handler ON ic_sales(fulfillment_handler);
 
 -- Drop legacy constraint if present, then apply expanded order_status check
 ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_order_status_check;

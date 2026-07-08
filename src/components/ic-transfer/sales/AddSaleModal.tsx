@@ -8,9 +8,11 @@ import { useApp } from '@/context/AppContext';
 import { getCustomersBySlug, getAllCustomers } from '@/app/actions/customerActions';
 import { ICSale } from '@/types';
 import PrioritySelector from '../shared/PrioritySelector';
+import TransactionTypeSelector from '../shared/TransactionTypeSelector';
 import RateGroupBanner from '../shared/RateGroupBanner';
 import ICSaleAmountCards from '../shared/ICSaleAmountCards';
 import { computeICSaleAmounts, resolveApplicableRateGroup } from '@/lib/icTransfer/rateCalculations';
+import { DEFAULT_IC_SALE_TRANSACTION_TYPE, type ICSaleTransactionType } from '@/lib/icTransfer/transactionTypes';
 import type { OrderPriority } from '@/types/warehouse';
 
 type Props = {
@@ -32,7 +34,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [customerName, setCustomerName] = useState(initialData?.customerName || '');
   const [warehouseId, setWarehouseId] = useState(initialData?.warehouseId || '');
-  const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
+  const [transactionType, setTransactionType] = useState(initialData?.transactionType || DEFAULT_IC_SALE_TRANSACTION_TYPE);
   const [priority, setPriority] = useState<OrderPriority>(initialData?.priority || 'Normal');
   const [address, setAddress] = useState(initialData?.address || '');
   const [location, setLocation] = useState(initialData?.location || '');
@@ -64,7 +66,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
       setRate(initialData?.unitRate?.toString() || '');
       setCustomerName(initialData?.customerName || '');
       setWarehouseId(initialData?.warehouseId || '');
-      setTransactionType(initialData?.transactionType || 'transfer');
+      setTransactionType(initialData?.transactionType || DEFAULT_IC_SALE_TRANSACTION_TYPE);
       setPriority(initialData?.priority || 'Normal');
       setAddress(initialData?.address || '');
       setLocation(initialData?.location || '');
@@ -141,7 +143,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
 
   const isByHand = transactionType === 'by_hand';
 
-  const handleTransactionTypeChange = (value: string) => {
+  const handleTransactionTypeChange = (value: ICSaleTransactionType) => {
     setTransactionType(value);
     if (value !== 'by_hand') {
       setLocation('');
@@ -299,29 +301,11 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
               </InputField>
 
               <InputField label="Transaction Type">
-                <div className="flex rounded-xl bg-slate-100 p-1 w-full border border-slate-200/50 h-[46px] sm:h-[54px] items-stretch gap-1">
-                  {[
-                    { value: 'transfer', label: 'Transfer' },
-                    { value: 'cdm', label: 'CDM' },
-                    { value: 'by_hand', label: 'By Hand' }
-                  ].map(opt => {
-                    const isActive = transactionType === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => handleTransactionTypeChange(opt.value)}
-                        className={`flex-1 text-center text-xs font-semibold rounded-lg transition-all flex items-center justify-center ${
-                          isActive 
-                            ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-bold' 
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <TransactionTypeSelector
+                  value={transactionType}
+                  onChange={handleTransactionTypeChange}
+                  disabled={isSubmitting}
+                />
               </InputField>
             </div>
 

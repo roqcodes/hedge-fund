@@ -1,4 +1,5 @@
 import type { ICSale } from '@/types';
+import { DEFAULT_IC_SALE_TRANSACTION_TYPE } from '@/lib/icTransfer/transactionTypes';
 
 export type ICSaleContentFields = Pick<
   ICSale,
@@ -20,7 +21,7 @@ type ICSaleEditableFields = Pick<
 
 function normTransactionType(v?: string | null): string {
   const t = normStr(v).toLowerCase();
-  return t || 'transfer';
+  return t || DEFAULT_IC_SALE_TRANSACTION_TYPE;
 }
 
 /** True when a user-editable field differs (ignores derived amounts). */

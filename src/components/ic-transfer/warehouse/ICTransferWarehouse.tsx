@@ -8,6 +8,11 @@ import {
   matrixRowToCells,
   WAREHOUSE_MATRIX_COLUMNS,
 } from '@/lib/icTransfer/warehouseMatrixMetrics';
+import {
+  filterSalesForBranchPortal,
+  filterWarehousesForBranchPortal,
+  type ICTransferPortalMode,
+} from '@/lib/icTransfer/branchPortalScope';
 import WarehouseKpiGrid from '@/components/warehouse/WarehouseKpiGrid';
 import ManageWarehousesModal from '@/components/ic-transfer/warehouse/ManageWarehousesModal';
 import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
@@ -20,7 +25,19 @@ import {
   AddButton,
 } from '../ui';
 
-export default function ICTransferWarehouse() {
+type Props = {
+  portalMode?: ICTransferPortalMode;
+  branchId?: string;
+  branchName?: string;
+  branchCustomerIds?: string[];
+};
+
+export default function ICTransferWarehouse({
+  portalMode = 'admin',
+  branchId,
+  branchName,
+  branchCustomerIds = [],
+}: Props) {
   const { icRegions, icWarehouses, icSales } = useApp();
   const {
     dateFilter,
@@ -32,6 +49,23 @@ export default function ICTransferWarehouse() {
   } = useICTransferFilters();
   const [warehouseModalOpen, setWarehouseModalOpen] = useState(false);
   const { selectedRegionIds } = useICTransferRegionFilter();
+
+  const isBranchPortal = portalMode === 'branch' && !!branchId;
+
+  const scopedWarehouses = useMemo(() => {
+    if (!isBranchPortal) return icWarehouses;
+    return filterWarehousesForBranchPortal(icWarehouses, branchId!);
+  }, [icWarehouses, isBranchPortal, branchId]);
+
+  const branchCustomerIdSet = useMemo(
+    () => new Set(branchCustomerIds),
+    [branchCustomerIds],
+  );
+
+  const scopedSales = useMemo(() => {
+    if (!isBranchPortal || !branchName) return icSales;
+    return filterSalesForBranchPortal(icSales, branchName, branchCustomerIdSet);
+  }, [icSales, isBranchPortal, branchName, branchCustomerIdSet]);
 
   const range = useMemo(
     () => resolveDateFilterRange(dateFilter, customStartDate, customEndDate),
@@ -46,13 +80,13 @@ export default function ICTransferWarehouse() {
   const { rows, totals } = useMemo(
     () =>
       computeWarehouseMatrix({
-        warehouses: icWarehouses,
+        warehouses: scopedWarehouses,
         regions: icRegions,
-        sales: icSales,
+        sales: scopedSales,
         range,
         regionIds: selectedRegionIds.length > 0 ? selectedRegionIds : undefined,
       }),
-    [icWarehouses, icRegions, icSales, range, selectedRegionIds],
+    [scopedWarehouses, icRegions, scopedSales, range, selectedRegionIds],
   );
 
   const kpiMetrics = useMemo(
@@ -72,7 +106,11 @@ export default function ICTransferWarehouse() {
     <PageShell>
       <PageHeader
         title="Warehouse"
-        subtitle="Stock, orders, and delivery performance by warehouse"
+        subtitle={
+          isBranchPortal
+            ? 'Branch warehouses, stock, and delivery performance'
+            : 'Stock, orders, and delivery performance by warehouse'
+        }
         actions={<AddButton label="Manage Warehouses" onClick={() => setWarehouseModalOpen(true)} />}
       />
 
@@ -102,12 +140,22 @@ export default function ICTransferWarehouse() {
               ? rows.map(row => [row.warehouseName, ...matrixRowToCells(row)])
               : [['No warehouses', ...WAREHOUSE_MATRIX_COLUMNS.map(() => '—')]]
           }
-          emptyMessage="No warehouses match the selected regions."
+          emptyMessage={
+            isBranchPortal
+              ? 'No branch warehouses yet. Add one from Manage Warehouses.'
+              : 'No warehouses match the selected regions.'
+          }
           minWidth="960px"
         />
       </div>
 
-      <ManageWarehousesModal open={warehouseModalOpen} onClose={() => setWarehouseModalOpen(false)} />
+      <ManageWarehousesModal
+        open={warehouseModalOpen}
+        onClose={() => setWarehouseModalOpen(false)}
+        portalMode={portalMode}
+        branchId={isBranchPortal ? branchId : undefined}
+        warehouses={scopedWarehouses}
+      />
     </PageShell>
   );
 }

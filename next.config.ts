@@ -45,23 +45,8 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
-        source: '/:slug/ic-transfer/purchase',
-        destination: '/:slug/ic-transfer-admin/purchase',
-        permanent: true,
-      },
-      {
         source: '/:slug/ic-transfer/sales',
         destination: '/:slug/ic-transfer-admin/sales',
-        permanent: true,
-      },
-      {
-        source: '/:slug/ic-transfer/warehouse',
-        destination: '/:slug/ic-transfer-admin/warehouse',
-        permanent: true,
-      },
-      {
-        source: '/:slug/ic-transfer/warehouse/:id',
-        destination: '/:slug/ic-transfer-admin/warehouse/:id',
         permanent: true,
       },
       {

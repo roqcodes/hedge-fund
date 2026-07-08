@@ -72,6 +72,7 @@ export function getVisibleMainNavItems({ currentSlug, user, branch }: VisibleNav
       if (!BRANCH_PAGE_IDS.has(item.id)) return false;
       if (branch && !isBranchPageEnabled(item.id, branch.hiddenPages)) return false;
       if (user?.role === 'branch_manager' && item.id === 'warehouse') return false;
+      if (user?.role === 'branch_manager' && item.id === 'ic-transfer-admin') return false;
       if (
         user?.role === 'staff' &&
         !canReadPage(user, item.id as import('@/lib/branchPages').BranchPageId, branch?.hiddenPages)
@@ -128,13 +129,16 @@ export function shouldHideMainSidebar(visibleNavCount: number, isWarehousePortal
   return isWarehousePortalRoute || visibleNavCount <= 1;
 }
 
-/** True only for the standalone Warehouse Portal (`/warehouse`), not IC Transfer admin warehouse pages. */
+/** True only for the standalone Warehouse Portal (`/warehouse`), not IC Transfer warehouse pages. */
 export function isWarehousePortalRoute(pathname: string): boolean {
   const segments = pathname.split('/').filter(Boolean);
   const warehouseIndex = segments.indexOf('warehouse');
   if (warehouseIndex === -1) return false;
-  if (warehouseIndex > 0 && segments[warehouseIndex - 1] === 'ic-transfer-admin') {
+
+  const parentSegment = warehouseIndex > 0 ? segments[warehouseIndex - 1] : null;
+  if (parentSegment === 'ic-transfer-admin' || parentSegment === 'ic-transfer') {
     return false;
   }
+
   return true;
 }

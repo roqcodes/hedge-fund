@@ -21,7 +21,9 @@ import { ICSale } from '@/types';
 import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
 import { portalKpiGrid, portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
 import { BranchOrderStatusCell, BranchOrderWorkflowActions } from '../shared/BranchOrderStatusCell';
-import { getBranchOrderStatus, canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
+import BranchHandledOrderActions from '../shared/BranchHandledOrderActions';
+import { getBranchOrderStatus, canBranchResubmitOrder, canBranchDeleteOrder } from '@/lib/icTransfer/orderStatus';
+import { canBranchEditHandledOrder, isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import { getDeliveredUnits } from '@/lib/icTransfer/saleUnits';
 import { ConfirmModal } from '@/components/warehouse/shared';
 import {
@@ -70,6 +72,8 @@ export default function ICTransferBranch() {
   } = useICTransferFilters();
 
   const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || 'Branch Customer';
+  const currentBranchId = branches.find(b => b.slug === currentSlug)?.id ?? user?.branchId;
+  const isBranchManager = user?.role === 'branch_manager';
 
   const getOrderCustomer = (s: ICSale) => getBranchPortalOrderCustomerName(s, branchName);
 
@@ -162,6 +166,11 @@ export default function ICTransferBranch() {
   const [actionLoading, setActionLoading] = useState(false);
 
   const handleEdit = (s: ICSale) => {
+    if (isBranchHandledSale(s) && canBranchEditHandledOrder(s)) {
+      setSelectedSale(s);
+      setModalOpen(true);
+      return;
+    }
     if (!canBranchResubmitOrder(s.orderStatus)) return;
     setSelectedSale(s);
     setModalOpen(true);
@@ -352,6 +361,11 @@ export default function ICTransferBranch() {
                 </div>
                 <div className="text-xs text-slate-500 truncate">{s.address || 'No address'}</div>
                 <div onClick={e => e.stopPropagation()}>
+                  {isBranchHandledSale(s) && isBranchManager && (
+                    <div className="mb-2">
+                      <BranchHandledOrderActions sale={s} branchId={currentBranchId} compact />
+                    </div>
+                  )}
                   <BranchOrderWorkflowActions
                     sale={s}
                     inline
@@ -383,6 +397,11 @@ export default function ICTransferBranch() {
               <BranchOrderStatusCell sale={s} />
             </td>
             <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+              {isBranchHandledSale(s) && isBranchManager && (
+                <div className="mb-1.5">
+                  <BranchHandledOrderActions sale={s} branchId={currentBranchId} compact />
+                </div>
+              )}
               <BranchOrderWorkflowActions
                 sale={s}
                 inline
@@ -407,10 +426,14 @@ export default function ICTransferBranch() {
         sale={selectedSale}
         workflowVariant="branch"
         onEdit={
-          selectedSale && canBranchResubmitOrder(selectedSale.orderStatus)
+          selectedSale && (
+            (isBranchHandledSale(selectedSale) && canBranchEditHandledOrder(selectedSale)) ||
+            canBranchResubmitOrder(selectedSale.orderStatus)
+          )
             ? handleEdit
             : undefined
         }
+        branchId={currentBranchId}
       />
 
       <ConfirmModal

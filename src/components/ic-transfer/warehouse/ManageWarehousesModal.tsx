@@ -8,13 +8,24 @@ import AddUserModal from '@/components/ic-transfer/settings/AddUserModal';
 import { useApp } from '@/context/AppContext';
 import type { ICWarehouse } from '@/types';
 import { ConfirmModal } from '@/components/warehouse/shared';
+import { getICTransferWarehouseBase, type ICTransferPortalMode } from '@/lib/icTransfer/branchPortalScope';
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  portalMode?: ICTransferPortalMode;
+  branchId?: string;
+  /** When set, list is scoped (branch portal). Otherwise uses all icWarehouses from context. */
+  warehouses?: ICWarehouse[];
 };
 
-export default function ManageWarehousesModal({ open, onClose }: Props) {
+export default function ManageWarehousesModal({
+  open,
+  onClose,
+  portalMode = 'admin',
+  branchId,
+  warehouses: warehousesProp,
+}: Props) {
   const { icWarehouses, addICWarehouse, updateICWarehouse, deleteICWarehouse } = useApp();
   const router = useRouter();
   const params = useParams();
@@ -25,9 +36,11 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  const sourceWarehouses = warehousesProp ?? icWarehouses;
+
   const sortedWarehouses = useMemo(
-    () => [...icWarehouses].sort((a, b) => a.name.localeCompare(b.name)),
-    [icWarehouses],
+    () => [...sourceWarehouses].sort((a, b) => a.name.localeCompare(b.name)),
+    [sourceWarehouses],
   );
 
   const openAdd = () => {
@@ -70,6 +83,7 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
         data.email,
         data.address,
         data.sendDeliveryProofToCustomer,
+        branchId ?? null,
       );
     }
     setFormOpen(false);
@@ -86,7 +100,8 @@ export default function ManageWarehousesModal({ open, onClose }: Props) {
 
   const openUsers = (warehouseId: string) => {
     onClose();
-    router.push(`/${branchSlug}/ic-transfer-admin/warehouse/${warehouseId}`);
+    const base = getICTransferWarehouseBase(branchSlug, portalMode);
+    router.push(`${base}/${warehouseId}`);
   };
 
   return (

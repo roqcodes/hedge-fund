@@ -2,6 +2,8 @@
 // HEDGE Capital Management — Type Definitions
 // ═══════════════════════════════════════════════════════════
 
+import type { ICSaleTransactionType } from '@/lib/icTransfer/transactionTypes';
+
 export type UserRole = 'admin' | 'branch_manager' | 'staff' | 'delivery' | 'customer';
 
 /** Per-page access for branch staff (none = hidden, read = view-only, write = full). */
@@ -493,6 +495,8 @@ export interface ICWarehouse {
   email?: string;
   address?: string;
   currentStock?: number;
+  /** When set, warehouse is owned by a branch portal (exclusive to that branch). */
+  branchId?: string;
   /** When true, delivery proof goes straight to customer on agent completion. */
   sendDeliveryProofToCustomer?: boolean;
   createdAt?: string;
@@ -507,6 +511,8 @@ export interface ICRateGroup {
   conversionRate: number;
   customerIds?: string[];
   branchIds?: string[];
+  /** Set when a branch manager creates the group from the branch portal. */
+  createdByBranchId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -546,7 +552,7 @@ export interface ICSale {
   orderCustomerName?: string;
   orderCustomerId?: string;
   warehouseId?: string;
-  transactionType?: string;
+  transactionType?: ICSaleTransactionType;
   units: number;
   unitRate: number;
   convertedAmount?: number;
@@ -572,6 +578,8 @@ export interface ICSale {
   collectedUnits?: number;
   derivedFromSaleId?: string;
   priority?: 'High' | 'Normal' | 'Low';
+  /** Who fulfills the order: HQ admin (default) or branch manager. */
+  fulfillmentHandler?: 'hq_admin' | 'branch';
   deliveryImageUrl?: string;
   createdAt?: string;
 }

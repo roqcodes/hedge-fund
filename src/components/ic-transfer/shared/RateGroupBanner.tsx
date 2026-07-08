@@ -8,10 +8,27 @@ type Props = {
   group: ICRateGroup;
   /** When set, shows this label instead of the rate group name (e.g. branch name for customer portal). */
   displayName?: string;
+  /** Branch portal: show rate values only — no group name or internal labels. */
+  ratesOnly?: boolean;
 };
 
-export default function RateGroupBanner({ group, displayName }: Props) {
+export default function RateGroupBanner({ group, displayName, ratesOnly = false }: Props) {
   const currencyUnitRate = getCurrencyUnitRate(group.saleRate, group.conversionRate || 1);
+
+  if (ratesOnly) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span>
+          <span className="font-semibold text-slate-400 uppercase">AED</span>{' '}
+          <span className="font-bold tabular-nums text-accent">{formatAmount(group.saleRate)}</span>
+        </span>
+        <span>
+          <span className="font-semibold text-slate-400 uppercase">{group.currency}</span>{' '}
+          <span className="font-bold tabular-nums text-indigo-600">{formatAmount(currencyUnitRate)}</span>
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs">

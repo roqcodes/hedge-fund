@@ -26,10 +26,25 @@ export default function BranchPageGuard() {
 
     if (isCustomerRole(user.role)) {
       const customerHome = `/${currentSlug}/ic-transfer`;
-      if (!pageId || pageId !== 'ic-transfer' || !isBranchPageEnabled('ic-transfer', branch.hiddenPages)) {
+      const normalizedPath = pathname.replace(/\/$/, '');
+      const normalizedHome = customerHome.replace(/\/$/, '');
+      if (
+        normalizedPath !== normalizedHome ||
+        !isBranchPageEnabled('ic-transfer', branch.hiddenPages)
+      ) {
         router.replace(customerHome);
       }
       return;
+    }
+
+    if (user.role === 'staff' && pathname.includes('/ic-transfer/')) {
+      const portalBase = `/${currentSlug}/ic-transfer`;
+      const normalizedPath = pathname.replace(/\/$/, '');
+      const normalizedBase = portalBase.replace(/\/$/, '');
+      if (normalizedPath !== normalizedBase && normalizedPath.startsWith(`${normalizedBase}/`)) {
+        router.replace(portalBase);
+        return;
+      }
     }
 
     if (!pageId) return;

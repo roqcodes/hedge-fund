@@ -11,10 +11,14 @@ import { AdminOrderStatusCard, AdminOrderWorkflowActions } from './AdminOrderWor
 import { BranchOrderStatusCard, BranchOrderWorkflowActions } from './BranchOrderStatusCell';
 import { ByHandAdminNotice } from './ByHandAdminActions';
 import { isByHandSale, canAdminCompleteByHand, canAdminReopenByHand } from '@/lib/icTransfer/byHand';
+import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
+import BranchHandledOrderActions, { BranchHandledOrderNotice } from './BranchHandledOrderActions';
+import { WorkflowNotice } from './orderWorkflow';
 
 type Props = {
   sale: ICSale;
   variant: 'admin' | 'branch';
+  branchId?: string;
   onUpdated?: () => void;
   onResubmit?: (sale: ICSale) => void;
 };
@@ -29,8 +33,9 @@ function hasAdminActions(sale: ICSale) {
 }
 
 /** Status card + workflow actions for sale detail modals. */
-export default function SaleOrderWorkflowSection({ sale, variant, onUpdated, onResubmit }: Props) {
-  const actionKey = `${sale.id}-${sale.orderStatus}-${sale.rejectionRemarks ?? ''}`;
+export default function SaleOrderWorkflowSection({ sale, variant, branchId, onUpdated, onResubmit }: Props) {
+  const actionKey = `${sale.id}-${sale.orderStatus}-${sale.rejectionRemarks ?? ''}-${sale.fulfillmentHandler ?? 'hq_admin'}`;
+  const branchHandled = isBranchHandledSale(sale);
 
   return (
     <div
@@ -47,7 +52,11 @@ export default function SaleOrderWorkflowSection({ sale, variant, onUpdated, onR
         )}
 
         {variant === 'admin' ? (
-          hasAdminActions(sale) ? (
+          branchHandled ? (
+            <WorkflowNotice variant="info" title="View only">
+              This order is managed by the branch. HQ admin cannot modify status, warehouse, or details.
+            </WorkflowNotice>
+          ) : hasAdminActions(sale) ? (
             <>
               {isByHandSale(sale) ? <ByHandAdminNotice sale={sale} /> : null}
               <AdminOrderWorkflowActions
@@ -60,6 +69,22 @@ export default function SaleOrderWorkflowSection({ sale, variant, onUpdated, onR
           ) : (
             <p className="text-xs text-slate-500">No admin actions available for this order status.</p>
           )
+        ) : branchHandled ? (
+          <>
+            <BranchHandledOrderNotice sale={sale} />
+            <BranchHandledOrderActions
+              key={actionKey}
+              sale={sale}
+              branchId={branchId}
+              onUpdated={onUpdated}
+              compact={false}
+            />
+            <BranchOrderWorkflowActions
+              sale={sale}
+              onResubmit={onResubmit}
+              compact={false}
+            />
+          </>
         ) : (
           <BranchOrderWorkflowActions
             key={actionKey}

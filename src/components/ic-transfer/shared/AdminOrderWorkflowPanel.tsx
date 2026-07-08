@@ -36,6 +36,7 @@ import {
 } from './orderWorkflow';
 import ByHandAdminActions, { ByHandAdminNotice } from './ByHandAdminActions';
 import { isByHandSale } from '@/lib/icTransfer/byHand';
+import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import { canPerformICTransferAdminActions } from '@/lib/rbac';
 import { btnPrimary, btnSecondary, formSelect } from '@/lib/ui';
 
@@ -184,8 +185,9 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
   const showResolveCancel = canAdminResolveCancellation(sale.orderStatus);
   const showVerifyDelivery = canAdminVerifyDelivery(sale.orderStatus);
   const showByHandActions = isByHandSale(sale);
+  const branchHandled = isBranchHandledSale(sale);
   const hasStandardActions = showAccept || showReject || showReassign || showResolveCancel || showVerifyDelivery;
-  const hasActions = canPerformICTransferAdminActions(user) && (hasStandardActions || showByHandActions);
+  const hasActions = canPerformICTransferAdminActions(user) && !branchHandled && (hasStandardActions || showByHandActions);
 
   if (!hasActions) return null;
 

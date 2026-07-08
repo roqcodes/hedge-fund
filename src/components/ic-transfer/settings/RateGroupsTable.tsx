@@ -15,6 +15,7 @@ type Props = {
   onView: (group: ICRateGroup) => void;
   onEdit: (group: ICRateGroup) => void;
   onDelete: (group: ICRateGroup) => void;
+  hideBranchColumn?: boolean;
 };
 
 const STALE_ROW_CLASS =
@@ -25,32 +26,37 @@ export default function RateGroupsTable({
   onView,
   onEdit,
   onDelete,
+  hideBranchColumn = false,
 }: Props) {
   if (groups.length === 0) {
     return (
       <div className="px-4 py-12 text-center text-sm text-slate-400 md:px-6">
-        No rate groups yet. Create one to get started.
+        {hideBranchColumn
+          ? 'No customer rate groups yet. Create one and assign your customers.'
+          : 'No rate groups yet. Create one to get started.'}
       </div>
     );
   }
+
+  const columns = [
+    'Group',
+    'Country',
+    'Currency',
+    'Sale Rate',
+    'Conversion',
+    'Converted Rate',
+    'Last Updated',
+    ...(hideBranchColumn ? [] : ['Branches']),
+    'Customers',
+    'Actions',
+  ];
 
   return (
     <div className={tableWrap}>
       <table className={`${dataTable} min-w-[1120px]`}>
         <thead>
           <tr>
-            {[
-              'Group',
-              'Country',
-              'Currency',
-              'Sale Rate',
-              'Conversion',
-              'Converted Rate',
-              'Last Updated',
-              'Branches',
-              'Customers',
-              'Actions',
-            ].map(col => (
+            {columns.map(col => (
               <th key={col} className={icThClass(col === 'Actions' ? 'center' : 'left')}>
                 {col}
               </th>
@@ -103,9 +109,11 @@ export default function RateGroupsTable({
                 <td className={`border-y border-black/5 px-3 py-3.5 text-sm sm:px-4 sm:py-4 ${cellBg} ${stale ? 'font-medium text-orange-800' : 'text-slate-500'}`}>
                   {formatRateGroupUpdatedAt(group.updatedAt)}
                 </td>
+                {!hideBranchColumn && (
                 <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
                   {branchCount}
                 </td>
+                )}
                 <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
                   {customerCount}
                 </td>

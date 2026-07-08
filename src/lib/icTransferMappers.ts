@@ -31,6 +31,7 @@ export function mapICWarehouseRow(row: any): ICWarehouse {
     regionId: row.region_id,
     email: row.email,
     address: row.address,
+    branchId: row.branch_id ?? undefined,
     currentStock: row.current_stock != null ? parseFloat(row.current_stock) : 0,
     sendDeliveryProofToCustomer: row.send_delivery_proof_to_customer !== false,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
@@ -47,6 +48,7 @@ export function mapICRateGroupRow(row: any): ICRateGroup {
     conversionRate: row.conversion_rate ? parseFloat(row.conversion_rate) : 1,
     customerIds: row.customer_ids || [],
     branchIds: row.branch_ids || [],
+    createdByBranchId: row.created_by_branch_id ?? undefined,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };
@@ -102,6 +104,7 @@ export function mapICSaleRow(row: any): ICSale {
     collectedUnits: row.collected_units != null ? parseFloat(row.collected_units) : undefined,
     derivedFromSaleId: row.derived_from_sale_id || undefined,
     priority: row.priority || undefined,
+    fulfillmentHandler: row.fulfillment_handler === 'branch' ? 'branch' : 'hq_admin',
     deliveryImageUrl: row.delivery_image_url || undefined,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
   };

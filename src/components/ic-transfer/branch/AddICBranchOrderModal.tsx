@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
@@ -11,10 +11,16 @@ import { normalizeHiddenPages } from '@/lib/branchPages';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { ICSale } from '@/types';
 import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
+import { canBranchEditHandledOrder, isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
+import { branchUpdateHandledICSaleAction } from '@/app/actions/icTransferActions';
 import { hasICSaleEditableFieldsChanged, type ICSaleContentFields } from '@/lib/icTransfer/saleChanges';
 import { WorkflowNotice } from '../shared/orderWorkflow';
 import RateGroupBanner from '../shared/RateGroupBanner';
+import CopyOrderDetailsButton from '../shared/CopyOrderDetailsButton';
+import TransactionTypeSelector from '../shared/TransactionTypeSelector';
 import { computeICSaleAmounts, resolveApplicableRateGroup, formatAmount } from '@/lib/icTransfer/rateCalculations';
+import { DEFAULT_IC_SALE_TRANSACTION_TYPE, type ICSaleTransactionType } from '@/lib/icTransfer/transactionTypes';
+import { resolveBranchPortalOrderRate } from '@/lib/icTransfer/branchRateScope';
 
 type Props = {
   open: boolean;
@@ -30,12 +36,13 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
 );
 
 export default function AddICBranchOrderModal({ open, onClose, initialData }: Props) {
-  const { addICSale, resubmitICSale, branches, currentSlug, icRateGroups, user } = useApp();
+  const { addICSale, resubmitICSale, branches, currentSlug, icRateGroups, user, showToast } = useApp();
   const isCustomer = isCustomerRole(user?.role);
+  const isBranchManager = user?.role === 'branch_manager';
   const linkedCustomerId = user?.customerId;
   const linkedCustomerName = user?.name;
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
-  const [transactionType, setTransactionType] = useState(initialData?.transactionType || 'transfer');
+  const [transactionType, setTransactionType] = useState(initialData?.transactionType || DEFAULT_IC_SALE_TRANSACTION_TYPE);
   const [bank, setBank] = useState(initialData?.bank || '');
   const [address, setAddress] = useState(initialData?.address || '');
   const [location, setLocation] = useState(initialData?.location || '');
@@ -51,6 +58,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     ICSaleContentFields,
     'units' | 'transactionType' | 'address' | 'location' | 'district' | 'imageUrl' | 'bank'
   > | null>(null);
+  const [handleAtBranch, setHandleAtBranch] = useState(false);
 
   // Cloudinary credentials from env
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'finite-x-reality';
@@ -66,12 +74,52 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const branchHiddenPages = normalizeHiddenPages(currentBranch?.hiddenPages);
   const recordCustomerUnderBranch = isCustomer && shouldRecordCustomerOrderUnderBranch(branchHiddenPages);
 
-  const applicableGroup = resolveApplicableRateGroup(icRateGroups, {
-    branchId: currentBranchId,
-    customerId: isCustomer
-      ? (recordCustomerUnderBranch ? undefined : linkedCustomerId)
-      : (selectedCustomerId || undefined),
-  });
+  const branchCustomerIdSet = useMemo(
+    () => new Set(customers.map(c => c.id)),
+    [customers],
+  );
+
+  const orderRateContext = useMemo(() => {
+    if (initialData?.fulfillmentHandler === 'branch') return 'branch-handled' as const;
+    if (initialData?.fulfillmentHandler === 'hq_admin') return 'admin-handled' as const;
+    if (isBranchManager && handleAtBranch) return 'branch-handled' as const;
+    return 'admin-handled' as const;
+  }, [initialData?.fulfillmentHandler, isBranchManager, handleAtBranch]);
+
+  const resolvedCustomerId = isCustomer
+    ? (recordCustomerUnderBranch ? undefined : linkedCustomerId)
+    : (selectedCustomerId || undefined);
+
+  const applicableGroup = useMemo(() => {
+    if (isCustomer) {
+      return resolveApplicableRateGroup(icRateGroups, {
+        branchId: currentBranchId,
+        customerId: resolvedCustomerId,
+      });
+    }
+    if (isBranchManager || user?.role === 'staff') {
+      return resolveBranchPortalOrderRate(icRateGroups, {
+        branchId: currentBranchId,
+        customerId: selectedCustomerId || undefined,
+        branchCustomerIds: branchCustomerIdSet,
+        rateContext: orderRateContext,
+      });
+    }
+    return resolveApplicableRateGroup(icRateGroups, {
+      branchId: currentBranchId,
+      customerId: selectedCustomerId || undefined,
+    });
+  }, [
+    icRateGroups,
+    currentBranchId,
+    resolvedCustomerId,
+    isCustomer,
+    isBranchManager,
+    user?.role,
+    selectedCustomerId,
+    branchCustomerIdSet,
+    orderRateContext,
+  ]);
 
   const groupConversionRate = applicableGroup?.conversionRate || 1;
   const groupCurrency = applicableGroup?.currency || 'Currency';
@@ -89,7 +137,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   useEffect(() => {
     if (open) {
       setUnits(initialData?.units?.toString() || '');
-      setTransactionType(initialData?.transactionType || 'transfer');
+      setTransactionType(initialData?.transactionType || DEFAULT_IC_SALE_TRANSACTION_TYPE);
       setBank(initialData?.bank || '');
       setAddress(initialData?.address || '');
       setLocation(initialData?.location || '');
@@ -107,7 +155,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       if (initialData && canBranchResubmitOrder(initialData.orderStatus)) {
         setEditBaseline({
           units: initialData.units,
-          transactionType: initialData.transactionType || 'transfer',
+          transactionType: initialData.transactionType || DEFAULT_IC_SALE_TRANSACTION_TYPE,
           address: initialData.address,
           location: initialData.location,
           district: initialData.district,
@@ -117,6 +165,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       } else {
         setEditBaseline(null);
       }
+      setHandleAtBranch(initialData?.fulfillmentHandler === 'branch');
     }
   }, [open, initialData, isCustomer, linkedCustomerId, linkedCustomerName]);
 
@@ -171,12 +220,16 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate, serviceChargeNum);
 
   const isResubmitMode = !!initialData && canBranchResubmitOrder(initialData.orderStatus);
+  const isBranchHandledEdit =
+    !!initialData && isBranchHandledSale(initialData) && canBranchEditHandledOrder(initialData);
 
   const isByHand = transactionType === 'by_hand';
 
-  const handleTransactionTypeChange = (value: string) => {
+  const handleTransactionTypeChange = (value: ICSaleTransactionType) => {
     setTransactionType(value);
-    if (value !== 'by_hand') {
+    if (value === 'by_hand') {
+      setBank('');
+    } else {
       setLocation('');
       setDistrict('');
     }
@@ -201,7 +254,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     units: unitNum,
     convertedAmount: amounts.currencyTotal,
     aedAmount: amounts.aedNetTotal,
-    bank: bank || undefined,
+    bank: isByHand ? undefined : (bank || undefined),
     address: address || undefined,
     location: isByHand ? location.trim() || undefined : undefined,
     district: isByHand ? district.trim() || undefined : undefined,
@@ -209,6 +262,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     serviceCharge: serviceChargeNum,
     conversionRate: groupConversionRate,
     currency: groupCurrency,
+    fulfillmentHandler: handleAtBranch ? ('branch' as const) : ('hq_admin' as const),
   };
 
   const contentPayload = {
@@ -216,7 +270,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     transactionType,
     convertedAmount: amounts.currencyTotal,
     aedAmount: amounts.aedNetTotal,
-    bank: bank || undefined,
+    bank: isByHand ? undefined : (bank || undefined),
     address: address || undefined,
     location: isByHand ? location.trim() || undefined : undefined,
     district: isByHand ? district.trim() || undefined : undefined,
@@ -234,7 +288,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     district: isByHand ? district.trim() || undefined : undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
-    bank: bank || undefined,
+    bank: isByHand ? undefined : (bank || undefined),
   };
 
   const canResubmit =
@@ -246,7 +300,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     !unitNum ||
     !rateNum ||
     (!initialData && !trimmedCustomer && !isCustomer) ||
-    (isResubmitMode && !canResubmit);
+    (isResubmitMode && !canResubmit && !isBranchHandledEdit);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -255,6 +309,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
 
     if (initialData && isResubmitMode) {
       await resubmitICSale(initialData.id, contentPayload, currentSlug);
+    } else if (initialData && isBranchHandledEdit) {
+      await branchUpdateHandledICSaleAction(initialData.id, contentPayload, currentSlug);
     } else if (!initialData) {
       await addICSale(payload);
     }
@@ -269,7 +325,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       onClose={onClose}
       title={
         <div className="flex flex-col gap-0.5">
-          <span>{isResubmitMode ? 'Edit & Resubmit Order' : 'Create Transfer Order'}</span>
+          <span>{isBranchHandledEdit ? 'Edit Branch Order' : isResubmitMode ? 'Edit & Resubmit Order' : 'Create Transfer Order'}</span>
           <span className="text-xs font-semibold text-accent">
             {isCustomer
               ? (recordCustomerUnderBranch ? branchName : (linkedCustomerName || 'Customer'))
@@ -290,7 +346,9 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           >
             {isSubmitting
               ? 'Saving...'
-              : isResubmitMode
+              : isBranchHandledEdit
+                ? 'Save Changes'
+                : isResubmitMode
                 ? 'Save & Resend to Admin'
                 : 'Create Order'}
           </button>
@@ -310,7 +368,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
         {applicableGroup && (
           <RateGroupBanner
             group={applicableGroup}
-            displayName={recordCustomerUnderBranch ? branchName : undefined}
+            displayName={isCustomer && recordCustomerUnderBranch ? branchName : undefined}
+            ratesOnly={isBranchManager || user?.role === 'staff'}
           />
         )}
 
@@ -352,15 +411,17 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
               </p>
             </InputField>
 
-            <InputField label="Bank">
-              <input 
-                type="text"
-                className={formInput} 
-                value={bank} 
-                onChange={e => setBank(e.target.value)} 
-                placeholder="Enter bank name"
-              />
-            </InputField>
+            {!isByHand ? (
+              <InputField label="Bank">
+                <input 
+                  type="text"
+                  className={formInput} 
+                  value={bank} 
+                  onChange={e => setBank(e.target.value)} 
+                  placeholder="Enter bank name"
+                />
+              </InputField>
+            ) : null}
 
             <InputField label="Address / Description">
               <textarea 
@@ -396,7 +457,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
             ) : null}
 
             <InputField label="Captured Image">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-3">
                 {imageUrl ? (
                   <div className="relative w-20 h-20 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden group shrink-0">
                     <img src={imageUrl} alt="Captured proof" className="w-full h-full object-cover" />
@@ -409,21 +470,29 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                     </button>
                   </div>
                 ) : (
-                  <label className="w-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 text-slate-400 hover:bg-slate-100/50 cursor-pointer transition-colors">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1 opacity-70">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <span className="text-xs font-semibold">{isUploading ? 'Uploading...' : 'Upload Image'}</span>
-                    <input
-                      type="file"
-                      accept="image/png, image/jpeg, image/webp"
-                      className="hidden"
-                      onChange={handleImageUpload}
-                      disabled={isUploading}
+                  <>
+                    <label className="w-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 text-slate-400 hover:bg-slate-100/50 cursor-pointer transition-colors">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1 opacity-70">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      <span className="text-xs font-semibold">{isUploading ? 'Uploading...' : 'Upload Image'}</span>
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/webp"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                        disabled={isUploading}
+                      />
+                    </label>
+                    <CopyOrderDetailsButton
+                      address={address}
+                      units={unitNum}
+                      onCopySuccess={() => showToast('Details copied')}
+                      onCopyError={msg => showToast(msg, 'error')}
                     />
-                  </label>
+                  </>
                 )}
               </div>
             </InputField>
@@ -433,54 +502,64 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           <div className="space-y-4 lg:col-span-7 lg:border-l lg:pl-6 lg:border-slate-100">
             <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Transaction Details</h3>
             
-            <InputField label="Transaction Type">
-              <div className="flex rounded-xl bg-slate-100 p-1 w-full border border-slate-200/50 h-[46px] sm:h-[54px] items-stretch gap-1">
-                {[
-                  { value: 'transfer', label: 'Transfer' },
-                  { value: 'cdm', label: 'CDM' },
-                  { value: 'by_hand', label: 'By Hand' }
-                ].map(opt => {
-                  const isActive = transactionType === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => handleTransactionTypeChange(opt.value)}
-                      className={`flex-1 text-center text-xs font-semibold rounded-lg transition-all flex items-center justify-center ${
-                        isActive 
-                          ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-bold' 
-                          : 'text-slate-500 hover:text-slate-800'
+            <div className="flex flex-col gap-4">
+              {isBranchManager && !isCustomer && !isResubmitMode && !isBranchHandledEdit && (
+                <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                  <div className="min-w-0">
+                    <span className="text-xs font-semibold text-slate-800">Handle at branch</span>
+                    <p className="text-[10px] text-slate-500">Off = send to admin (admin rate applies)</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={handleAtBranch}
+                    onClick={() => setHandleAtBranch(prev => !prev)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
+                      handleAtBranch ? 'bg-accent' : 'bg-slate-200'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block size-5 translate-y-0.5 rounded-full bg-white shadow transition-transform ${
+                        handleAtBranch ? 'translate-x-[22px]' : 'translate-x-0.5'
                       }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
+                    />
+                  </button>
+                </label>
+              )}
+
+              <div className="order-2 md:order-1">
+                <InputField label="Transaction Type">
+                  <TransactionTypeSelector
+                    value={transactionType}
+                    onChange={handleTransactionTypeChange}
+                    disabled={isSubmitting}
+                  />
+                </InputField>
               </div>
-            </InputField>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputField label="Order Units">
-                <input 
-                  className={formInput} 
-                  value={units} 
-                  onChange={e => setUnits(e.target.value)} 
-                  type="number" 
-                  step="0.01" 
-                  placeholder="Enter units quantity"
-                  required
-                />
-              </InputField>
+              <div className="order-1 md:order-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InputField label="Order Units">
+                  <input 
+                    className={formInput} 
+                    value={units} 
+                    onChange={e => setUnits(e.target.value)} 
+                    type="number" 
+                    step="0.01" 
+                    placeholder="Enter units quantity"
+                    required
+                  />
+                </InputField>
 
-              <InputField label={`Unit Rate (${groupCurrency}) (Locked)`}>
-                <input 
-                  className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`} 
-                  value={amounts.currencyUnitRate} 
-                  disabled 
-                  readOnly 
-                  type="number" 
-                />
-              </InputField>
+                <InputField label={`Unit Rate (${groupCurrency}) (Locked)`}>
+                  <input 
+                    className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`} 
+                    value={amounts.currencyUnitRate} 
+                    disabled 
+                    readOnly 
+                    type="number" 
+                  />
+                </InputField>
+              </div>
             </div>
 
              <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>

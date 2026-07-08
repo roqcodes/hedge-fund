@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import ICTransferDateFilterBar from '@/components/ic-transfer/shared/ICTransferDateFilterBar';
 import { useICTransferRegionFilter } from '@/components/ic-transfer/shared/ICTransferFilterProvider';
 import { matchesSelectedRegions } from '@/lib/icTransfer/regionFilter';
@@ -9,14 +9,17 @@ import { useApp } from '@/context/AppContext';
 import {
   AddButton,
   DataTableSection,
-  ExportButtons,
   PageHeader,
   PageShell,
-  SectionCard,
   useICTransferFilters,
 } from '../ui';
 import KPICard from '@/components/ui/KPICard';
 import { portalKpiGrid, portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
+import {
+  filterPurchasesForBranchPortal,
+  filterWarehousesForBranchPortal,
+  type ICTransferPortalMode,
+} from '@/lib/icTransfer/branchPortalScope';
 import AddPurchaseModal from './AddPurchaseModal';
 import ViewPurchaseModal from './ViewPurchaseModal';
 import { ICPurchase } from '@/types';
@@ -29,8 +32,24 @@ const PURCHASE_COLUMNS = [
   'Date', 'ID', 'Supplier', 'Units', 'Total AED', 'Status', 'Actions'
 ];
 
-export default function ICTransferPurchase() {
-  const { icPurchases, icSuppliers, icWarehouses, updateICPurchase } = useApp();
+type Props = {
+  portalMode?: ICTransferPortalMode;
+  branchId?: string;
+};
+
+export default function ICTransferPurchase({ portalMode = 'admin', branchId }: Props) {
+  const { icPurchases, icSuppliers, icWarehouses } = useApp();
+  const isBranchPortal = portalMode === 'branch' && !!branchId;
+
+  const scopedWarehouses = useMemo(() => {
+    if (!isBranchPortal) return icWarehouses;
+    return filterWarehousesForBranchPortal(icWarehouses, branchId!);
+  }, [icWarehouses, isBranchPortal, branchId]);
+
+  const scopedPurchases = useMemo(() => {
+    if (!isBranchPortal) return icPurchases;
+    return filterPurchasesForBranchPortal(icPurchases, icWarehouses, branchId!);
+  }, [icPurchases, icWarehouses, isBranchPortal, branchId]);
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -46,9 +65,8 @@ export default function ICTransferPurchase() {
   } = useICTransferFilters();
 
   const getSupplierName = (id: string) => icSuppliers.find(s => s.id === id)?.name || id;
-  const getWarehouseName = (id: string) => icWarehouses.find(w => w.id === id)?.name || id;
 
-  const filteredPurchases = icPurchases.filter(p => {
+  const filteredPurchases = scopedPurchases.filter(p => {
     const formattedId = getFormattedTxnId(p.id, 'purchase', p);
     if (search && 
         !formattedId.toLowerCase().includes(search.toLowerCase()) && 
@@ -79,7 +97,7 @@ export default function ICTransferPurchase() {
   const { purchaseColumns, matrixRows } = React.useMemo(() => {
     const columns = ['Purchase Vol', 'Purchase Rate', 'Due Vol', 'Due Rate'];
     const mRows = icSuppliers.map(s => {
-       const supplierPurchases = icPurchases.filter(p => p.supplierId === s.id);
+       const supplierPurchases = scopedPurchases.filter(p => p.supplierId === s.id);
        const vol = supplierPurchases.reduce((acc, p) => acc + p.units, 0);
        const rate = supplierPurchases.length > 0 ? supplierPurchases[0].unitRate : 0;
        return {
@@ -93,13 +111,17 @@ export default function ICTransferPurchase() {
        };
     });
     return { purchaseColumns: columns, matrixRows: mRows };
-  }, [icSuppliers, icPurchases]);
+  }, [icSuppliers, scopedPurchases]);
 
   return (
     <PageShell>
       <PageHeader
         title="Purchase"
-        subtitle="Track purchase orders across suppliers"
+        subtitle={
+          isBranchPortal
+            ? 'Record stock purchases into your branch warehouses'
+            : 'Track purchase orders across suppliers'
+        }
         actions={<AddButton label="Add Purchase" onClick={() => setModalOpen(true)} />}
       />
 
@@ -263,7 +285,9 @@ export default function ICTransferPurchase() {
       <AddPurchaseModal 
         open={modalOpen} 
         onClose={() => { setModalOpen(false); setSelectedPurchase(null); }} 
-        initialData={selectedPurchase || undefined} 
+        initialData={selectedPurchase || undefined}
+        branchId={isBranchPortal ? branchId : undefined}
+        warehouses={isBranchPortal ? scopedWarehouses : undefined}
       />
       <ViewPurchaseModal
         open={viewModalOpen}

@@ -4,15 +4,18 @@ import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { btnPrimary, btnSecondary, formInput, formSelect } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
-import { ICPurchase } from '@/types';
+import { ICPurchase, ICWarehouse } from '@/types';
 import RateGroupBanner from '../shared/RateGroupBanner';
 import ICSaleAmountCards from '../shared/ICSaleAmountCards';
 import { computeICSaleAmounts, resolveApplicableRateGroup } from '@/lib/icTransfer/rateCalculations';
+import { getAdminAssignedBranchRateGroup } from '@/lib/icTransfer/branchRateScope';
 
 type Props = {
   open: boolean;
   onClose: () => void;
   initialData?: ICPurchase;
+  branchId?: string;
+  warehouses?: ICWarehouse[];
 };
 
 const InputField = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -22,8 +25,9 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
   </div>
 );
 
-export default function AddPurchaseModal({ open, onClose, initialData }: Props) {
+export default function AddPurchaseModal({ open, onClose, initialData, branchId, warehouses }: Props) {
   const { icSuppliers, icWarehouses, addICPurchase, updateICPurchase, icPurchases, icRateGroups, user } = useApp();
+  const warehouseOptions = warehouses ?? icWarehouses;
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [supplierId, setSupplierId] = useState(initialData?.supplierId || '');
@@ -33,10 +37,12 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
   const [now, setNow] = useState<Date | null>(null);
 
   const selectedSupplierId = icSuppliers.find(s => s.id === supplierId || s.name === supplierId)?.id;
-  const applicableGroup = resolveApplicableRateGroup(icRateGroups, {
-    branchId: user?.branchId,
-    customerId: selectedSupplierId,
-  });
+  const applicableGroup = branchId
+    ? getAdminAssignedBranchRateGroup(icRateGroups, branchId)
+    : resolveApplicableRateGroup(icRateGroups, {
+        branchId: user?.branchId,
+        customerId: selectedSupplierId,
+      });
 
   const groupConversionRate = applicableGroup?.conversionRate || 1;
   const groupCurrency = applicableGroup?.currency || 'Currency';
@@ -71,7 +77,7 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
     const payload = {
       supplierId,
       warehouseId,
-      locationId: icWarehouses.find(w => w.id === warehouseId)?.regionId || undefined,
+      locationId: warehouseOptions.find(w => w.id === warehouseId)?.regionId || undefined,
       unitRate: rateNum,
       units: unitNum,
       notes,
@@ -105,7 +111,9 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
       }
     >
       <form id="ic-purchase-form" onSubmit={handleSubmit} className="space-y-5">
-        {applicableGroup && <RateGroupBanner group={applicableGroup} />}
+        {applicableGroup && (
+          <RateGroupBanner group={applicableGroup} ratesOnly={!!branchId} />
+        )}
 
         <div className="mb-4 flex flex-wrap gap-4 text-xs text-slate-500 font-semibold uppercase tracking-wider">
           <span className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
@@ -139,12 +147,18 @@ export default function AddPurchaseModal({ open, onClose, initialData }: Props) 
             </InputField>
 
             <InputField label="Warehouse">
-              <select className={formSelect} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required>
-                <option value="" disabled>Select Warehouse</option>
-                {icWarehouses.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
+              {warehouseOptions.length === 0 ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  No branch warehouses configured. Add one from IC Transfer → Warehouse.
+                </p>
+              ) : (
+                <select className={formSelect} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required>
+                  <option value="" disabled>Select Warehouse</option>
+                  {warehouseOptions.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              )}
             </InputField>
 
             {warehouseId && supplierId && (

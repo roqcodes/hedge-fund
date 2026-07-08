@@ -29,11 +29,13 @@ import {
 } from '@/lib/icTransfer/saleChanges';
 import { normalizeOrderStatus } from '@/lib/icTransfer/orderStatus';
 import { isByHandSale } from '@/lib/icTransfer/byHand';
+import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import { isBranchPortalRole } from '@/lib/rbac';
 import { normalizeHiddenPages } from '@/lib/branchPages';
 import {
   customerOwnsSale,
   isBranchSubmittedSale,
+  saleBelongsToBranchPortal,
   shouldRecordCustomerOrderUnderBranch,
 } from '@/lib/icTransfer/branchOrderOwnership';
 import { logger } from '@/lib/logger';
@@ -89,6 +91,7 @@ const SALE_COLUMNS: Record<string, string> = {
   serviceCharge: 'service_charge',
   collectedUnits: 'collected_units',
   priority: 'priority',
+  fulfillmentHandler: 'fulfillment_handler',
   paymentStatus: 'payment_status',
   orderStatus: 'order_status',
   rejectionRemarks: 'rejection_remarks',
@@ -241,6 +244,7 @@ export async function dbAddICWarehouseAction(
   email?: string,
   address?: string,
   sendDeliveryProofToCustomer: boolean = true,
+  branchId?: string | null,
 ): Promise<DbActionResult<ICWarehouse>> {
   try {
     const parsed = addWarehouseSchema.parse({
@@ -251,12 +255,13 @@ export async function dbAddICWarehouseAction(
       email,
       address,
       sendDeliveryProofToCustomer,
+      branchId,
     });
     const id = crypto.randomUUID();
     const res = await query(
       `INSERT INTO ic_warehouses (
-         id, name, phone, commission, region_id, email, address, send_delivery_proof_to_customer
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+         id, name, phone, commission, region_id, email, address, send_delivery_proof_to_customer, branch_id
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [
         id,
         parsed.name,
@@ -266,6 +271,7 @@ export async function dbAddICWarehouseAction(
         parsed.email || null,
         parsed.address || null,
         parsed.sendDeliveryProofToCustomer ?? true,
+        parsed.branchId || null,
       ],
     );
     return { success: true, data: mapICWarehouseRow(res.rows[0]) };
@@ -333,14 +339,44 @@ export async function dbDeleteICWarehouseAction(id: string): Promise<DbActionRes
 }
 
 export async function dbAddICRateGroupAction(
-  name: string, country: string, currency: string, saleRate: number, conversionRate: number
+  name: string,
+  country: string,
+  currency: string,
+  saleRate: number,
+  conversionRate: number,
+  createdByBranchId?: string,
+  branchSlug?: string,
 ): Promise<DbActionResult<import('@/types').ICRateGroup>> {
   try {
-    const parsed = addRateGroupSchema.parse({ name, country, currency, saleRate, conversionRate });
+    const parsed = addRateGroupSchema.parse({
+      name,
+      country,
+      currency,
+      saleRate,
+      conversionRate,
+      createdByBranchId,
+    });
+
+    if (parsed.createdByBranchId) {
+      const user = await resolveICTransferAdminUser(branchSlug);
+      if (!user || user.role !== 'branch_manager' || user.branchId !== parsed.createdByBranchId) {
+        return { success: false, error: 'Unauthorized' };
+      }
+    }
+
     const id = crypto.randomUUID();
     const res = await query(
-      `INSERT INTO ic_rate_groups (id, name, country, currency, sale_rate, conversion_rate) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [id, parsed.name, parsed.country, parsed.currency, parsed.saleRate, parsed.conversionRate]
+      `INSERT INTO ic_rate_groups (id, name, country, currency, sale_rate, conversion_rate, created_by_branch_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [
+        id,
+        parsed.name,
+        parsed.country,
+        parsed.currency,
+        parsed.saleRate,
+        parsed.conversionRate,
+        parsed.createdByBranchId ?? null,
+      ],
     );
     return { success: true, data: mapICRateGroupRow(res.rows[0]) };
   } catch (error: unknown) {
@@ -491,10 +527,14 @@ export async function dbSetICRateGroupBranchesAction(groupId: string, branchIds:
 }
 
 export async function dbAddICPurchaseAction(
-  purchase: Omit<ICPurchase, 'id' | 'createdAt'>
+  purchase: Omit<ICPurchase, 'id' | 'createdAt'>,
+  branchSlug?: string,
 ): Promise<DbActionResult<ICPurchase>> {
   try {
     const parsed = addPurchaseSchema.parse(purchase);
+    const warehouseCheck = await assertBranchManagerPurchaseWarehouse(parsed.warehouseId, branchSlug);
+    if (warehouseCheck) return { success: false, error: warehouseCheck.error };
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -590,6 +630,9 @@ export async function dbAddICSaleAction(
         ...salePayload,
         customerName: branchName,
       };
+      if (user.role !== 'branch_manager') {
+        salePayload = { ...salePayload, fulfillmentHandler: 'hq_admin' };
+      }
     }
 
     const { enteredBy, enteredByName, enteredByUserId } = await resolveEnteredByForBranch(branchSlug);
@@ -600,8 +643,8 @@ export async function dbAddICSaleAction(
       const res = await client.query(
         `INSERT INTO ic_sales (
           customer_name, order_customer_name, order_customer_id, warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
-          entered_by, entered_by_name, entered_by_user_id, address, location, district, image_url, service_charge, order_status, priority, bank, conversion_rate, currency
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) RETURNING *`,
+          entered_by, entered_by_name, entered_by_user_id, address, location, district, image_url, service_charge, order_status, priority, bank, conversion_rate, currency, fulfillment_handler
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING *`,
         [
           salePayload.customerName,
           salePayload.orderCustomerName || null,
@@ -625,6 +668,7 @@ export async function dbAddICSaleAction(
           salePayload.bank || null,
           salePayload.conversionRate ?? 1.0,
           salePayload.currency || 'AED',
+          salePayload.fulfillmentHandler === 'branch' ? 'branch' : 'hq_admin',
         ]
       );
       await client.query('COMMIT');
@@ -644,11 +688,24 @@ export async function dbAddICSaleAction(
 
 export async function dbUpdateICPurchaseAction(
   id: string,
-  updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>
+  updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>,
+  branchSlug?: string,
 ): Promise<DbActionResult<ICPurchase>> {
   try {
     const parsedId = z.string().min(1).parse(id);
     const parsedUpdates = updatePurchaseSchema.parse(updates);
+
+    const modifyCheck = await assertBranchManagerCanModifyPurchase(parsedId, branchSlug);
+    if (modifyCheck) return { success: false, error: modifyCheck.error };
+
+    if (parsedUpdates.warehouseId) {
+      const warehouseCheck = await assertBranchManagerPurchaseWarehouse(
+        parsedUpdates.warehouseId,
+        branchSlug,
+      );
+      if (warehouseCheck) return { success: false, error: warehouseCheck.error };
+    }
+
     const client = await pool.connect();
     try {
       const keys = Object.keys(parsedUpdates);
@@ -693,6 +750,15 @@ export async function dbUpdateICSaleAction(
 ): Promise<DbActionResult<ICSale>> {
   try {
     const parsedId = z.string().min(1).parse(id);
+    const existing = await fetchICSaleById(parsedId);
+    if (!existing) return { success: false, error: 'Sale not found' };
+    if (isBranchHandledSale(existing) && updates.fulfillmentHandler !== 'hq_admin') {
+      return {
+        success: false,
+        error: 'This order is managed by the branch. Admin has view-only access.',
+      };
+    }
+
     const parsedUpdates = updateSaleSchema.parse(updates);
     const client = await pool.connect();
     try {
@@ -784,12 +850,16 @@ export async function dbDeleteICSaleAction(id: string): Promise<DbActionResult<n
 
       // Block deletion of completed orders to protect financial records
       const saleRes = await client.query(
-        `SELECT order_status FROM ic_sales WHERE id = $1`,
+        `SELECT order_status, fulfillment_handler FROM ic_sales WHERE id = $1`,
         [parsedId]
       );
       if (saleRes.rows.length === 0) {
         await client.query('ROLLBACK');
         return { success: false, error: 'Sale not found' };
+      }
+      if (saleRes.rows[0].fulfillment_handler === 'branch') {
+        await client.query('ROLLBACK');
+        return { success: false, error: 'Branch-managed orders must be deleted by the branch manager' };
       }
       if (saleRes.rows[0].order_status === 'completed') {
         await client.query('ROLLBACK');
@@ -828,6 +898,122 @@ async function fetchICSaleById(id: string): Promise<ICSale | null> {
   );
   if (res.rows.length === 0) return null;
   return mapICSaleRow(res.rows[0]);
+}
+
+async function assertAdminCanModifySale(id: string): Promise<{ sale: ICSale } | { error: string }> {
+  const sale = await fetchICSaleById(id);
+  if (!sale) return { error: 'Order not found' };
+  if (isBranchHandledSale(sale)) {
+    return { error: 'This order is managed by the branch. Admin has view-only access.' };
+  }
+  return { sale };
+}
+
+async function assertBranchManagerHandlesSale(
+  saleId: string,
+  branchSlug?: string,
+): Promise<
+  { sale: ICSale; updatedBy: string; branchId: string; branchName: string } | { error: string }
+> {
+  const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
+  const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
+  const user = userRes.success ? userRes.data : null;
+
+  if (!user || user.role !== 'branch_manager') {
+    return { error: 'Only branch managers can perform this action' };
+  }
+
+  let branchId: string;
+  let branchName: string;
+
+  if (slug) {
+    const branchRes = await query(
+      `SELECT id, name FROM branches WHERE slug = $1 LIMIT 1`,
+      [slug],
+    );
+    if (branchRes.rows.length === 0) return { error: 'Branch not found' };
+    if (user.branchId && branchRes.rows[0].id !== user.branchId) {
+      return { error: 'You are not authorized for this branch' };
+    }
+    branchId = String(branchRes.rows[0].id);
+    branchName = String(branchRes.rows[0].name || '');
+  } else if (user.branchId) {
+    const branchRes = await query(`SELECT id, name FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
+    if (branchRes.rows.length === 0) return { error: 'Branch not found' };
+    branchId = String(branchRes.rows[0].id);
+    branchName = String(branchRes.rows[0].name || '');
+  } else {
+    return { error: 'Branch not found' };
+  }
+
+  const sale = await fetchICSaleById(saleId);
+  if (!sale) return { error: 'Order not found' };
+  if (!isBranchHandledSale(sale)) {
+    return { error: 'This action is only for branch-managed orders' };
+  }
+
+  const custRes = await query(`SELECT id FROM customers WHERE branch_id = $1`, [branchId]);
+  const branchCustomerIds = new Set(custRes.rows.map((r: { id: string }) => String(r.id)));
+
+  if (!saleBelongsToBranchPortal(sale, branchName, branchCustomerIds)) {
+    return { error: 'You can only manage orders for your branch' };
+  }
+
+  return {
+    sale,
+    updatedBy: user.email || user.name || 'branch',
+    branchId,
+    branchName,
+  };
+}
+
+async function assertBranchWarehouseForBranch(
+  warehouseId: string,
+  branchId: string,
+): Promise<{ error: string } | null> {
+  const whRes = await query(
+    `SELECT branch_id FROM ic_warehouses WHERE id = $1 LIMIT 1`,
+    [warehouseId],
+  );
+  if (whRes.rows.length === 0) return { error: 'Warehouse not found' };
+  if (String(whRes.rows[0].branch_id) !== String(branchId)) {
+    return { error: 'Warehouse must belong to your branch' };
+  }
+  return null;
+}
+
+async function assertBranchManagerPurchaseWarehouse(
+  warehouseId: string | null | undefined,
+  branchSlug?: string,
+): Promise<{ error: string } | null> {
+  const user = await resolveICTransferAdminUser(branchSlug);
+  if (!user || user.role !== 'branch_manager' || !user.branchId) {
+    return null;
+  }
+  if (!warehouseId) return { error: 'Warehouse is required' };
+  return assertBranchWarehouseForBranch(warehouseId, user.branchId);
+}
+
+async function assertBranchManagerCanModifyPurchase(
+  purchaseId: string,
+  branchSlug?: string,
+): Promise<{ error: string } | null> {
+  const user = await resolveICTransferAdminUser(branchSlug);
+  if (!user || user.role !== 'branch_manager' || !user.branchId) {
+    return null;
+  }
+  const res = await query(
+    `SELECT w.branch_id
+     FROM ic_purchases p
+     LEFT JOIN ic_warehouses w ON p.warehouse_id = w.id
+     WHERE p.id = $1`,
+    [purchaseId],
+  );
+  if (res.rows.length === 0) return { error: 'Purchase not found' };
+  if (String(res.rows[0].branch_id) !== String(user.branchId)) {
+    return { error: 'Unauthorized' };
+  }
+  return null;
 }
 
 async function assertBranchOwnsSale(
@@ -880,6 +1066,19 @@ async function assertBranchOwnsSale(
     return { sale, updatedBy: user.email || user.name || 'customer' };
   }
 
+  if (isBranchHandledSale(sale) && user.role === 'branch_manager') {
+    const branchIdForCust = slug
+      ? (await query(`SELECT id FROM branches WHERE slug = $1 LIMIT 1`, [slug])).rows[0]?.id
+      : user.branchId;
+    if (branchIdForCust) {
+      const custRes = await query(`SELECT id FROM customers WHERE branch_id = $1`, [branchIdForCust]);
+      const branchCustomerIds = new Set(custRes.rows.map((r: { id: string }) => String(r.id)));
+      if (saleBelongsToBranchPortal(sale, branchName, branchCustomerIds)) {
+        return { sale, updatedBy: user.email || user.name || 'branch' };
+      }
+    }
+  }
+
   if (!isBranchSubmittedSale(sale, branchName)) {
     return { error: 'You can only modify orders submitted by your branch' };
   }
@@ -901,6 +1100,8 @@ export async function adminAcceptICSaleAction(
     const parsed = z.object({ id: z.string().min(1), warehouseId: z.string().min(1) }).parse({ id, warehouseId });
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsed.id);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
     try {
       const res = await query(
         `UPDATE ic_sales
@@ -939,6 +1140,8 @@ export async function adminRejectICSaleAction(
     const parsed = z.object({ id: z.string().min(1), remarks: z.string() }).parse({ id, remarks });
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsed.id);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
     if (!parsed.remarks.trim()) {
       return { success: false, error: 'Rejection reason is required' };
     }
@@ -981,6 +1184,8 @@ export async function adminReassignICSaleWarehouseAction(
     const parsed = z.object({ id: z.string().min(1), warehouseId: z.string().min(1) }).parse({ id, warehouseId });
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsed.id);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
     try {
       const res = await query(
         `UPDATE ic_sales
@@ -1170,6 +1375,8 @@ export async function adminApproveCancelICSaleAction(id: string, branchSlug?: st
     const parsedId = z.string().min(1).parse(id);
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsedId);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
     try {
       const res = await query(
         `UPDATE ic_sales
@@ -1203,12 +1410,14 @@ export async function adminDeclineCancelICSaleAction(id: string, branchSlug?: st
     const parsedId = z.string().min(1).parse(id);
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsedId);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
     try {
       const res = await query(
         `UPDATE ic_sales
          SET order_status = 'accepted',
-             status_updated_at = CURRENT_TIMESTAMP,
-             status_updated_by = $2
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
          WHERE id = $1 AND order_status = 'cancellation_pending'
          RETURNING id`,
         [parsedId, auth.enteredBy],
@@ -1234,6 +1443,8 @@ export async function adminVerifyDeliveryAction(id: string, branchSlug?: string)
     const parsedId = z.string().min(1).parse(id);
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsedId);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
 
     const res = await query(
       `UPDATE ic_sales
@@ -1243,6 +1454,7 @@ export async function adminVerifyDeliveryAction(id: string, branchSlug?: string)
            status_updated_by = $1
        WHERE id = $2
          AND order_status = 'delivery_pending_admin'
+         AND fulfillment_handler IS DISTINCT FROM 'branch'
        RETURNING id`,
       [auth.enteredBy, parsedId],
     );
@@ -1275,6 +1487,7 @@ export async function adminBulkVerifyDeliveryAction(
            status_updated_by = $1
        WHERE id = ANY($2::uuid[])
          AND order_status = 'delivery_pending_admin'
+         AND fulfillment_handler IS DISTINCT FROM 'branch'
        RETURNING id`,
       [auth.enteredBy, uniqueIds],
     );
@@ -1292,6 +1505,8 @@ export async function adminCompleteByHandOrderAction(id: string, branchSlug?: st
     const parsedId = z.string().min(1).parse(id);
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsedId);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
 
     const sale = await fetchICSaleById(parsedId);
     if (!sale) return { success: false, error: 'Order not found' };
@@ -1330,6 +1545,8 @@ export async function adminReopenByHandOrderAction(id: string, branchSlug?: stri
     const parsedId = z.string().min(1).parse(id);
     const auth = await assertAdminRole(branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
+    const modCheck = await assertAdminCanModifySale(parsedId);
+    if ('error' in modCheck) return { success: false, error: modCheck.error };
 
     const sale = await fetchICSaleById(parsedId);
     if (!sale) return { success: false, error: 'Order not found' };
@@ -1357,6 +1574,252 @@ export async function adminReopenByHandOrderAction(id: string, branchSlug?: stri
     return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
     logger.error({ err, id }, 'Validation error in adminReopenByHandOrderAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/**
+ * Admin sets whether a customer order is fulfilled by branch or HQ admin.
+ */
+export async function adminSetFulfillmentHandlerAction(
+  id: string,
+  handler: 'hq_admin' | 'branch',
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsed = z
+      .object({
+        id: z.string().min(1),
+        handler: z.enum(['hq_admin', 'branch']),
+      })
+      .parse({ id, handler });
+    const auth = await assertAdminRole(branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const sale = await fetchICSaleById(parsed.id);
+    if (!sale) return { success: false, error: 'Order not found' };
+    if (!sale.orderCustomerId) {
+      return { success: false, error: 'Only customer orders can be assigned branch or admin handling' };
+    }
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET fulfillment_handler = $1,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3
+       RETURNING id`,
+      [parsed.handler, auth.enteredBy, parsed.id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found' };
+    }
+    const updated = await fetchICSaleById(parsed.id);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id, handler }, 'Validation error in adminSetFulfillmentHandlerAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/** Branch manager accepts a branch-handled order and assigns a branch warehouse. */
+export async function branchAcceptICSaleAction(
+  id: string,
+  warehouseId: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsed = z.object({ id: z.string().min(1), warehouseId: z.string().min(1) }).parse({ id, warehouseId });
+    const auth = await assertBranchManagerHandlesSale(parsed.id, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const whCheck = await assertBranchWarehouseForBranch(parsed.warehouseId, auth.branchId);
+    if (whCheck) return { success: false, error: whCheck.error };
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET warehouse_id = $1,
+           order_status = 'accepted',
+           rejection_remarks = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3
+         AND fulfillment_handler = 'branch'
+         AND order_status = 'pending'
+       RETURNING id`,
+      [parsed.warehouseId, auth.updatedBy, parsed.id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or not in pending status' };
+    }
+    const updated = await fetchICSaleById(parsed.id);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id, warehouseId }, 'Validation error in branchAcceptICSaleAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/** Branch manager reassigns warehouse on a branch-handled order after WH/DA rejection. */
+export async function branchReassignICSaleWarehouseAction(
+  id: string,
+  warehouseId: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsed = z.object({ id: z.string().min(1), warehouseId: z.string().min(1) }).parse({ id, warehouseId });
+    const auth = await assertBranchManagerHandlesSale(parsed.id, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const whCheck = await assertBranchWarehouseForBranch(parsed.warehouseId, auth.branchId);
+    if (whCheck) return { success: false, error: whCheck.error };
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET warehouse_id = $1,
+           order_status = 'accepted',
+           rejection_remarks = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3
+         AND fulfillment_handler = 'branch'
+         AND order_status IN ('wh_rejected', 'da_rejected')
+       RETURNING id`,
+      [parsed.warehouseId, auth.updatedBy, parsed.id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order cannot be reassigned in its current status' };
+    }
+    const updated = await fetchICSaleById(parsed.id);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id, warehouseId }, 'Validation error in branchReassignICSaleWarehouseAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/** Branch manager marks a branch-handled order as completed (direct fulfillment). */
+export async function branchCompleteHandledOrderAction(
+  id: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsedId = z.string().min(1).parse(id);
+    const auth = await assertBranchManagerHandlesSale(parsedId, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+    if (!auth.sale.warehouseId) {
+      return { success: false, error: 'Assign a warehouse before completing' };
+    }
+    if (normalizeOrderStatus(auth.sale.orderStatus) !== 'accepted') {
+      return { success: false, error: 'Order must be accepted before completing' };
+    }
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'completed',
+           collected_units = units,
+           payment_status = 'paid',
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $1
+       WHERE id = $2
+         AND fulfillment_handler = 'branch'
+         AND order_status = 'accepted'
+       RETURNING id`,
+      [auth.updatedBy, parsedId],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order could not be completed' };
+    }
+    const updated = await fetchICSaleById(parsedId);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id }, 'Validation error in branchCompleteHandledOrderAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/** Branch manager reopens a completed branch-handled order back to pending completion. */
+export async function branchReopenHandledOrderAction(
+  id: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsedId = z.string().min(1).parse(id);
+    const auth = await assertBranchManagerHandlesSale(parsedId, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+    if (normalizeOrderStatus(auth.sale.orderStatus) !== 'completed') {
+      return { success: false, error: 'Only completed orders can be reopened' };
+    }
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'accepted',
+           collected_units = 0,
+           payment_status = 'pending',
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $1
+       WHERE id = $2
+         AND fulfillment_handler = 'branch'
+         AND order_status = 'completed'
+       RETURNING id`,
+      [auth.updatedBy, parsedId],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order could not be reopened' };
+    }
+    const updated = await fetchICSaleById(parsedId);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id }, 'Validation error in branchReopenHandledOrderAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/** Branch manager updates a branch-handled order (non-completed). */
+export async function branchUpdateHandledICSaleAction(
+  id: string,
+  updates: Partial<ICSaleContentFields>,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsedId = z.string().min(1).parse(id);
+    const parsedUpdates = updateSaleSchema.parse(updates);
+    const auth = await assertBranchManagerHandlesSale(parsedId, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const status = normalizeOrderStatus(auth.sale.orderStatus);
+    if (status === 'completed' || status === 'cancelled') {
+      return { success: false, error: 'Completed or cancelled orders cannot be edited' };
+    }
+
+    const keys = Object.keys(parsedUpdates);
+    if (keys.length === 0) return { success: false, error: 'No fields to update' };
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+    for (const key of keys) {
+      const dbKey = SALE_COLUMNS[key];
+      if (!dbKey || key === 'fulfillmentHandler') continue;
+      setClauses.push(`${dbKey} = $${idx}`);
+      let val = (parsedUpdates as Record<string, unknown>)[key];
+      if (key.endsWith('Id') && val === '') val = null;
+      values.push(val);
+      idx++;
+    }
+    if (setClauses.length === 0) return { success: false, error: 'No valid fields to update' };
+    values.push(parsedId);
+
+    const res = await query(
+      `UPDATE ic_sales SET ${setClauses.join(', ')} WHERE id = $${idx} AND fulfillment_handler = 'branch' RETURNING *`,
+      values,
+    );
+    if (res.rows.length === 0) return { success: false, error: 'Order not found' };
+    return { success: true, data: mapICSaleRow(res.rows[0]) };
+  } catch (err: unknown) {
+    logger.error({ err, id, updates }, 'Validation error in branchUpdateHandledICSaleAction');
     return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
   }
 }

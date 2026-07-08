@@ -6,6 +6,15 @@ import { useApp } from '@/context/AppContext';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { portalMobileToolbarClass } from '@/lib/icTransfer/layoutConstants';
 import { sortRateGroupsForTable } from '@/lib/icTransfer/rateGroupUtils';
+import {
+  mergeBranchPortalCustomerAssignments,
+  type ICTransferPortalMode,
+} from '@/lib/icTransfer/branchPortalScope';
+import {
+  getAdminAssignedBranchRateGroup,
+  getBranchManageableRateGroups,
+} from '@/lib/icTransfer/branchRateScope';
+import BranchAdminAssignedRateCard from './BranchAdminAssignedRateCard';
 import RateGroupsTable from './RateGroupsTable';
 import RateGroupBulkUpdateBar from './RateGroupBulkUpdateBar';
 import RateGroupFormModal, { type RateGroupFormValues } from './RateGroupFormModal';
@@ -32,7 +41,12 @@ const WORLD_CURRENCIES = [
   'XOF', 'XPF', 'YER', 'ZAR', 'ZMW', 'ZWL',
 ];
 
-export default function ICTransferRatesPage() {
+type Props = {
+  portalMode?: ICTransferPortalMode;
+  branchId?: string;
+};
+
+export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: Props) {
   const {
     icRateGroups,
     addICRateGroup,
@@ -45,6 +59,8 @@ export default function ICTransferRatesPage() {
     showToast,
     currentSlug,
   } = useApp();
+
+  const isBranchPortal = portalMode === 'branch' && !!branchId;
 
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -66,21 +82,41 @@ export default function ICTransferRatesPage() {
     });
   }, [currentSlug]);
 
+  const branchCustomerIdSet = useMemo(
+    () => new Set(branchCustomers.map(c => c.id)),
+    [branchCustomers],
+  );
+
+  const adminAssignedBranchRate = useMemo(() => {
+    if (!isBranchPortal || !branchId) return undefined;
+    return getAdminAssignedBranchRateGroup(icRateGroups, branchId);
+  }, [icRateGroups, isBranchPortal, branchId]);
+
+  const branchCustomerRateGroups = useMemo(() => {
+    if (!isBranchPortal || !branchId) return icRateGroups;
+    return getBranchManageableRateGroups(icRateGroups, branchId, branchCustomerIdSet);
+  }, [icRateGroups, isBranchPortal, branchId, branchCustomerIdSet]);
+
+  const scopedRateGroups = branchCustomerRateGroups;
+
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
     const base = q
-      ? icRateGroups.filter(group =>
+      ? scopedRateGroups.filter(group =>
           group.name.toLowerCase().includes(q) ||
           group.country.toLowerCase().includes(q) ||
           group.currency.toLowerCase().includes(q),
         )
-      : icRateGroups;
+      : scopedRateGroups;
     return sortRateGroupsForTable(base);
-  }, [icRateGroups, search]);
+  }, [scopedRateGroups, search]);
 
   const handleBulkSave = async (groupIds: string[], saleRate: number, conversionRate: number) => {
     setIsBulkSaving(true);
-    const success = await bulkUpdateICRateGroupRates(groupIds, saleRate, conversionRate);
+    const allowedIds = isBranchPortal
+      ? groupIds.filter(id => scopedRateGroups.some(g => g.id === id))
+      : groupIds;
+    const success = await bulkUpdateICRateGroupRates(allowedIds, saleRate, conversionRate);
     setIsBulkSaving(false);
     return success;
   };
@@ -136,6 +172,7 @@ export default function ICTransferRatesPage() {
         currency.toUpperCase(),
         0,
         1,
+        isBranchPortal ? branchId : undefined,
       );
       success = !!newGroupId;
     }
@@ -149,19 +186,41 @@ export default function ICTransferRatesPage() {
 
   const handleManageUsersSave = async ({ groupId, branchIds, customerIds }: RateGroupMembersPayload) => {
     setIsManagingUsers(true);
-    const resBranch = await setICRateGroupBranches(groupId, branchIds);
-    const resCust = await setICRateGroupCustomers(groupId, customerIds);
+
+    let finalBranchIds = branchIds;
+    let finalCustomerIds = customerIds;
+
+    if (isBranchPortal && branchId) {
+      const group = icRateGroups.find(g => g.id === groupId);
+      finalBranchIds = group?.branchIds ?? [];
+      finalCustomerIds = mergeBranchPortalCustomerAssignments(
+        group?.customerIds,
+        branchCustomerIdSet,
+        customerIds,
+      );
+    }
+
+    const resBranch = await setICRateGroupBranches(groupId, finalBranchIds);
+    const resCust = await setICRateGroupCustomers(groupId, finalCustomerIds);
     setIsManagingUsers(false);
     if (resBranch && resCust) {
       setManageUsersOpen(false);
     }
   };
 
+  const currentBranch = isBranchPortal
+    ? allBranches.find(b => b.id === branchId)
+    : undefined;
+
   return (
     <PageShell>
       <PageHeader
         title="Rate Groups"
-        subtitle="Manage dynamic rate groups for customers and branches"
+        subtitle={
+          isBranchPortal
+            ? 'Your admin-assigned branch rate and customer-specific groups you manage'
+            : 'Manage dynamic rate groups for customers and branches'
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             <AddButton
@@ -178,15 +237,23 @@ export default function ICTransferRatesPage() {
         }
       />
 
+      {isBranchPortal && adminAssignedBranchRate && (
+        <div className="mb-5">
+          <BranchAdminAssignedRateCard group={adminAssignedBranchRate} />
+        </div>
+      )}
+
       <SectionCard>
         <RateGroupBulkUpdateBar
-          groups={icRateGroups}
+          groups={scopedRateGroups}
           isSaving={isBulkSaving}
           onSave={handleBulkSave}
         />
 
         <div className={`${portalMobileToolbarClass} md:border-b md:border-slate-100 md:px-6 md:py-4 md:pb-3`}>
-          <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">All Groups</h3>
+          <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">
+            {isBranchPortal ? 'Your customer rate groups' : 'All Groups'}
+          </h3>
           <SearchInput
             value={search}
             onChange={setSearch}
@@ -200,6 +267,7 @@ export default function ICTransferRatesPage() {
             onView={openViewModal}
             onEdit={openEditModal}
             onDelete={handleDelete}
+            hideBranchColumn={isBranchPortal}
           />
         </div>
       </SectionCard>
@@ -218,9 +286,10 @@ export default function ICTransferRatesPage() {
 
       <RateGroupManageUsersModal
         open={manageUsersOpen}
-        groups={icRateGroups}
-        allBranches={allBranches}
+        groups={scopedRateGroups}
+        allBranches={isBranchPortal && currentBranch ? [currentBranch] : allBranches}
         branchCustomers={branchCustomers}
+        customersOnly={isBranchPortal}
         isSaving={isManagingUsers}
         onClose={() => setManageUsersOpen(false)}
         onSave={handleManageUsersSave}
@@ -228,7 +297,7 @@ export default function ICTransferRatesPage() {
 
       <RateGroupViewModal
         group={viewGroup}
-        branches={allBranches}
+        branches={isBranchPortal && currentBranch ? [currentBranch] : allBranches}
         customers={branchCustomers}
         onClose={() => setViewGroup(null)}
         onEdit={openEditModal}

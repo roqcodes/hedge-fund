@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { IC_SALE_TRANSACTION_TYPES } from '@/lib/icTransfer/transactionTypes';
+
+const icSaleTransactionTypeSchema = z.enum(IC_SALE_TRANSACTION_TYPES);
 
 const idSchema = z.string().uuid('Invalid UUID format');
 const nameSchema = z.string().min(1, 'Name is required');
@@ -37,6 +40,7 @@ export const addWarehouseSchema = z.object({
   email: z.string().email('Invalid email').optional().nullable().or(z.literal('')),
   address: z.string().optional().nullable(),
   sendDeliveryProofToCustomer: z.boolean().optional().default(true),
+  branchId: z.string().optional().nullable(),
 });
 
 export const updateWarehouseSchema = addWarehouseSchema.extend({
@@ -49,6 +53,7 @@ export const addRateGroupSchema = z.object({
   currency: currencySchema,
   saleRate: z.number().nonnegative(),
   conversionRate: z.number().positive(),
+  createdByBranchId: z.string().min(1).optional(),
 });
 
 export const updateRateGroupSchema = addRateGroupSchema.extend({
@@ -90,7 +95,7 @@ export const addSaleSchema = z.object({
   orderCustomerName: z.string().optional().nullable(),
   orderCustomerId: z.string().optional().nullable(),
   warehouseId: z.string().optional().nullable(),
-  transactionType: z.string().optional().nullable(),
+  transactionType: icSaleTransactionTypeSchema.optional().nullable(),
   units: z.number().positive(),
   unitRate: z.number().positive(),
   convertedAmount: z.number().optional().nullable(),
@@ -104,6 +109,7 @@ export const addSaleSchema = z.object({
   currency: z.string().default('AED'),
   serviceCharge: z.number().default(0.0),
   priority: z.enum(['High', 'Normal', 'Low']).default('Normal'),
+  fulfillmentHandler: z.enum(['hq_admin', 'branch']).optional().default('hq_admin'),
   deliveryAgentId: z.string().optional().nullable(),
   deliveryImageUrl: z.string().optional().nullable(),
   orderStatus: z.string().optional(),

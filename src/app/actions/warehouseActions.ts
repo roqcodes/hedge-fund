@@ -155,14 +155,15 @@ export async function createDeliveryAgent(data: {
         throw new Error(`Failed to create user account: ${cognitoResult.error}`);
       }
 
-      // 2. Generate next account ID safely using MAX within a locked query
+      // 2. Generate next account ID safely — advisory lock serializes concurrent creates;
+      //    FOR UPDATE cannot be used with aggregate functions in PostgreSQL.
+      await client.query('SELECT pg_advisory_xact_lock($1)', [7423901]);
       const accountIdResult = await client.query(
         `SELECT COALESCE(
            MAX(CAST(SUBSTRING(account_id FROM 5) AS INTEGER)), 0
          ) + 1 AS next_id
          FROM ic_delivery_agents
-         WHERE account_id ~ '^USER[0-9]+$'
-         FOR UPDATE`
+         WHERE account_id ~ '^USER[0-9]+$'`,
       );
       const nextId = parseInt(accountIdResult.rows[0].next_id) || 1;
       const accountId = `USER${nextId.toString().padStart(4, '0')}`;
