@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import { btnPrimary, btnSecondary, formInput, formSelect } from '@/lib/ui';
 import { useApp } from '@/context/AppContext';
@@ -9,6 +9,10 @@ import RateGroupBanner from '../shared/RateGroupBanner';
 import ICSaleAmountCards from '../shared/ICSaleAmountCards';
 import { computeICSaleAmounts, resolveApplicableRateGroup } from '@/lib/icTransfer/rateCalculations';
 import { getAdminAssignedBranchRateGroup } from '@/lib/icTransfer/branchRateScope';
+import {
+  filterSuppliersForAdminPortal,
+  filterSuppliersForBranchPortal,
+} from '@/lib/icTransfer/branchPortalScope';
 
 type Props = {
   open: boolean;
@@ -28,6 +32,10 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
 export default function AddPurchaseModal({ open, onClose, initialData, branchId, warehouses }: Props) {
   const { icSuppliers, icWarehouses, addICPurchase, updateICPurchase, icPurchases, icRateGroups, user } = useApp();
   const warehouseOptions = warehouses ?? icWarehouses;
+  const supplierOptions = useMemo(() => {
+    if (branchId) return filterSuppliersForBranchPortal(icSuppliers, branchId);
+    return filterSuppliersForAdminPortal(icSuppliers);
+  }, [icSuppliers, branchId]);
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [supplierId, setSupplierId] = useState(initialData?.supplierId || '');
@@ -36,7 +44,7 @@ export default function AddPurchaseModal({ open, onClose, initialData, branchId,
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
 
-  const selectedSupplierId = icSuppliers.find(s => s.id === supplierId || s.name === supplierId)?.id;
+  const selectedSupplierId = supplierOptions.find(s => s.id === supplierId || s.name === supplierId)?.id;
   const applicableGroup = branchId
     ? getAdminAssignedBranchRateGroup(icRateGroups, branchId)
     : resolveApplicableRateGroup(icRateGroups, {
@@ -140,7 +148,7 @@ export default function AddPurchaseModal({ open, onClose, initialData, branchId,
             <InputField label="Select Supplier">
               <select className={formSelect} value={supplierId} onChange={e => setSupplierId(e.target.value)} required>
                 <option value="" disabled>Select Supplier</option>
-                {icSuppliers.map(s => (
+                {supplierOptions.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>

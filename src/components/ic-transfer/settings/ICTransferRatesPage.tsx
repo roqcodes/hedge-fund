@@ -13,6 +13,7 @@ import {
 import {
   getAdminAssignedBranchRateGroup,
   getBranchManageableRateGroups,
+  filterRateGroupsForAdminPortal,
 } from '@/lib/icTransfer/branchRateScope';
 import BranchAdminAssignedRateCard from './BranchAdminAssignedRateCard';
 import RateGroupsTable from './RateGroupsTable';
@@ -93,8 +94,10 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
   }, [icRateGroups, isBranchPortal, branchId]);
 
   const branchCustomerRateGroups = useMemo(() => {
-    if (!isBranchPortal || !branchId) return icRateGroups;
-    return getBranchManageableRateGroups(icRateGroups, branchId, branchCustomerIdSet);
+    if (isBranchPortal && branchId) {
+      return getBranchManageableRateGroups(icRateGroups, branchId, branchCustomerIdSet);
+    }
+    return filterRateGroupsForAdminPortal(icRateGroups);
   }, [icRateGroups, isBranchPortal, branchId, branchCustomerIdSet]);
 
   const scopedRateGroups = branchCustomerRateGroups;
@@ -151,6 +154,14 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
     if (!WORLD_CURRENCIES.includes(currency.toUpperCase())) {
       showToast('Please select a valid currency from the list.', 'error');
       return;
+    }
+
+    if (isBranchPortal && adminAssignedBranchRate) {
+      const expected = adminAssignedBranchRate.currency.toUpperCase();
+      if (currency.toUpperCase() !== expected) {
+        showToast(`Customer rate groups must use ${expected} (admin-assigned branch currency).`, 'error');
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -277,6 +288,11 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
         mode={formMode}
         initialGroup={editingGroup}
         isSaving={isSaving}
+        lockedCurrency={
+          isBranchPortal && adminAssignedBranchRate
+            ? adminAssignedBranchRate.currency
+            : undefined
+        }
         onClose={() => {
           setFormOpen(false);
           setEditingGroup(null);

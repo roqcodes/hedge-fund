@@ -18,6 +18,7 @@ export function mapICSupplierRow(row: any): ICSupplier {
     regionId: row.region_id,
     email: row.email,
     address: row.address,
+    branchId: row.branch_id ?? undefined,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
   };
 }
@@ -81,6 +82,8 @@ export function mapICSaleRow(row: any): ICSale {
     transactionType: row.transaction_type,
     units: parseFloat(row.units),
     unitRate: parseFloat(row.unit_rate),
+    adminUnitRate: row.admin_unit_rate != null ? parseFloat(row.admin_unit_rate) : undefined,
+    adminConversionRate: row.admin_conversion_rate != null ? parseFloat(row.admin_conversion_rate) : undefined,
     convertedAmount: row.converted_amount ? parseFloat(row.converted_amount) : undefined,
     aedAmount: row.aed_amount ? parseFloat(row.aed_amount) : undefined,
     enteredBy: row.entered_by,

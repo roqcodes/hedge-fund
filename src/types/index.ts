@@ -483,6 +483,8 @@ export interface ICSupplier {
   regionId?: string;
   email?: string;
   address?: string;
+  /** When set, supplier is owned by a branch portal (exclusive to that branch). */
+  branchId?: string;
   createdAt?: string;
 }
 
@@ -555,6 +557,10 @@ export interface ICSale {
   transactionType?: ICSaleTransactionType;
   units: number;
   unitRate: number;
+  /** HQ admin AED sale rate captured at order time (for branch profit). */
+  adminUnitRate?: number;
+  /** HQ admin conversion rate captured at order time (for branch profit). */
+  adminConversionRate?: number;
   convertedAmount?: number;
   aedAmount?: number;
   enteredBy?: string;

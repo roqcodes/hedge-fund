@@ -1,24 +1,34 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import ICTransferSettingsUsersPage from '@/components/ic-transfer/settings/ICTransferSettingsUsersPage';
 import { AddButton } from '@/components/ic-transfer/ui';
 import AddRegionModal from '@/components/ic-transfer/settings/AddRegionModal';
 import AddUserModal from '@/components/ic-transfer/settings/AddUserModal';
 import { useApp } from '@/context/AppContext';
 import type { ICSupplier } from '@/types';
-import type { ICTransferPortalMode } from '@/lib/icTransfer/branchPortalScope';
+import {
+  filterSuppliersForAdminPortal,
+  filterSuppliersForBranchPortal,
+  type ICTransferPortalMode,
+} from '@/lib/icTransfer/branchPortalScope';
 
 type Props = {
   portalMode?: ICTransferPortalMode;
+  branchId?: string;
 };
 
-export default function ICTransferSuppliersPage({ portalMode = 'admin' }: Props) {
-  const isBranchPortal = portalMode === 'branch';
+export default function ICTransferSuppliersPage({ portalMode = 'admin', branchId }: Props) {
+  const isBranchPortal = portalMode === 'branch' && !!branchId;
   const { icRegions, icSuppliers, addICRegion, addICSupplier, updateICSupplier, deleteICSupplier } = useApp();
   const [regionModalOpen, setRegionModalOpen] = useState(false);
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<ICSupplier | null>(null);
+
+  const scopedSuppliers = useMemo(() => {
+    if (isBranchPortal) return filterSuppliersForBranchPortal(icSuppliers, branchId!);
+    return filterSuppliersForAdminPortal(icSuppliers);
+  }, [icSuppliers, isBranchPortal, branchId]);
 
   const handleAddRegion = async (name: string, country: string) => {
     await addICRegion(name, country);
@@ -51,6 +61,7 @@ export default function ICTransferSuppliersPage({ portalMode = 'admin' }: Props)
         data.regionId,
         data.email,
         data.address,
+        isBranchPortal ? branchId : undefined,
       );
     }
     setSupplierModalOpen(false);
@@ -76,10 +87,10 @@ export default function ICTransferSuppliersPage({ portalMode = 'admin' }: Props)
       title="Suppliers"
       subtitle={
         isBranchPortal
-          ? 'Manage suppliers used to restock your branch warehouses'
-          : 'Manage supplier settings and rates'
+          ? 'Manage suppliers exclusive to your branch'
+          : 'Manage HQ supplier settings and rates'
       }
-      data={icSuppliers}
+      data={scopedSuppliers}
       onEditItem={openEdit}
       onDeleteItem={handleDeleteSupplier}
       actions={

@@ -232,7 +232,7 @@ interface AppContextType extends AppState {
   addICRegion: (name: string, country: string) => Promise<boolean>;
   updateICRegion: (id: string, name: string, country: string) => Promise<boolean>;
   deleteICRegion: (id: string) => Promise<boolean>;
-  addICSupplier: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
+  addICSupplier: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, branchId?: string | null) => Promise<boolean>;
   updateICSupplier: (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => Promise<boolean>;
   deleteICSupplier: (id: string) => Promise<boolean>;
   addICWarehouse: (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer?: boolean, branchId?: string | null) => Promise<boolean>;
@@ -1459,9 +1459,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const addICSupplier = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
+  const addICSupplier = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, branchId?: string | null) => {
     try {
-      const res = await dbAddICSupplierAction(name, phone, commission, regionId, email, address);
+      const res = await dbAddICSupplierAction(
+        name,
+        phone,
+        commission,
+        regionId,
+        email,
+        address,
+        branchId,
+        branchId ? currentSlug ?? undefined : undefined,
+      );
       if (res.success && res.data) {
         setState(s => ({ ...s, icSuppliers: [...s.icSuppliers, res.data!] }));
         showToast('Supplier added successfully');
@@ -1474,11 +1483,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error adding supplier', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const updateICSupplier = useCallback(async (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string) => {
     try {
-      const res = await dbUpdateICSupplierAction(id, name, phone, commission, regionId, email, address);
+      const res = await dbUpdateICSupplierAction(
+        id,
+        name,
+        phone,
+        commission,
+        regionId,
+        email,
+        address,
+        currentSlug ?? undefined,
+      );
       if (res.success && res.data) {
         setState(s => ({ ...s, icSuppliers: s.icSuppliers.map(sup => sup.id === id ? res.data! : sup) }));
         showToast('Supplier updated successfully');
@@ -1491,11 +1509,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating supplier', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const deleteICSupplier = useCallback(async (id: string) => {
     try {
-      const res = await dbDeleteICSupplierAction(id);
+      const res = await dbDeleteICSupplierAction(id, currentSlug ?? undefined);
       if (res.success) {
         setState(s => ({ ...s, icSuppliers: s.icSuppliers.filter(sup => sup.id !== id) }));
         showToast('Supplier deleted successfully');
@@ -1508,7 +1526,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error deleting supplier', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const addICWarehouse = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer: boolean = true, branchId?: string | null) => {
     try {

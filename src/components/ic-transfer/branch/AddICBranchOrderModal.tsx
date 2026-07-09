@@ -18,9 +18,10 @@ import { WorkflowNotice } from '../shared/orderWorkflow';
 import RateGroupBanner from '../shared/RateGroupBanner';
 import CopyOrderDetailsButton from '../shared/CopyOrderDetailsButton';
 import TransactionTypeSelector from '../shared/TransactionTypeSelector';
-import { computeICSaleAmounts, resolveApplicableRateGroup, formatAmount } from '@/lib/icTransfer/rateCalculations';
+import { computeICSaleAmounts, formatAmount } from '@/lib/icTransfer/rateCalculations';
+import InrAmountInWords from '../shared/InrAmountInWords';
 import { DEFAULT_IC_SALE_TRANSACTION_TYPE, type ICSaleTransactionType } from '@/lib/icTransfer/transactionTypes';
-import { resolveBranchPortalOrderRate } from '@/lib/icTransfer/branchRateScope';
+import { resolveBranchOrderRates } from '@/lib/icTransfer/branchRateScope';
 
 type Props = {
   open: boolean;
@@ -79,51 +80,39 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     [customers],
   );
 
-  const orderRateContext = useMemo(() => {
-    if (initialData?.fulfillmentHandler === 'branch') return 'branch-handled' as const;
-    if (initialData?.fulfillmentHandler === 'hq_admin') return 'admin-handled' as const;
-    if (isBranchManager && handleAtBranch) return 'branch-handled' as const;
-    return 'admin-handled' as const;
-  }, [initialData?.fulfillmentHandler, isBranchManager, handleAtBranch]);
-
   const resolvedCustomerId = isCustomer
     ? (recordCustomerUnderBranch ? undefined : linkedCustomerId)
     : (selectedCustomerId || undefined);
 
-  const applicableGroup = useMemo(() => {
-    if (isCustomer) {
-      return resolveApplicableRateGroup(icRateGroups, {
-        branchId: currentBranchId,
-        customerId: resolvedCustomerId,
-      });
-    }
-    if (isBranchManager || user?.role === 'staff') {
-      return resolveBranchPortalOrderRate(icRateGroups, {
-        branchId: currentBranchId,
-        customerId: selectedCustomerId || undefined,
-        branchCustomerIds: branchCustomerIdSet,
-        rateContext: orderRateContext,
-      });
-    }
-    return resolveApplicableRateGroup(icRateGroups, {
+  const orderRates = useMemo(() => {
+    const customerId = isCustomer
+      ? (recordCustomerUnderBranch ? linkedCustomerId : resolvedCustomerId)
+      : (selectedCustomerId || undefined);
+
+    return resolveBranchOrderRates(icRateGroups, {
       branchId: currentBranchId,
-      customerId: selectedCustomerId || undefined,
+      customerId,
+      branchCustomerIds: branchCustomerIdSet,
     });
   }, [
     icRateGroups,
     currentBranchId,
     resolvedCustomerId,
     isCustomer,
-    isBranchManager,
-    user?.role,
+    recordCustomerUnderBranch,
+    linkedCustomerId,
     selectedCustomerId,
     branchCustomerIdSet,
-    orderRateContext,
   ]);
+
+  const applicableGroup = orderRates.branchGroup;
+  const adminRateGroup = orderRates.adminGroup;
 
   const groupConversionRate = applicableGroup?.conversionRate || 1;
   const groupCurrency = applicableGroup?.currency || 'Currency';
   const groupSaleRate = applicableGroup?.saleRate || 0;
+  const adminSaleRate = adminRateGroup?.saleRate;
+  const adminConversionRate = adminRateGroup?.conversionRate ?? 1;
 
   useEffect(() => {
     if (!open || !currentSlug) return;
@@ -262,6 +251,8 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     serviceCharge: serviceChargeNum,
     conversionRate: groupConversionRate,
     currency: groupCurrency,
+    adminUnitRate: adminSaleRate,
+    adminConversionRate: adminSaleRate != null ? adminConversionRate : undefined,
     fulfillmentHandler: handleAtBranch ? ('branch' as const) : ('hq_admin' as const),
   };
 
@@ -507,7 +498,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                 <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
                   <div className="min-w-0">
                     <span className="text-xs font-semibold text-slate-800">Handle at branch</span>
-                    <p className="text-[10px] text-slate-500">Off = send to admin (admin rate applies)</p>
+                    <p className="text-[10px] text-slate-500">Off = send to admin for fulfillment (your customer rate still applies)</p>
                   </div>
                   <button
                     type="button"
@@ -564,12 +555,20 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
 
              <h3 className="border-b border-slate-100 pb-2 pt-2 text-sm font-bold text-slate-900">Calculations</h3>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-xl border border-slate-100 p-4 bg-slate-50/50">
               <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Units</span>
                 <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
                   {formatAmount(unitNum)}
                 </span>
+              </div>
+
+              <div className="text-center p-3 rounded-xl bg-white border border-slate-100 flex flex-col justify-center shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount (INR)</span>
+                <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
+                  {formatAmount(amounts.inrTotal)}
+                </span>
+                <InrAmountInWords amount={amounts.inrTotal} />
               </div>
 
               {applicableGroup && (

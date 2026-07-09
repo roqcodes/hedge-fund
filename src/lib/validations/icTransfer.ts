@@ -26,6 +26,7 @@ export const addSupplierSchema = z.object({
   regionId: z.string().optional().nullable(),
   email: z.string().email('Invalid email').optional().nullable().or(z.literal('')),
   address: z.string().optional().nullable(),
+  branchId: z.string().optional().nullable(),
 });
 
 export const updateSupplierSchema = addSupplierSchema.extend({
@@ -98,6 +99,8 @@ export const addSaleSchema = z.object({
   transactionType: icSaleTransactionTypeSchema.optional().nullable(),
   units: z.number().positive(),
   unitRate: z.number().positive(),
+  adminUnitRate: z.number().positive().optional().nullable(),
+  adminConversionRate: z.number().positive().optional().nullable(),
   convertedAmount: z.number().optional().nullable(),
   aedAmount: z.number().optional().nullable(),
   bank: z.string().optional().nullable(),

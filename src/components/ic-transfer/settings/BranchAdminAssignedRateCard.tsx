@@ -18,7 +18,7 @@ export default function BranchAdminAssignedRateCard({ group }: Props) {
         Admin assigned rate for your branch
       </p>
       <p className="mt-1 text-xs text-slate-500">
-        Applied when orders are sent to admin. Rate values only — group details are managed by HQ.
+        Applied when HQ fulfills your orders. Used with your customer rate to calculate branch profit.
       </p>
       <div className="mt-4 flex flex-wrap gap-6">
         <div>

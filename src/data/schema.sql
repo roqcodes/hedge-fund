@@ -596,6 +596,8 @@ CREATE TABLE IF NOT EXISTS ic_suppliers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ic_suppliers_region ON ic_suppliers(region_id);
+ALTER TABLE ic_suppliers ADD COLUMN IF NOT EXISTS branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_ic_suppliers_branch ON ic_suppliers(branch_id);
 
 CREATE TABLE IF NOT EXISTS ic_warehouses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -765,6 +767,8 @@ ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_fulfillment_handler_chec
 ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_fulfillment_handler_check
   CHECK (fulfillment_handler IN ('hq_admin', 'branch'));
 CREATE INDEX IF NOT EXISTS idx_ic_sales_fulfillment_handler ON ic_sales(fulfillment_handler);
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS admin_unit_rate NUMERIC(15, 6);
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS admin_conversion_rate NUMERIC(15, 6);
 
 -- Drop legacy constraint if present, then apply expanded order_status check
 ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_order_status_check;

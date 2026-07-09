@@ -17,6 +17,8 @@ import KPICard from '@/components/ui/KPICard';
 import { portalKpiGrid, portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
 import {
   filterPurchasesForBranchPortal,
+  filterSuppliersForAdminPortal,
+  filterSuppliersForBranchPortal,
   filterWarehousesForBranchPortal,
   type ICTransferPortalMode,
 } from '@/lib/icTransfer/branchPortalScope';
@@ -50,6 +52,11 @@ export default function ICTransferPurchase({ portalMode = 'admin', branchId }: P
     if (!isBranchPortal) return icPurchases;
     return filterPurchasesForBranchPortal(icPurchases, icWarehouses, branchId!);
   }, [icPurchases, icWarehouses, isBranchPortal, branchId]);
+
+  const scopedSuppliers = useMemo(() => {
+    if (isBranchPortal) return filterSuppliersForBranchPortal(icSuppliers, branchId!);
+    return filterSuppliersForAdminPortal(icSuppliers);
+  }, [icSuppliers, isBranchPortal, branchId]);
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -64,7 +71,7 @@ export default function ICTransferPurchase({ portalMode = 'admin', branchId }: P
     setCustomEndDate,
   } = useICTransferFilters();
 
-  const getSupplierName = (id: string) => icSuppliers.find(s => s.id === id)?.name || id;
+  const getSupplierName = (id: string) => scopedSuppliers.find(s => s.id === id)?.name || icSuppliers.find(s => s.id === id)?.name || id;
 
   const filteredPurchases = scopedPurchases.filter(p => {
     const formattedId = getFormattedTxnId(p.id, 'purchase', p);
@@ -96,7 +103,7 @@ export default function ICTransferPurchase({ portalMode = 'admin', branchId }: P
 
   const { purchaseColumns, matrixRows } = React.useMemo(() => {
     const columns = ['Purchase Vol', 'Purchase Rate', 'Due Vol', 'Due Rate'];
-    const mRows = icSuppliers.map(s => {
+    const mRows = scopedSuppliers.map(s => {
        const supplierPurchases = scopedPurchases.filter(p => p.supplierId === s.id);
        const vol = supplierPurchases.reduce((acc, p) => acc + p.units, 0);
        const rate = supplierPurchases.length > 0 ? supplierPurchases[0].unitRate : 0;
@@ -111,7 +118,7 @@ export default function ICTransferPurchase({ portalMode = 'admin', branchId }: P
        };
     });
     return { purchaseColumns: columns, matrixRows: mRows };
-  }, [icSuppliers, scopedPurchases]);
+  }, [scopedSuppliers, scopedPurchases]);
 
   return (
     <PageShell>

@@ -8,7 +8,7 @@ export default async function ICTransferBranchSuppliersPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  await requireICTransferBranchManager(slug);
+  const { branchId } = await requireICTransferBranchManager(slug);
 
-  return <ICTransferSuppliersPage portalMode="branch" />;
+  return <ICTransferSuppliersPage portalMode="branch" branchId={branchId} />;
 }

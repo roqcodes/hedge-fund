@@ -378,11 +378,11 @@ export async function dbUpdatePhysicalBuyMetadataAction(
         opening_balance = $5,
         product_id = $6,
         item = $7,
-        particulars = $7,
-        notes = $8,
-        fix_or_unfix = $9,
-        payment_mode = $10
-      WHERE id = $11
+        particulars = $8,
+        notes = $9,
+        fix_or_unfix = $10,
+        payment_mode = $11
+      WHERE id = $12
       RETURNING *`,
       [
         input.date,
@@ -391,6 +391,7 @@ export async function dbUpdatePhysicalBuyMetadataAction(
         customerName,
         openingBalance,
         input.productId ?? null,
+        item,
         item,
         input.notes?.trim() || null,
         input.fixOrUnfix ?? buy.fix_or_unfix ?? 'unfixed',

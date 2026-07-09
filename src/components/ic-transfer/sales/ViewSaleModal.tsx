@@ -10,7 +10,7 @@ import SaleOrderWorkflowSection from '../shared/SaleOrderWorkflowSection';
 import ProofImageActions from '../shared/ProofImageActions';
 import CopyOrderDetailsButton from '../shared/CopyOrderDetailsButton';
 import { canBranchResubmitOrder, canBranchDeleteOrder, canCustomerSeeDeliveryProof } from '@/lib/icTransfer/orderStatus';
-import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
+import { getDeliveredUnits, getRemainingUnits, getSaleInrAmount } from '@/lib/icTransfer/saleUnits';
 import { isBranchScopedUser } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import { dbGetCustomerCurrencyAction, dbGetCustomerPhoneAction } from '@/app/actions/icTransferActions';
@@ -22,6 +22,7 @@ import {
 } from '@/lib/icTransfer/branchOrderOwnership';
 import { isBranchHandledSale, canBranchEditHandledOrder } from '@/lib/icTransfer/fulfillmentHandler';
 import { formatICSaleTransactionTypeLabel } from '@/lib/icTransfer/transactionTypes';
+import InrAmountInWords from '../shared/InrAmountInWords';
 
 type Props = {
   open: boolean;
@@ -208,7 +209,13 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-2xl border border-slate-100 p-4 bg-slate-50/55">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total INR</p>
-                  <p className="text-sm font-bold text-slate-900 mt-0.5">{(Number(liveSale.units) * 1000).toLocaleString()} INR</p>
+                  <p className="text-sm font-bold text-slate-900 mt-0.5">
+                    {getSaleInrAmount(Number(liveSale.units)).toLocaleString()} INR
+                  </p>
+                  <InrAmountInWords
+                    amount={getSaleInrAmount(Number(liveSale.units))}
+                    className="mt-0.5 text-[11px] font-medium leading-snug text-slate-500"
+                  />
                 </div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total {currency}</p>

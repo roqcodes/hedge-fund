@@ -37,12 +37,48 @@ export function getBranchManageableRateGroups(
   });
 }
 
+/** HQ admin rate groups only — excludes branch-created groups. */
+export function filterRateGroupsForAdminPortal(groups: ICRateGroup[]): ICRateGroup[] {
+  return groups.filter(g => !g.createdByBranchId);
+}
+
 export type BranchOrderRateContext = 'branch-handled' | 'admin-handled';
+
+/** Branch manager customer rate — customer always pays this rate on branch-portal orders. */
+export function resolveBranchCustomerOrderRate(
+  groups: ICRateGroup[],
+  options: {
+    branchId?: string;
+    customerId?: string;
+    branchCustomerIds: Set<string>;
+  },
+): ICRateGroup | undefined {
+  const { branchId, customerId, branchCustomerIds } = options;
+  if (!customerId || !branchId) return undefined;
+
+  return getBranchManageableRateGroups(groups, branchId, branchCustomerIds).find(g =>
+    g.customerIds?.includes(customerId),
+  );
+}
+
+export function resolveBranchOrderRates(
+  groups: ICRateGroup[],
+  options: {
+    branchId?: string;
+    customerId?: string;
+    branchCustomerIds: Set<string>;
+  },
+): { branchGroup: ICRateGroup | undefined; adminGroup: ICRateGroup | undefined } {
+  const branchGroup = resolveBranchCustomerOrderRate(groups, options);
+  const adminGroup = options.branchId
+    ? getAdminAssignedBranchRateGroup(groups, options.branchId)
+    : undefined;
+  return { branchGroup, adminGroup };
+}
 
 /**
  * Resolve which rate applies on the branch portal when creating an order.
- * Branch-handled → branch manager's customer groups only.
- * Admin-handled → HQ admin's branch assignment only (no group metadata exposed in UI).
+ * @deprecated Use resolveBranchCustomerOrderRate — customers always get the branch manager rate.
  */
 export function resolveBranchPortalOrderRate(
   groups: ICRateGroup[],
@@ -53,18 +89,6 @@ export function resolveBranchPortalOrderRate(
     rateContext: BranchOrderRateContext;
   },
 ): ICRateGroup | undefined {
-  const { branchId, customerId, branchCustomerIds, rateContext } = options;
-
-  if (rateContext === 'admin-handled') {
-    return branchId ? getAdminAssignedBranchRateGroup(groups, branchId) : undefined;
-  }
-
-  if (customerId && branchId) {
-    const match = getBranchManageableRateGroups(groups, branchId, branchCustomerIds).find(g =>
-      g.customerIds?.includes(customerId),
-    );
-    if (match) return match;
-  }
-
-  return undefined;
+  const { branchId, customerId, branchCustomerIds } = options;
+  return resolveBranchCustomerOrderRate(groups, { branchId, customerId, branchCustomerIds });
 }

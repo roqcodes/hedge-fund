@@ -1,4 +1,4 @@
-import type { ICPurchase, ICRateGroup, ICSale, ICWarehouse } from '@/types';
+import type { ICPurchase, ICRateGroup, ICSale, ICSupplier, ICWarehouse } from '@/types';
 import { saleBelongsToBranchPortal } from '@/lib/icTransfer/branchOrderOwnership';
 
 export type ICTransferPortalMode = 'admin' | 'branch';
@@ -42,6 +42,18 @@ export function filterWarehousesForBranchPortal(
   branchId: string,
 ): ICWarehouse[] {
   return warehouses.filter(w => w.branchId === branchId);
+}
+
+export function filterSuppliersForBranchPortal(
+  suppliers: ICSupplier[],
+  branchId: string,
+): ICSupplier[] {
+  return suppliers.filter(s => s.branchId === branchId);
+}
+
+/** HQ admin suppliers only — excludes branch-owned suppliers. */
+export function filterSuppliersForAdminPortal(suppliers: ICSupplier[]): ICSupplier[] {
+  return suppliers.filter(s => !s.branchId);
 }
 
 /** Purchases restocking branch-owned warehouses only. */

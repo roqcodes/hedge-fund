@@ -145,6 +145,27 @@ async function resolveICTransferAdminUser(branchSlug?: string): Promise<User | n
   return null;
 }
 
+/** Branch-created rate groups must use the same currency as the HQ admin-assigned branch rate. */
+async function assertBranchRateGroupCurrencyMatchesAdmin(
+  branchId: string,
+  currency: string,
+): Promise<string | null> {
+  const res = await query(
+    `SELECT rg.currency
+     FROM ic_rate_groups rg
+     INNER JOIN ic_rate_group_branches rgb ON rgb.group_id = rg.id
+     WHERE rgb.branch_id = $1 AND rg.created_by_branch_id IS NULL
+     LIMIT 1`,
+    [branchId],
+  );
+  if (res.rows.length === 0) return null;
+  const adminCurrency = String(res.rows[0].currency).toUpperCase();
+  if (currency.toUpperCase() !== adminCurrency) {
+    return `Rate group currency must match the admin-assigned branch currency (${adminCurrency})`;
+  }
+  return null;
+}
+
 /** Assert the current user may perform IC Transfer admin actions. */
 async function assertAdminRole(branchSlug?: string): Promise<{ error: string } | { enteredBy: string }> {
   const user = await resolveICTransferAdminUser(branchSlug);
@@ -191,14 +212,44 @@ export async function dbDeleteICRegionAction(id: string): Promise<DbActionResult
 }
 
 export async function dbAddICSupplierAction(
-  name: string, phone?: string, commission?: number | null, regionId?: string, email?: string, address?: string
+  name: string,
+  phone?: string,
+  commission?: number | null,
+  regionId?: string,
+  email?: string,
+  address?: string,
+  branchId?: string | null,
+  branchSlug?: string,
 ): Promise<DbActionResult<ICSupplier>> {
   try {
-    const parsed = addSupplierSchema.parse({ name, phone, commission, regionId, email, address });
+    const parsed = addSupplierSchema.parse({ name, phone, commission, regionId, email, address, branchId });
+
+    if (parsed.branchId) {
+      const user = await resolveICTransferAdminUser(branchSlug);
+      if (!user || user.role !== 'branch_manager' || user.branchId !== parsed.branchId) {
+        return { success: false, error: 'Unauthorized' };
+      }
+    } else if (branchSlug) {
+      const user = await resolveICTransferAdminUser(branchSlug);
+      if (user?.role === 'branch_manager') {
+        return { success: false, error: 'Branch managers must create branch-scoped suppliers' };
+      }
+    }
+
     const id = crypto.randomUUID();
     const res = await query(
-      `INSERT INTO ic_suppliers (id, name, phone, commission, region_id, email, address) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [id, parsed.name, parsed.phone || null, parsed.commission || 0, parsed.regionId || null, parsed.email || null, parsed.address || null]
+      `INSERT INTO ic_suppliers (id, name, phone, commission, region_id, email, address, branch_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [
+        id,
+        parsed.name,
+        parsed.phone || null,
+        parsed.commission || 0,
+        parsed.regionId || null,
+        parsed.email || null,
+        parsed.address || null,
+        parsed.branchId || null,
+      ],
     );
     return { success: true, data: mapICSupplierRow(res.rows[0]) };
   } catch (error: unknown) {
@@ -208,10 +259,20 @@ export async function dbAddICSupplierAction(
 }
 
 export async function dbUpdateICSupplierAction(
-  id: string, name: string, phone?: string, commission?: number | null, regionId?: string, email?: string, address?: string
+  id: string,
+  name: string,
+  phone?: string,
+  commission?: number | null,
+  regionId?: string,
+  email?: string,
+  address?: string,
+  branchSlug?: string,
 ): Promise<DbActionResult<ICSupplier>> {
   try {
     const parsed = updateSupplierSchema.parse({ id, name, phone, commission, regionId, email, address });
+    const ownershipCheck = await assertSupplierMutationAllowed(parsed.id, branchSlug);
+    if (ownershipCheck) return { success: false, error: ownershipCheck.error };
+
     const res = await query(
       `UPDATE ic_suppliers SET name=$1, phone=$2, commission=$3, region_id=$4, email=$5, address=$6 WHERE id=$7 RETURNING *`,
       [parsed.name, parsed.phone || null, parsed.commission || 0, parsed.regionId || null, parsed.email || null, parsed.address || null, parsed.id]
@@ -224,9 +285,12 @@ export async function dbUpdateICSupplierAction(
   }
 }
 
-export async function dbDeleteICSupplierAction(id: string): Promise<DbActionResult<void>> {
+export async function dbDeleteICSupplierAction(id: string, branchSlug?: string): Promise<DbActionResult<void>> {
   try {
     const parsedId = z.string().min(1).parse(id);
+    const ownershipCheck = await assertSupplierMutationAllowed(parsedId, branchSlug);
+    if (ownershipCheck) return { success: false, error: ownershipCheck.error };
+
     const res = await query(`DELETE FROM ic_suppliers WHERE id=$1`, [parsedId]);
     if (res.rowCount === 0) return { success: false, error: 'Supplier not found' };
     return { success: true };
@@ -362,6 +426,11 @@ export async function dbAddICRateGroupAction(
       if (!user || user.role !== 'branch_manager' || user.branchId !== parsed.createdByBranchId) {
         return { success: false, error: 'Unauthorized' };
       }
+      const currencyError = await assertBranchRateGroupCurrencyMatchesAdmin(
+        parsed.createdByBranchId,
+        parsed.currency,
+      );
+      if (currencyError) return { success: false, error: currencyError };
     }
 
     const id = crypto.randomUUID();
@@ -390,6 +459,22 @@ export async function dbUpdateICRateGroupAction(
 ): Promise<DbActionResult<import('@/types').ICRateGroup>> {
   try {
     const parsed = updateRateGroupSchema.parse({ id, name, country, currency, saleRate, conversionRate });
+
+    const existing = await query(
+      `SELECT created_by_branch_id FROM ic_rate_groups WHERE id = $1 LIMIT 1`,
+      [parsed.id],
+    );
+    if (existing.rows.length === 0) return { success: false, error: 'Group not found' };
+
+    const createdByBranchId = existing.rows[0].created_by_branch_id as string | null;
+    if (createdByBranchId) {
+      const currencyError = await assertBranchRateGroupCurrencyMatchesAdmin(
+        createdByBranchId,
+        parsed.currency,
+      );
+      if (currencyError) return { success: false, error: currencyError };
+    }
+
     const res = await query(
       `UPDATE ic_rate_groups SET name=$1, country=$2, currency=$3, sale_rate=$4, conversion_rate=$5, updated_at=CURRENT_TIMESTAMP WHERE id=$6 RETURNING *`,
       [parsed.name, parsed.country, parsed.currency, parsed.saleRate, parsed.conversionRate, parsed.id]
@@ -534,6 +619,8 @@ export async function dbAddICPurchaseAction(
     const parsed = addPurchaseSchema.parse(purchase);
     const warehouseCheck = await assertBranchManagerPurchaseWarehouse(parsed.warehouseId, branchSlug);
     if (warehouseCheck) return { success: false, error: warehouseCheck.error };
+    const supplierCheck = await assertBranchManagerPurchaseSupplier(parsed.supplierId, branchSlug);
+    if (supplierCheck) return { success: false, error: supplierCheck.error };
 
     const client = await pool.connect();
     try {
@@ -643,8 +730,8 @@ export async function dbAddICSaleAction(
       const res = await client.query(
         `INSERT INTO ic_sales (
           customer_name, order_customer_name, order_customer_id, warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
-          entered_by, entered_by_name, entered_by_user_id, address, location, district, image_url, service_charge, order_status, priority, bank, conversion_rate, currency, fulfillment_handler
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23) RETURNING *`,
+          entered_by, entered_by_name, entered_by_user_id, address, location, district, image_url, service_charge, order_status, priority, bank, conversion_rate, currency, fulfillment_handler, admin_unit_rate, admin_conversion_rate
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) RETURNING *`,
         [
           salePayload.customerName,
           salePayload.orderCustomerName || null,
@@ -669,6 +756,8 @@ export async function dbAddICSaleAction(
           salePayload.conversionRate ?? 1.0,
           salePayload.currency || 'AED',
           salePayload.fulfillmentHandler === 'branch' ? 'branch' : 'hq_admin',
+          salePayload.adminUnitRate ?? null,
+          salePayload.adminConversionRate ?? null,
         ]
       );
       await client.query('COMMIT');
@@ -704,6 +793,14 @@ export async function dbUpdateICPurchaseAction(
         branchSlug,
       );
       if (warehouseCheck) return { success: false, error: warehouseCheck.error };
+    }
+
+    if (parsedUpdates.supplierId) {
+      const supplierCheck = await assertBranchManagerPurchaseSupplier(
+        parsedUpdates.supplierId,
+        branchSlug,
+      );
+      if (supplierCheck) return { success: false, error: supplierCheck.error };
     }
 
     const client = await pool.connect();
@@ -979,6 +1076,50 @@ async function assertBranchWarehouseForBranch(
   if (String(whRes.rows[0].branch_id) !== String(branchId)) {
     return { error: 'Warehouse must belong to your branch' };
   }
+  return null;
+}
+
+async function assertSupplierMutationAllowed(
+  supplierId: string,
+  branchSlug?: string,
+): Promise<{ error: string } | null> {
+  const res = await query(`SELECT branch_id FROM ic_suppliers WHERE id = $1 LIMIT 1`, [supplierId]);
+  if (res.rows.length === 0) return { error: 'Supplier not found' };
+
+  const supplierBranchId = res.rows[0].branch_id ? String(res.rows[0].branch_id) : null;
+  const user = branchSlug ? await resolveICTransferAdminUser(branchSlug) : null;
+
+  if (supplierBranchId) {
+    if (!user || user.role !== 'branch_manager' || user.branchId !== supplierBranchId) {
+      return { error: 'Unauthorized' };
+    }
+    return null;
+  }
+
+  if (user?.role === 'branch_manager') {
+    return { error: 'Unauthorized' };
+  }
+
+  return null;
+}
+
+async function assertBranchManagerPurchaseSupplier(
+  supplierId: string | null | undefined,
+  branchSlug?: string,
+): Promise<{ error: string } | null> {
+  if (!supplierId) return null;
+
+  const user = await resolveICTransferAdminUser(branchSlug);
+  if (!user || user.role !== 'branch_manager' || !user.branchId) {
+    return null;
+  }
+
+  const res = await query(`SELECT branch_id FROM ic_suppliers WHERE id = $1 LIMIT 1`, [supplierId]);
+  if (res.rows.length === 0) return { error: 'Supplier not found' };
+  if (!res.rows[0].branch_id || String(res.rows[0].branch_id) !== String(user.branchId)) {
+    return { error: 'Supplier must belong to your branch' };
+  }
+
   return null;
 }
 

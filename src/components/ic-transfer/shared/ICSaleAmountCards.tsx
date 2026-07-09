@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { formatAmount } from '@/lib/icTransfer/rateCalculations';
+import InrAmountInWords from './InrAmountInWords';
 
 type Props = {
   inrTotal: number;
@@ -34,6 +35,7 @@ export default function ICSaleAmountCards({
         <span className="mt-1.5 text-base sm:text-lg font-bold text-slate-800 font-mono">
           {formatAmount(inrTotal)}
         </span>
+        <InrAmountInWords amount={inrTotal} />
       </div>
 
       {showCurrency && (

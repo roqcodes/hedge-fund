@@ -37,6 +37,8 @@ type Props = {
   mode: 'create' | 'edit';
   initialGroup: ICRateGroup | null;
   isSaving: boolean;
+  /** When set, currency is fixed to match the admin-assigned branch rate. */
+  lockedCurrency?: string;
   onClose: () => void;
   onSubmit: (values: RateGroupFormValues) => void | Promise<void>;
 };
@@ -46,6 +48,7 @@ export default function RateGroupFormModal({
   mode,
   initialGroup,
   isSaving,
+  lockedCurrency,
   onClose,
   onSubmit,
 }: Props) {
@@ -63,10 +66,10 @@ export default function RateGroupFormModal({
       setCurrency(initialGroup.currency);
     } else {
       setName('');
-      setCountry('');
-      setCurrency('');
+      setCountry(lockedCurrency ? (countryForCurrency(lockedCurrency) ?? '') : '');
+      setCurrency(lockedCurrency ?? '');
     }
-  }, [open, initialGroup]);
+  }, [open, initialGroup, lockedCurrency]);
 
   const handleCurrencyChange = (value: string) => {
     setCurrency(value);
@@ -77,7 +80,11 @@ export default function RateGroupFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name, country, currency });
+    onSubmit({
+      name,
+      country,
+      currency: lockedCurrency ?? currency,
+    });
   };
 
   return (
@@ -111,12 +118,26 @@ export default function RateGroupFormModal({
           </div>
           <div className={formGroup}>
             <label className={formLabel}>Currency</label>
-            <ComboSearchInput
-              value={currency}
-              onChange={handleCurrencyChange}
-              options={WORLD_CURRENCIES.map(c => ({ value: c, label: c }))}
-              placeholder="Search or select currency…"
-            />
+            {lockedCurrency ? (
+              <input
+                className={`${formInput} bg-slate-50 text-slate-600 cursor-not-allowed`}
+                value={lockedCurrency}
+                readOnly
+                disabled
+              />
+            ) : (
+              <ComboSearchInput
+                value={currency}
+                onChange={handleCurrencyChange}
+                options={WORLD_CURRENCIES.map(c => ({ value: c, label: c }))}
+                placeholder="Search or select currency…"
+              />
+            )}
+            {lockedCurrency && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Must match your admin-assigned branch currency.
+              </p>
+            )}
           </div>
         </div>
 
