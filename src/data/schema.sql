@@ -631,6 +631,7 @@ CREATE TABLE IF NOT EXISTS ic_rate_groups (
 
 ALTER TABLE ic_rate_groups ADD COLUMN IF NOT EXISTS created_by_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_ic_rate_groups_created_by_branch ON ic_rate_groups(created_by_branch_id);
+ALTER TABLE ic_rate_groups ADD COLUMN IF NOT EXISTS pricing_config JSONB DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS ic_rate_group_customers (
     group_id VARCHAR(50) REFERENCES ic_rate_groups(id) ON DELETE CASCADE,
@@ -770,10 +771,27 @@ CREATE INDEX IF NOT EXISTS idx_ic_sales_fulfillment_handler ON ic_sales(fulfillm
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS admin_unit_rate NUMERIC(15, 6);
 ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS admin_conversion_rate NUMERIC(15, 6);
 
+-- Sub-customers: third-party recipients scoped to a portal customer (no login)
+CREATE TABLE IF NOT EXISTS ic_sub_customers (
+    id VARCHAR(50) PRIMARY KEY,
+    parent_customer_id VARCHAR(50) NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    contact VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ic_sub_customers_parent ON ic_sub_customers(parent_customer_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ic_sub_customers_parent_name ON ic_sub_customers(parent_customer_id, LOWER(name));
+
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS sub_customer_id VARCHAR(50) REFERENCES ic_sub_customers(id) ON DELETE SET NULL;
+ALTER TABLE ic_sales ADD COLUMN IF NOT EXISTS sub_customer_name VARCHAR(255);
+CREATE INDEX IF NOT EXISTS idx_ic_sales_sub_customer ON ic_sales(sub_customer_id);
+CREATE INDEX IF NOT EXISTS idx_ic_sales_order_customer ON ic_sales(order_customer_id);
+
 -- Drop legacy constraint if present, then apply expanded order_status check
 ALTER TABLE ic_sales DROP CONSTRAINT IF EXISTS ic_sales_order_status_check;
 ALTER TABLE ic_sales ADD CONSTRAINT ic_sales_order_status_check
   CHECK (order_status IN (
+    'pending_branch_review', 'branch_rejected',
     'pending', 'accepted', 'admin_rejected', 'wh_rejected',
     'wh_processing', 'da_rejected', 'delivery_pending_admin',
     'cancellation_pending', 'cancelled', 'completed'

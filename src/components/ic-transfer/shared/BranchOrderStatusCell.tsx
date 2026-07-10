@@ -2,14 +2,25 @@
 
 import React from 'react';
 import { ICSale } from '@/types';
+import { useApp } from '@/context/AppContext';
 import {
   canBranchResubmitOrder,
-  canBranchDeleteOrder,
-  canBranchRequestCancel,
   getBranchOrderStatus,
   CUSTOMER_STATUS_STYLES,
 } from '@/lib/icTransfer/orderStatus';
-import { canBranchEditHandledOrder, isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
+import { isBranchRejectedStatus } from '@/lib/icTransfer/customerOrderReview';
+import {
+  canEditOrder,
+  canDeleteOrder,
+  canRequestOrderCancellation,
+  canBranchResolveCustomerCancellation,
+} from '@/lib/icTransfer/orderWorkflowRules';
+import { getOrderStatusDescription } from '@/lib/icTransfer/orderStatusDescriptions';
+import {
+  branchApproveCustomerCancelICSaleAction,
+  branchDeclineCustomerCancelICSaleAction,
+  customerRequestCancelICSaleAction,
+} from '@/app/actions/icTransferActions';
 import {
   OrderWorkflowActionStack,
   WorkflowActionButton,
@@ -18,6 +29,8 @@ import {
   IconTrash,
   IconBan,
   IconEye,
+  IconCheck,
+  IconX,
 } from './orderWorkflow';
 
 type Props = {
@@ -28,6 +41,7 @@ type Props = {
   onResubmit?: (sale: ICSale) => void;
   onDelete?: (sale: ICSale) => void;
   onCancelRequest?: (sale: ICSale) => void;
+  onUpdated?: () => void;
 };
 
 /** Branch status + remarks card for the Status column. */
@@ -41,19 +55,28 @@ export function BranchOrderStatusCard({
   className?: string;
 }) {
   const label = getBranchOrderStatus(sale);
-  const canResubmit = canBranchResubmitOrder(sale.orderStatus);
+  const canShowRemarks =
+    canBranchResubmitOrder(sale.orderStatus) ||
+    isBranchRejectedStatus(sale.orderStatus) ||
+    normalizeRejectedRemarks(sale);
 
   return (
     <OrderStatusCard
       label={label}
       statusStyle={CUSTOMER_STATUS_STYLES[label]}
-      remarks={compact ? (canResubmit ? sale.rejectionRemarks : null) : sale.rejectionRemarks}
+      flowDescription={getOrderStatusDescription(sale, 'branch')}
+      remarks={compact ? (canShowRemarks ? sale.rejectionRemarks : null) : sale.rejectionRemarks}
       remarksTitle="Rejection reason"
       remarksVariant="danger"
       compact={compact}
       className={className}
     />
   );
+}
+
+function normalizeRejectedRemarks(sale: ICSale): boolean {
+  const status = sale.orderStatus;
+  return status === 'branch_rejected' || status === 'admin_rejected';
 }
 
 /** Branch resubmit / delete / cancel / view actions for the Actions column. */
@@ -63,18 +86,80 @@ export function BranchOrderWorkflowActions({
   onResubmit,
   onDelete,
   onCancelRequest,
+  onUpdated,
   inline = false,
   compact = true,
 }: Props) {
-  const showResubmit =
-    (canBranchResubmitOrder(sale.orderStatus) ||
-      (isBranchHandledSale(sale) && canBranchEditHandledOrder(sale))) &&
-    !!onResubmit;
-  const showDelete = canBranchDeleteOrder(sale.orderStatus) && !!onDelete;
-  const showCancel = canBranchRequestCancel(sale.orderStatus) && !!onCancelRequest;
+  const { user, showToast, refetchData, currentSlug } = useApp();
+  const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
+  const role = user?.role;
+  const isCustomer = role === 'customer';
+  const isBranchManager = role === 'branch_manager';
+  const [loading, setLoading] = React.useState(false);
+
+  const showEdit = canEditOrder(sale, role) && !!onResubmit;
+  const showDelete = canDeleteOrder(sale, role) && !!onDelete;
+  const showCustomerCancel = canRequestOrderCancellation(sale, 'customer') && !!onCancelRequest;
+  const showBranchCancel =
+    (canRequestOrderCancellation(sale, 'branch_manager') ||
+      canRequestOrderCancellation(sale, 'staff')) &&
+    !!onCancelRequest;
+  const showResolveCustomerCancel =
+    isBranchManager && canBranchResolveCustomerCancellation(sale);
   const showView = !!onView;
 
-  if (!showResubmit && !showDelete && !showCancel && !showView) return null;
+  const handleCustomerCancel = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoading(true);
+    const res = await customerRequestCancelICSaleAction(sale.id, branchSlug);
+    setLoading(false);
+    if (res.success) {
+      showToast('Cancellation requested — branch manager will review', 'success');
+      await refetchData();
+      onUpdated?.();
+    } else {
+      showToast(res.error || 'Failed to request cancellation', 'error');
+    }
+  };
+
+  const handleApproveCancel = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoading(true);
+    const res = await branchApproveCustomerCancelICSaleAction(sale.id, branchSlug);
+    setLoading(false);
+    if (res.success) {
+      showToast('Cancellation approved', 'success');
+      await refetchData();
+      onUpdated?.();
+    } else {
+      showToast(res.error || 'Failed to approve cancellation', 'error');
+    }
+  };
+
+  const handleDeclineCancel = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoading(true);
+    const res = await branchDeclineCustomerCancelICSaleAction(sale.id, branchSlug);
+    setLoading(false);
+    if (res.success) {
+      showToast('Cancellation declined — order continues', 'success');
+      await refetchData();
+      onUpdated?.();
+    } else {
+      showToast(res.error || 'Failed to decline cancellation', 'error');
+    }
+  };
+
+  if (
+    !showEdit &&
+    !showDelete &&
+    !showCustomerCancel &&
+    !showBranchCancel &&
+    !showResolveCustomerCancel &&
+    !showView
+  ) {
+    return null;
+  }
 
   const btnWidth = inline ? false : true;
 
@@ -92,7 +177,7 @@ export function BranchOrderWorkflowActions({
 
   const actionButtons = (
     <>
-      {showResubmit && (
+      {showEdit && (
         <WorkflowActionButton
           variant="secondary"
           icon={<IconEdit />}
@@ -100,19 +185,51 @@ export function BranchOrderWorkflowActions({
           fullWidth={btnWidth}
           onClick={e => { e.stopPropagation(); onResubmit!(sale); }}
         >
-          {inline ? 'Edit' : 'Edit & Resend'}
+          {inline ? 'Edit' : 'Edit Order'}
         </WorkflowActionButton>
       )}
-      {showCancel && (
+      {(showCustomerCancel || showBranchCancel) && (
         <WorkflowActionButton
           variant="danger"
           icon={<IconBan />}
           size={compact ? 'sm' : 'md'}
           fullWidth={btnWidth}
-          onClick={e => { e.stopPropagation(); onCancelRequest!(sale); }}
+          onClick={e => {
+            e.stopPropagation();
+            if (isCustomer) {
+              void handleCustomerCancel(e);
+            } else {
+              onCancelRequest!(sale);
+            }
+          }}
+          disabled={loading}
         >
           Cancel
         </WorkflowActionButton>
+      )}
+      {showResolveCustomerCancel && (
+        <>
+          <WorkflowActionButton
+            variant="success"
+            icon={<IconCheck />}
+            size={compact ? 'sm' : 'md'}
+            fullWidth={btnWidth}
+            onClick={handleApproveCancel}
+            disabled={loading}
+          >
+            Approve Cancel
+          </WorkflowActionButton>
+          <WorkflowActionButton
+            variant="secondary"
+            icon={<IconX />}
+            size={compact ? 'sm' : 'md'}
+            fullWidth={btnWidth}
+            onClick={handleDeclineCancel}
+            disabled={loading}
+          >
+            Decline
+          </WorkflowActionButton>
+        </>
       )}
       {showDelete && (
         <WorkflowActionButton
@@ -150,7 +267,7 @@ export function BranchOrderStatusCell({ sale, compact = true }: Pick<Props, 'sal
 }
 
 /** Full-width branch status panel for modals and detail views. */
-export function BranchOrderStatusPanel({ sale, onResubmit, onDelete, onCancelRequest }: Props) {
+export function BranchOrderStatusPanel({ sale, onResubmit, onDelete, onCancelRequest, onUpdated }: Props) {
   return (
     <div className="flex flex-col items-stretch gap-3" onClick={e => e.stopPropagation()}>
       <BranchOrderStatusCard sale={sale} compact={false} />
@@ -159,6 +276,7 @@ export function BranchOrderStatusPanel({ sale, onResubmit, onDelete, onCancelReq
         onResubmit={onResubmit}
         onDelete={onDelete}
         onCancelRequest={onCancelRequest}
+        onUpdated={onUpdated}
         compact={false}
       />
     </div>

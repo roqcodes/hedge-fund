@@ -9,9 +9,11 @@ import SalePriorityControl from '../shared/SalePriorityControl';
 import SaleOrderWorkflowSection from '../shared/SaleOrderWorkflowSection';
 import ProofImageActions from '../shared/ProofImageActions';
 import CopyOrderDetailsButton from '../shared/CopyOrderDetailsButton';
-import { canBranchResubmitOrder, canBranchDeleteOrder, canCustomerSeeDeliveryProof } from '@/lib/icTransfer/orderStatus';
+import { canBranchDeleteOrder, canCustomerSeeDeliveryProof } from '@/lib/icTransfer/orderStatus';
+import { canEditOrder, canDeleteOrder, canRequestOrderCancellation } from '@/lib/icTransfer/customerOrderReview';
 import { getDeliveredUnits, getRemainingUnits, getSaleInrAmount } from '@/lib/icTransfer/saleUnits';
-import { isBranchScopedUser } from '@/lib/rbac';
+import { getCurrencyUnitRate } from '@/lib/icTransfer/rateCalculations';
+import { isBranchScopedUser, isCustomerRole } from '@/lib/rbac';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import { dbGetCustomerCurrencyAction, dbGetCustomerPhoneAction } from '@/app/actions/icTransferActions';
 import {
@@ -20,7 +22,8 @@ import {
   getSaleEndCustomerName,
   getSaleOrderImageLabel,
 } from '@/lib/icTransfer/branchOrderOwnership';
-import { isBranchHandledSale, canBranchEditHandledOrder } from '@/lib/icTransfer/fulfillmentHandler';
+import { getCustomerPortalSubCustomerName } from '@/lib/icTransfer/customerPortalScope';
+import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import { formatICSaleTransactionTypeLabel } from '@/lib/icTransfer/transactionTypes';
 import InrAmountInWords from '../shared/InrAmountInWords';
 
@@ -45,9 +48,14 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
   const [phoneChecked, setPhoneChecked] = useState(false);
 
   const branchName = branches.find(b => b.slug === currentSlug)?.name || currentSlug || '';
+  const isCustomerViewer = isCustomerRole(user?.role);
   const isBranchAdminView = currentSlug !== 'superadmin';
   const txnBranchName = isBranchAdminView ? branchName : undefined;
-  const displayCustomerName = liveSale ? getAdminSaleCustomerName(liveSale, branchName, branches) : '';
+  const displayCustomerName = liveSale
+    ? (isCustomerViewer
+        ? getCustomerPortalSubCustomerName(liveSale)
+        : getAdminSaleCustomerName(liveSale, branchName, branches))
+    : '';
   const endCustomerId = liveSale ? getSaleEndCustomerId(liveSale, branchName) : undefined;
   const endCustomerName = liveSale ? getSaleEndCustomerName(liveSale, branchName, branches) : '';
   const orderImageLabel = liveSale ? getSaleOrderImageLabel(liveSale, branchName) : 'Original Order Image';
@@ -100,16 +108,20 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
     return Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' AED';
   };
 
+  const customerUnitRate = liveSale
+    ? getCurrencyUnitRate(liveSale.unitRate, liveSale.conversionRate || 1)
+    : 0;
+
   const deliveredUnits = getDeliveredUnits(liveSale.units, liveSale.collectedUnits, liveSale.orderStatus);
   const remainingUnits = getRemainingUnits(liveSale.units, liveSale.collectedUnits, liveSale.orderStatus);
   const isBranchPortalView = workflowVariant === 'branch'
     || (workflowVariant === 'auto' && isBranchScopedUser(user));
   const workflowUiVariant = isBranchPortalView ? 'branch' : 'admin';
   const branchHandled = isBranchHandledSale(liveSale);
-  const canBranchModifyRejected = isBranchPortalView && canBranchResubmitOrder(liveSale.orderStatus);
-  const canBranchModifyHandled = isBranchPortalView && canBranchEditHandledOrder(liveSale);
+  const canBranchModifyRejected =
+    isBranchPortalView && canEditOrder(liveSale, user?.role);
   const showDelete = isBranchPortalView
-    ? (canBranchModifyRejected || (branchHandled && canBranchDeleteOrder(liveSale.orderStatus)))
+    ? canDeleteOrder(liveSale, user?.role)
     : !branchHandled;
   const showAdminEdit = !isBranchPortalView && !branchHandled && !!onEdit;
   const canShowDeliveryProof =
@@ -176,7 +188,9 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Customer</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {isCustomerViewer ? 'Sub Customer' : 'Customer'}
+                </p>
                 <p className="text-sm font-semibold text-slate-900 mt-0.5">{displayCustomerName}</p>
               </div>
               <div>
@@ -194,19 +208,28 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
             {/* Calculations Box */}
             <div className="space-y-3">
               {/* Row 1: Units, Unit Rate */}
-              <div className="grid grid-cols-2 gap-4 rounded-2xl border border-slate-100 p-4 bg-slate-50/55">
+              <div className={`grid gap-4 rounded-2xl border border-slate-100 p-4 bg-slate-50/55 ${isCustomerViewer ? 'grid-cols-1' : 'grid-cols-2'}`}>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Units</p>
                   <p className="text-sm font-bold text-slate-900 mt-0.5">{Number(liveSale.units).toLocaleString()}</p>
                 </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unit Rate</p>
-                  <p className="text-sm font-bold text-slate-900 mt-0.5">{liveSale.unitRate.toLocaleString()}</p>
-                </div>
+                {!isCustomerViewer ? (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unit Rate</p>
+                    <p className="text-sm font-bold text-slate-900 mt-0.5">{liveSale.unitRate.toLocaleString()}</p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unit Rate ({currency})</p>
+                    <p className="text-sm font-bold text-slate-900 mt-0.5">
+                      {customerUnitRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Row 2: Total INR, Total Currency, Total AED */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-2xl border border-slate-100 p-4 bg-slate-50/55">
+              <div className={`grid gap-4 rounded-2xl border border-slate-100 p-4 bg-slate-50/55 ${isCustomerViewer ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total INR</p>
                   <p className="text-sm font-bold text-slate-900 mt-0.5">
@@ -225,10 +248,12 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
                       : '—'}
                   </p>
                 </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total AED</p>
-                  <p className="text-sm font-bold text-accent mt-0.5">{formatAED(liveSale.aedAmount)}</p>
-                </div>
+                {!isCustomerViewer ? (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total AED</p>
+                    <p className="text-sm font-bold text-accent mt-0.5">{formatAED(liveSale.aedAmount)}</p>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -275,13 +300,20 @@ export default function ViewSaleModal({ open, onClose, sale, onEdit, workflowVar
               </div>
             ) : null}
 
+            {liveSale.transactionType !== 'by_hand' && liveSale.bank ? (
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bank</p>
+                <p className="text-sm font-semibold text-slate-700 mt-0.5">{liveSale.bank}</p>
+              </div>
+            ) : null}
+
             <SaleOrderWorkflowSection
               sale={liveSale}
               variant={workflowUiVariant}
               branchId={branchId}
               onUpdated={handleWorkflowUpdated}
               onResubmit={
-                onEdit && (canBranchModifyHandled || canBranchModifyRejected)
+                onEdit && canBranchModifyRejected
                   ? s => {
                       onClose();
                       onEdit(s);

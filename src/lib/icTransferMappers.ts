@@ -1,4 +1,13 @@
-import { ICRegion, ICSupplier, ICWarehouse, ICRateGroup, ICPurchase, ICSale, ICWarehouseTransaction } from '@/types';
+import {
+  ICRegion,
+  ICSupplier,
+  ICWarehouse,
+  ICRateGroup,
+  ICPurchase,
+  ICSale,
+  ICSubCustomer,
+  ICWarehouseTransaction,
+} from '@/types';
 
 export function mapICRegionRow(row: any): ICRegion {
   return {
@@ -39,6 +48,11 @@ export function mapICWarehouseRow(row: any): ICWarehouse {
   };
 }
 
+function parsePricingConfig(raw: unknown): ICRateGroup['pricingConfig'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  return raw as ICRateGroup['pricingConfig'];
+}
+
 export function mapICRateGroupRow(row: any): ICRateGroup {
   return {
     id: row.id,
@@ -50,6 +64,7 @@ export function mapICRateGroupRow(row: any): ICRateGroup {
     customerIds: row.customer_ids || [],
     branchIds: row.branch_ids || [],
     createdByBranchId: row.created_by_branch_id ?? undefined,
+    pricingConfig: parsePricingConfig(row.pricing_config),
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };
@@ -78,6 +93,8 @@ export function mapICSaleRow(row: any): ICSale {
     customerName: row.customer_name,
     orderCustomerName: row.order_customer_name || undefined,
     orderCustomerId: row.order_customer_id || undefined,
+    subCustomerId: row.sub_customer_id || undefined,
+    subCustomerName: row.sub_customer_name || undefined,
     warehouseId: row.warehouse_id,
     transactionType: row.transaction_type,
     units: parseFloat(row.units),
@@ -110,6 +127,17 @@ export function mapICSaleRow(row: any): ICSale {
     fulfillmentHandler: row.fulfillment_handler === 'branch' ? 'branch' : 'hq_admin',
     deliveryImageUrl: row.delivery_image_url || undefined,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
+  };
+}
+
+export function mapICSubCustomerRow(row: Record<string, unknown>): ICSubCustomer {
+  return {
+    id: String(row.id),
+    parentCustomerId: String(row.parent_customer_id),
+    name: String(row.name),
+    contact: row.contact ? String(row.contact) : undefined,
+    createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : undefined,
+    hasOrders: Boolean(row.has_orders),
   };
 }
 

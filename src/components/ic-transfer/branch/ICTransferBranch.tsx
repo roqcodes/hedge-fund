@@ -16,21 +16,22 @@ import {
   AddButton,
 } from '../ui';
 import AddICBranchOrderModal from './AddICBranchOrderModal';
+import SubCustomerModal from './SubCustomerModal';
 import ViewSaleModal from '../sales/ViewSaleModal';
 import { ICSale } from '@/types';
 import PhysicalSplitKPICard from '@/components/physical/PhysicalSplitKPICard';
 import { portalKpiGrid, portalMobileCardFooterClass } from '@/lib/icTransfer/layoutConstants';
 import { BranchOrderStatusCell, BranchOrderWorkflowActions } from '../shared/BranchOrderStatusCell';
 import BranchHandledOrderActions from '../shared/BranchHandledOrderActions';
-import { getBranchOrderStatus, canBranchResubmitOrder, canBranchDeleteOrder } from '@/lib/icTransfer/orderStatus';
-import { canBranchEditHandledOrder, isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
+import BranchCustomerOrderReviewActions from '../shared/BranchCustomerOrderReviewActions';
+import { getBranchOrderStatus } from '@/lib/icTransfer/orderStatus';
+import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import { getDeliveredUnits } from '@/lib/icTransfer/saleUnits';
 import { ConfirmModal } from '@/components/warehouse/shared';
-import {
-  customerOwnsSale,
-  getBranchPortalOrderCustomerName,
-  saleBelongsToBranchPortal,
-} from '@/lib/icTransfer/branchOrderOwnership';
+import { customerOwnsSale, getBranchPortalOrderCustomerName, saleBelongsToBranchPortal, saleMatchesDateFilter } from '@/lib/icTransfer/branchOrderOwnership';
+import { resolveDateFilterRange } from '@/lib/dateFilterRange';
+import { canEditOrder } from '@/lib/icTransfer/customerOrderReview';
+import { getCustomerPortalSubCustomerName } from '@/lib/icTransfer/customerPortalScope';
 import { getBranchPortalDisplayName } from '@/lib/icTransfer/branchPortalScope';
 import { getAdminAssignedBranchRateGroup } from '@/lib/icTransfer/branchRateScope';
 import { formatBranchProfit, resolveSaleBranchProfit } from '@/lib/icTransfer/branchSaleProfit';
@@ -38,6 +39,10 @@ import { formatBranchProfit, resolveSaleBranchProfit } from '@/lib/icTransfer/br
 const icCompactTd = (align: 'left' | 'center' | 'right') => `p-3 text-sm whitespace-nowrap text-${align}`;
 
 const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDigits: 2 })}`;
+
+const ORDER_COLUMNS_CUSTOMER = [
+  'Date', 'ID', 'Sub Customer', 'Address', 'Units', 'Total AED', 'Status', 'Actions',
+] as const;
 
 const ORDER_COLUMNS_BASE = [
   'Date', 'ID', 'Customer', 'Address', 'Units', 'Total AED', 'Status', 'Actions',
@@ -61,10 +66,12 @@ export default function ICTransferBranch() {
   const customerId = user?.customerId;
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
+  const [subCustomerModalOpen, setSubCustomerModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<ICSale | null>(null);
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
+  const [subCustomerFilter, setSubCustomerFilter] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [branchCustomers, setBranchCustomers] = useState<{ id: string; name: string }[]>([]);
@@ -91,9 +98,12 @@ export default function ICTransferBranch() {
   );
   const profitCurrency = adminAssignedRate?.currency ?? 'AED';
 
-  const orderColumns = showBranchProfit ? ORDER_COLUMNS_WITH_PROFIT : ORDER_COLUMNS_BASE;
+  const orderColumns = isCustomer
+    ? ORDER_COLUMNS_CUSTOMER
+    : (showBranchProfit ? ORDER_COLUMNS_WITH_PROFIT : ORDER_COLUMNS_BASE);
 
-  const getOrderCustomer = (s: ICSale) => getBranchPortalOrderCustomerName(s, branchName);
+  const getOrderCustomer = (s: ICSale) =>
+    isCustomer ? getCustomerPortalSubCustomerName(s) : getBranchPortalOrderCustomerName(s, branchName);
 
   const branchCustomerIds = useMemo(
     () => new Set(branchCustomers.map(c => c.id)),
@@ -135,9 +145,20 @@ export default function ICTransferBranch() {
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [branchCustomers, branchSales, branchName]);
 
+  const subCustomerOptions = useMemo(() => {
+    const names = new Set<string>();
+    branchSales.forEach(s => {
+      const name = s.subCustomerName?.trim();
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [branchSales]);
+
   const filteredSales = useMemo(() => {
+    const dateRange = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);
     const q = search.trim().toLowerCase();
     const rows = branchSales.filter(s => {
+      if (!saleMatchesDateFilter(s, dateRange)) return false;
       const orderCustomer = getOrderCustomer(s);
       const formattedId = getFormattedTxnId(s.id, 'sale', s, branches, branchName);
       if (q &&
@@ -145,6 +166,10 @@ export default function ICTransferBranch() {
           !s.id.toLowerCase().includes(q) &&
           !orderCustomer.toLowerCase().includes(q)) return false;
       if (customerFilter && orderCustomer !== customerFilter) return false;
+      if (isCustomer && subCustomerFilter) {
+        const subName = getCustomerPortalSubCustomerName(s);
+        if (subName !== subCustomerFilter) return false;
+      }
       if (!matchesSaleRegionFilter(s, icWarehouses, selectedRegionIds)) {
         return false;
       }
@@ -165,7 +190,7 @@ export default function ICTransferBranch() {
           return (new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()) * dir;
       }
     });
-  }, [branchSales, branches, search, customerFilter, selectedRegionIds, icWarehouses, sortField, sortOrder]);
+  }, [branchSales, branches, search, customerFilter, subCustomerFilter, isCustomer, selectedRegionIds, icWarehouses, sortField, sortOrder, branchName, dateFilter, customStartDate, customEndDate]);
 
   const handleHeaderClick = (column: string) => {
     const key = column.toLowerCase().replace(/\s/g, '');
@@ -184,12 +209,7 @@ export default function ICTransferBranch() {
   const [actionLoading, setActionLoading] = useState(false);
 
   const handleEdit = (s: ICSale) => {
-    if (isBranchHandledSale(s) && canBranchEditHandledOrder(s)) {
-      setSelectedSale(s);
-      setModalOpen(true);
-      return;
-    }
-    if (!canBranchResubmitOrder(s.orderStatus)) return;
+    if (!canEditOrder(s, user?.role)) return;
     setSelectedSale(s);
     setModalOpen(true);
   };
@@ -231,7 +251,10 @@ export default function ICTransferBranch() {
     const avgRate = totalUnits > 0 ? totalValue / totalUnits : 0;
     const totalProfit = branchSales.reduce((acc, s) => acc + (getSaleProfit(s)?.profit ?? 0), 0);
 
-    const pendingOrders = branchSales.filter(s => getBranchOrderStatus(s) === 'Pending').length;
+    const pendingOrders = branchSales.filter(s => {
+      const status = getBranchOrderStatus(s);
+      return status === 'Pending' || status === 'Pending Review';
+    }).length;
     const partialOrders = branchSales.filter(s => getBranchOrderStatus(s) === 'Partial').length;
     const fulfilledOrders = branchSales.filter(s => getBranchOrderStatus(s) === 'Completed').length;
 
@@ -264,6 +287,20 @@ export default function ICTransferBranch() {
         }
         actions={
           <div className="flex items-center gap-3">
+            {isCustomer && (
+              <AddButton
+                label="Sub Customer"
+                ariaLabel="Manage sub customers"
+                onClick={() => setSubCustomerModalOpen(true)}
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="sm:h-[18px] sm:w-[18px]">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                }
+              />
+            )}
             <AddButton label="Create Order" onClick={handleCreateOrder} />
           </div>
         }
@@ -340,7 +377,33 @@ export default function ICTransferBranch() {
         sortField={sortField}
         sortOrder={sortOrder}
         toolbar={
-          !isCustomer ? (
+          isCustomer ? (
+            <div className="relative">
+              <select
+                value={subCustomerFilter}
+                onChange={e => setSubCustomerFilter(e.target.value)}
+                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-9 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-300 focus:border-accent focus:outline-none sm:w-56"
+                aria-label="Filter by sub-customer"
+              >
+                <option value="">All Sub Customers</option>
+                {subCustomerOptions.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-hidden
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </div>
+          ) : !isCustomer ? (
           <div className="relative">
             <select
               value={customerFilter}
@@ -401,6 +464,11 @@ export default function ICTransferBranch() {
                 })()}
                 <div className="text-xs text-slate-500 truncate">{s.address || 'No address'}</div>
                 <div onClick={e => e.stopPropagation()}>
+                  {isBranchManager && (
+                    <div className="mb-2">
+                      <BranchCustomerOrderReviewActions sale={s} compact />
+                    </div>
+                  )}
                   {isBranchHandledSale(s) && isBranchManager && (
                     <div className="mb-2">
                       <BranchHandledOrderActions sale={s} branchId={currentBranchId} compact />
@@ -450,6 +518,11 @@ export default function ICTransferBranch() {
               <BranchOrderStatusCell sale={s} />
             </td>
             <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>
+              {isBranchManager && (
+                <div className="mb-1.5">
+                  <BranchCustomerOrderReviewActions sale={s} compact />
+                </div>
+              )}
               {isBranchHandledSale(s) && isBranchManager && (
                 <div className="mb-1.5">
                   <BranchHandledOrderActions sale={s} branchId={currentBranchId} compact />
@@ -473,18 +546,20 @@ export default function ICTransferBranch() {
         onClose={() => { setModalOpen(false); setSelectedSale(null); }}
         initialData={selectedSale || undefined}
       />
+      {isCustomer && currentSlug && (
+        <SubCustomerModal
+          slug={currentSlug}
+          open={subCustomerModalOpen}
+          onClose={() => setSubCustomerModalOpen(false)}
+        />
+      )}
       <ViewSaleModal
         open={viewModalOpen}
         onClose={() => { setViewModalOpen(false); setSelectedSale(null); }}
         sale={selectedSale}
         workflowVariant="branch"
         onEdit={
-          selectedSale && (
-            (isBranchHandledSale(selectedSale) && canBranchEditHandledOrder(selectedSale)) ||
-            canBranchResubmitOrder(selectedSale.orderStatus)
-          )
-            ? handleEdit
-            : undefined
+          selectedSale && canEditOrder(selectedSale, user?.role) ? handleEdit : undefined
         }
         branchId={currentBranchId}
       />

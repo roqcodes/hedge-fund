@@ -527,17 +527,25 @@ export async function completeDeliveryWithUnits(
         const insertRes = await client.query(
           `INSERT INTO ic_sales (
             customer_name, order_customer_name, order_customer_id,
+            sub_customer_id, sub_customer_name,
             entered_by, entered_by_name, entered_by_user_id,
             warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
-            address, image_url, service_charge, priority, delivery_agent_id, order_status,
-            payment_status, derived_from_sale_id, collected_units,
-            status_updated_at, status_updated_by, conversion_rate, currency
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, CURRENT_TIMESTAMP, $22, $23, $24)
+            address, location, district, image_url, service_charge, priority,
+            delivery_agent_id, order_status, payment_status, derived_from_sale_id, collected_units,
+            bank, conversion_rate, currency, fulfillment_handler, admin_unit_rate, admin_conversion_rate,
+            status_updated_at, status_updated_by
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+            $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
+            $26, $27, $28, $29, $30, $31, CURRENT_TIMESTAMP, $32
+          )
           RETURNING id`,
           [
             order.customer_name,
             order.order_customer_name || null,
             order.order_customer_id || null,
+            order.sub_customer_id || null,
+            order.sub_customer_name || null,
             order.entered_by,
             order.entered_by_name,
             order.entered_by_user_id,
@@ -548,6 +556,8 @@ export async function completeDeliveryWithUnits(
             remainderFinancials.convertedAmount,
             remainderFinancials.aedAmount,
             order.address,
+            order.location || null,
+            order.district || null,
             order.image_url,
             remainderFinancials.serviceCharge,
             order.priority || 'Normal',
@@ -556,9 +566,13 @@ export async function completeDeliveryWithUnits(
             'pending',
             parsed.orderId,
             0,
-            parsed.updatedBy || 'delivery_agent',
+            order.bank || null,
             conversionRate,
             orderCurrency,
+            order.fulfillment_handler || 'hq_admin',
+            order.admin_unit_rate ?? null,
+            order.admin_conversion_rate ?? null,
+            parsed.updatedBy || 'delivery_agent',
           ],
         );
         remainderSaleId = insertRes.rows[0].id;

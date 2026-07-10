@@ -9,19 +9,21 @@ import { isCustomerRole } from '@/lib/rbac';
 import { shouldRecordCustomerOrderUnderBranch } from '@/lib/icTransfer/branchOrderOwnership';
 import { normalizeHiddenPages } from '@/lib/branchPages';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
+import { getSubCustomersBySlug, saveSubCustomer } from '@/app/actions/subCustomerActions';
 import { ICSale } from '@/types';
-import { canBranchResubmitOrder } from '@/lib/icTransfer/orderStatus';
-import { canBranchEditHandledOrder, isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
-import { branchUpdateHandledICSaleAction } from '@/app/actions/icTransferActions';
+import { canEditOrder } from '@/lib/icTransfer/customerOrderReview';
 import { hasICSaleEditableFieldsChanged, type ICSaleContentFields } from '@/lib/icTransfer/saleChanges';
 import { WorkflowNotice } from '../shared/orderWorkflow';
 import RateGroupBanner from '../shared/RateGroupBanner';
 import CopyOrderDetailsButton from '../shared/CopyOrderDetailsButton';
 import TransactionTypeSelector from '../shared/TransactionTypeSelector';
 import { computeICSaleAmounts, formatAmount } from '@/lib/icTransfer/rateCalculations';
+import { resolveGroupOrderRate } from '@/lib/icTransfer/ratePricing';
 import InrAmountInWords from '../shared/InrAmountInWords';
-import { DEFAULT_IC_SALE_TRANSACTION_TYPE, type ICSaleTransactionType } from '@/lib/icTransfer/transactionTypes';
+import { DEFAULT_IC_SALE_TRANSACTION_TYPE, transactionTypeRequiresBank, type ICSaleTransactionType } from '@/lib/icTransfer/transactionTypes';
 import { resolveBranchOrderRates } from '@/lib/icTransfer/branchRateScope';
+import { resolveCustomerPortalRateGroup } from '@/lib/icTransfer/customerPortalScope';
+import SubCustomerSearchInput from './SubCustomerSearchInput';
 
 type Props = {
   open: boolean;
@@ -53,8 +55,11 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [subCustomers, setSubCustomers] = useState<{ id: string; name: string }[]>([]);
   const [customerQuery, setCustomerQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [subCustomerQuery, setSubCustomerQuery] = useState('');
+  const [selectedSubCustomerId, setSelectedSubCustomerId] = useState('');
   const [editBaseline, setEditBaseline] = useState<Pick<
     ICSaleContentFields,
     'units' | 'transactionType' | 'address' | 'location' | 'district' | 'imageUrl' | 'bank'
@@ -75,31 +80,34 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const branchHiddenPages = normalizeHiddenPages(currentBranch?.hiddenPages);
   const recordCustomerUnderBranch = isCustomer && shouldRecordCustomerOrderUnderBranch(branchHiddenPages);
 
-  const branchCustomerIdSet = useMemo(
-    () => new Set(customers.map(c => c.id)),
-    [customers],
-  );
-
-  const resolvedCustomerId = isCustomer
-    ? (recordCustomerUnderBranch ? undefined : linkedCustomerId)
-    : (selectedCustomerId || undefined);
+  const branchCustomerIdSet = useMemo(() => {
+    if (isCustomer && linkedCustomerId) {
+      return new Set([linkedCustomerId]);
+    }
+    return new Set(customers.map(c => c.id));
+  }, [customers, isCustomer, linkedCustomerId]);
 
   const orderRates = useMemo(() => {
     const customerId = isCustomer
-      ? (recordCustomerUnderBranch ? linkedCustomerId : resolvedCustomerId)
+      ? linkedCustomerId
       : (selectedCustomerId || undefined);
+    const branchId = currentBranchId ?? user?.branchId;
+
+    if (isCustomer && linkedCustomerId) {
+      const branchGroup = resolveCustomerPortalRateGroup(icRateGroups, linkedCustomerId, branchId);
+      return { branchGroup, adminGroup: undefined };
+    }
 
     return resolveBranchOrderRates(icRateGroups, {
-      branchId: currentBranchId,
+      branchId,
       customerId,
       branchCustomerIds: branchCustomerIdSet,
     });
   }, [
     icRateGroups,
     currentBranchId,
-    resolvedCustomerId,
+    user?.branchId,
     isCustomer,
-    recordCustomerUnderBranch,
     linkedCustomerId,
     selectedCustomerId,
     branchCustomerIdSet,
@@ -108,40 +116,65 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const applicableGroup = orderRates.branchGroup;
   const adminRateGroup = orderRates.adminGroup;
 
-  const groupConversionRate = applicableGroup?.conversionRate || 1;
+  const resolvedBranchRate = useMemo(() => {
+    if (!applicableGroup) return { saleRate: 0, conversionRate: 1 };
+    return resolveGroupOrderRate(applicableGroup, transactionType, parseFloat(units) || 0);
+  }, [applicableGroup, transactionType, units]);
+
+  const resolvedAdminRate = useMemo(() => {
+    if (!adminRateGroup) return null;
+    return resolveGroupOrderRate(adminRateGroup, transactionType, parseFloat(units) || 0);
+  }, [adminRateGroup, transactionType, units]);
+
+  const groupConversionRate = initialData
+    ? (initialData.conversionRate ?? 1)
+    : resolvedBranchRate.conversionRate;
   const groupCurrency = applicableGroup?.currency || 'Currency';
-  const groupSaleRate = applicableGroup?.saleRate || 0;
-  const adminSaleRate = adminRateGroup?.saleRate;
-  const adminConversionRate = adminRateGroup?.conversionRate ?? 1;
+  const groupSaleRate = initialData ? initialData.unitRate : resolvedBranchRate.saleRate;
+  const adminSaleRate = resolvedAdminRate?.saleRate ?? adminRateGroup?.saleRate;
+  const adminConversionRate = resolvedAdminRate?.conversionRate ?? adminRateGroup?.conversionRate ?? 1;
 
   useEffect(() => {
     if (!open || !currentSlug) return;
+    if (isCustomer) {
+      getSubCustomersBySlug(currentSlug).then(res => {
+        if (res.success && res.subCustomers) {
+          setSubCustomers(res.subCustomers.map(sc => ({ id: sc.id, name: sc.name })));
+        }
+      });
+      return;
+    }
     getCustomersBySlug(currentSlug).then(res => {
       if (res.success && res.customers) {
         setCustomers(res.customers.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
       }
     });
-  }, [open, currentSlug]);
+  }, [open, currentSlug, isCustomer]);
 
   useEffect(() => {
     if (open) {
       setUnits(initialData?.units?.toString() || '');
       setTransactionType(initialData?.transactionType || DEFAULT_IC_SALE_TRANSACTION_TYPE);
-      setBank(initialData?.bank || '');
+      setBank(
+        initialData?.transactionType === 'by_hand' ? '' : (initialData?.bank || ''),
+      );
       setAddress(initialData?.address || '');
       setLocation(initialData?.location || '');
       setDistrict(initialData?.district || '');
       setImageUrl(initialData?.imageUrl || '');
       setDeleteToken('');
-      if (isCustomer && linkedCustomerId && !initialData) {
-        setSelectedCustomerId(linkedCustomerId);
-        setCustomerQuery(linkedCustomerName || '');
+      if (isCustomer && !initialData) {
+        setSubCustomerQuery('');
+        setSelectedSubCustomerId('');
+      } else if (isCustomer && initialData) {
+        setSubCustomerQuery(initialData.subCustomerName || '');
+        setSelectedSubCustomerId(initialData.subCustomerId || '');
       } else {
         setSelectedCustomerId(initialData?.orderCustomerId || '');
         setCustomerQuery(initialData?.orderCustomerName || '');
       }
 
-      if (initialData && canBranchResubmitOrder(initialData.orderStatus)) {
+      if (initialData && canEditOrder(initialData, user?.role)) {
         setEditBaseline({
           units: initialData.units,
           transactionType: initialData.transactionType || DEFAULT_IC_SALE_TRANSACTION_TYPE,
@@ -149,7 +182,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           location: initialData.location,
           district: initialData.district,
           imageUrl: initialData.imageUrl,
-          bank: initialData.bank || '',
+          bank: initialData.transactionType === 'by_hand' ? '' : (initialData.bank || ''),
         });
       } else {
         setEditBaseline(null);
@@ -203,16 +236,15 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   };
 
   const unitNum = parseFloat(units) || 0;
-  const rateNum = initialData ? initialData.unitRate : groupSaleRate;
+  const rateNum = groupSaleRate;
   const serviceChargeNum = 0;
 
   const amounts = computeICSaleAmounts(unitNum, rateNum, groupConversionRate, serviceChargeNum);
 
-  const isResubmitMode = !!initialData && canBranchResubmitOrder(initialData.orderStatus);
-  const isBranchHandledEdit =
-    !!initialData && isBranchHandledSale(initialData) && canBranchEditHandledOrder(initialData);
+  const isEditMode = !!initialData && canEditOrder(initialData, user?.role);
 
   const isByHand = transactionType === 'by_hand';
+  const showBankField = transactionTypeRequiresBank(transactionType);
 
   const handleTransactionTypeChange = (value: ICSaleTransactionType) => {
     setTransactionType(value);
@@ -225,25 +257,39 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   };
 
   const trimmedCustomer = customerQuery.trim();
-  const orderRecordingName = recordCustomerUnderBranch
-    ? branchName
-    : (linkedCustomerName || trimmedCustomer || 'your name');
+  const trimmedSubCustomer = subCustomerQuery.trim();
   const recordedCustomerName = isCustomer
-    ? (recordCustomerUnderBranch ? branchName : (linkedCustomerName || trimmedCustomer))
+    ? (recordCustomerUnderBranch ? branchName : (linkedCustomerName || ''))
     : branchName;
+
+  const handleQuickAddSubCustomer = async (name: string) => {
+    if (!currentSlug) return null;
+    const res = await saveSubCustomer(currentSlug, { name });
+    if (res.success && res.subCustomer) {
+      setSubCustomers(prev => {
+        const exists = prev.some(sc => sc.id === res.subCustomer!.id);
+        if (exists) return prev;
+        return [...prev, { id: res.subCustomer!.id, name: res.subCustomer!.name }];
+      });
+      showToast(`Added ${res.subCustomer.name}`);
+      return { id: res.subCustomer.id, name: res.subCustomer.name };
+    }
+    showToast(res.error || 'Failed to add sub-customer', 'error');
+    return null;
+  };
 
   const payload = {
     customerName: recordedCustomerName,
-    orderCustomerName: isCustomer
-      ? (linkedCustomerName || trimmedCustomer || undefined)
-      : (trimmedCustomer || undefined),
-    orderCustomerId: isCustomer ? (linkedCustomerId || selectedCustomerId || undefined) : (selectedCustomerId || undefined),
+    orderCustomerName: isCustomer ? (linkedCustomerName || undefined) : (trimmedCustomer || undefined),
+    orderCustomerId: isCustomer ? linkedCustomerId : (selectedCustomerId || undefined),
+    subCustomerId: isCustomer ? (selectedSubCustomerId || undefined) : undefined,
+    subCustomerName: isCustomer ? (trimmedSubCustomer || undefined) : undefined,
     transactionType,
     unitRate: rateNum,
     units: unitNum,
     convertedAmount: amounts.currencyTotal,
     aedAmount: amounts.aedNetTotal,
-    bank: isByHand ? undefined : (bank || undefined),
+    bank: showBankField ? (bank || undefined) : undefined,
     address: address || undefined,
     location: isByHand ? location.trim() || undefined : undefined,
     district: isByHand ? district.trim() || undefined : undefined,
@@ -261,7 +307,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     transactionType,
     convertedAmount: amounts.currencyTotal,
     aedAmount: amounts.aedNetTotal,
-    bank: isByHand ? undefined : (bank || undefined),
+    bank: showBankField ? (bank || undefined) : undefined,
     address: address || undefined,
     location: isByHand ? location.trim() || undefined : undefined,
     district: isByHand ? district.trim() || undefined : undefined,
@@ -279,7 +325,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     district: isByHand ? district.trim() || undefined : undefined,
     imageUrl: imageUrl || undefined,
     serviceCharge: serviceChargeNum,
-    bank: isByHand ? undefined : (bank || undefined),
+    bank: showBankField ? (bank || undefined) : undefined,
   };
 
   const canResubmit =
@@ -289,19 +335,18 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     isSubmitting ||
     isUploading ||
     !unitNum ||
-    !rateNum ||
-    (!initialData && !trimmedCustomer && !isCustomer) ||
-    (isResubmitMode && !canResubmit && !isBranchHandledEdit);
+    (!initialData && isCustomer && (!selectedSubCustomerId || !applicableGroup)) ||
+    (!initialData && !isCustomer && (!trimmedCustomer || !rateNum)) ||
+    (!initialData && isCustomer && !rateNum) ||
+    (isEditMode && !canResubmit);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitDisabled) return;
     setIsSubmitting(true);
 
-    if (initialData && isResubmitMode) {
+    if (initialData && isEditMode) {
       await resubmitICSale(initialData.id, contentPayload, currentSlug);
-    } else if (initialData && isBranchHandledEdit) {
-      await branchUpdateHandledICSaleAction(initialData.id, contentPayload, currentSlug);
     } else if (!initialData) {
       await addICSale(payload);
     }
@@ -316,7 +361,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
       onClose={onClose}
       title={
         <div className="flex flex-col gap-0.5">
-          <span>{isBranchHandledEdit ? 'Edit Branch Order' : isResubmitMode ? 'Edit & Resubmit Order' : 'Create Transfer Order'}</span>
+          <span>{isEditMode ? 'Edit Order' : 'Create Transfer Order'}</span>
           <span className="text-xs font-semibold text-accent">
             {isCustomer
               ? (recordCustomerUnderBranch ? branchName : (linkedCustomerName || 'Customer'))
@@ -333,21 +378,19 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
             form="branch-order-form"
             className={`${btnPrimary} disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none motion-safe:disabled:hover:translate-y-0 motion-safe:disabled:hover:shadow-primary`}
             disabled={submitDisabled}
-            title={isResubmitMode && !canResubmit ? 'Change at least one field before resubmitting' : undefined}
+            title={isEditMode && !canResubmit ? 'Change at least one field before resubmitting' : undefined}
           >
             {isSubmitting
               ? 'Saving...'
-              : isBranchHandledEdit
+              : isEditMode
                 ? 'Save Changes'
-                : isResubmitMode
-                ? 'Save & Resend to Admin'
                 : 'Create Order'}
           </button>
         </>
       }
     >
       <form id="branch-order-form" onSubmit={handleSubmit} className="space-y-5">
-        {isResubmitMode && initialData?.rejectionRemarks && (
+        {isEditMode && initialData?.rejectionRemarks && (
           <WorkflowNotice variant="danger" title="Order rejected by admin">
             {initialData.rejectionRemarks}
             <span className="mt-1 block text-[10px] font-medium opacity-80">
@@ -356,24 +399,51 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
           </WorkflowNotice>
         )}
 
+        {isCustomer && !initialData && !applicableGroup && (
+          <WorkflowNotice variant="danger" title="No rate assigned">
+            No transfer rate has been assigned to your account. Please contact your branch manager before placing orders.
+          </WorkflowNotice>
+        )}
+
         {applicableGroup && (
           <RateGroupBanner
             group={applicableGroup}
-            displayName={isCustomer && recordCustomerUnderBranch ? branchName : undefined}
-            ratesOnly={isBranchManager || user?.role === 'staff'}
+            ratesOnly={isCustomer || isBranchManager || user?.role === 'staff'}
+            hideAedRate={isCustomer || isBranchManager || user?.role === 'staff'}
           />
         )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left Column: Customer details, Address and Upload */}
           <div className="space-y-4 lg:col-span-5">
-            <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Customer</h3>
+            <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">
+              {isCustomer ? 'Recipient' : 'Customer'}
+            </h3>
 
-            <InputField label="Customer">
-              {isResubmitMode || isCustomer ? (
+            <InputField label={isCustomer ? 'Sub Customer' : 'Customer'}>
+              {isEditMode && isCustomer ? (
                 <input
                   className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`}
-                  value={customerQuery || linkedCustomerName || branchName}
+                  value={subCustomerQuery || initialData?.subCustomerName || '—'}
+                  disabled
+                  readOnly
+                />
+              ) : isCustomer ? (
+                <SubCustomerSearchInput
+                  value={subCustomerQuery}
+                  selectedId={selectedSubCustomerId}
+                  onChange={(name, id) => {
+                    setSubCustomerQuery(name);
+                    setSelectedSubCustomerId(id);
+                  }}
+                  options={subCustomers.map(sc => ({ value: sc.id, label: sc.name }))}
+                  onAddNew={handleQuickAddSubCustomer}
+                  placeholder="Search or type sub-customer…"
+                />
+              ) : isEditMode ? (
+                <input
+                  className={`${formInput} bg-slate-50 text-slate-500 font-semibold cursor-not-allowed`}
+                  value={customerQuery || branchName}
                   disabled
                   readOnly
                 />
@@ -396,13 +466,13 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
               <p className="mt-1 text-[11px] text-slate-400">
                 {isCustomer
                   ? recordCustomerUnderBranch
-                    ? `Your order will be recorded under ${branchName}. You are ordering as ${linkedCustomerName || 'Customer'}.`
-                    : `Your order will be recorded under ${orderRecordingName}.`
+                    ? `Ordering as ${linkedCustomerName || 'Customer'} · recorded under ${branchName}`
+                    : `Ordering as ${linkedCustomerName || 'Customer'} · select who receives this transfer`
                   : `Order will be recorded under ${branchName}. Select the end customer above.`}
               </p>
             </InputField>
 
-            {!isByHand ? (
+            {showBankField ? (
               <InputField label="Bank">
                 <input 
                   type="text"
@@ -494,7 +564,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
             <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900">Transaction Details</h3>
             
             <div className="flex flex-col gap-4">
-              {isBranchManager && !isCustomer && !isResubmitMode && !isBranchHandledEdit && (
+              {isBranchManager && !isCustomer && !isEditMode && (
                 <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
                   <div className="min-w-0">
                     <span className="text-xs font-semibold text-slate-800">Handle at branch</span>
@@ -523,7 +593,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
                   <TransactionTypeSelector
                     value={transactionType}
                     onChange={handleTransactionTypeChange}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isEditMode}
                   />
                 </InputField>
               </div>

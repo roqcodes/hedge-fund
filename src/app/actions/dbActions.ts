@@ -3,7 +3,7 @@
 import { getCurrentUserAction } from '@/app/actions/auth';
 import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
 import type { BranchPageId } from '@/lib/branchPages';
-import { isBranchScopedUser } from '@/lib/rbac';
+import { isBranchScopedUser, isCustomerRole } from '@/lib/rbac';
 import { query, pool } from '@/lib/db';
 import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate, parseCalendarDate, todayInTimeZone } from '@/lib/businessTime';
 import {
@@ -30,6 +30,10 @@ import {
   mapICSaleRow,
   mapICWarehouseTransactionRow,
 } from '@/lib/icTransferMappers';
+import {
+  filterRateGroupsForCustomerPortal,
+  stripAdminRatesFromSale,
+} from '@/lib/icTransfer/customerPortalScope';
 import { logger } from '@/lib/logger';
 
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
@@ -613,13 +617,52 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
              COALESCE((SELECT array_agg(branch_id) FROM ic_rate_group_branches WHERE group_id = g.id), ARRAY[]::varchar[]) as branch_ids
       FROM ic_rate_groups g
     `);
-    const icRateGroups = icRateGroupsRes.rows.map(r => mapICRateGroupRow(r));
     const icPurchasesRes = await query('SELECT * FROM ic_purchases ORDER BY created_at DESC');
     const icPurchases = icPurchasesRes.rows.map(r => mapICPurchaseRow(r));
-    const icSalesRes = await query('SELECT s.*, a.name as delivery_agent_name FROM ic_sales s LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id ORDER BY s.created_at DESC');
-    const icSales = icSalesRes.rows.map(r => mapICSaleRow(r));
+
+    const isCustomerSession =
+      currentUser && isCustomerRole(currentUser.role) && !!currentUser.customerId;
+    const icSalesRes = isCustomerSession
+      ? await query(
+          `SELECT s.*, a.name as delivery_agent_name
+           FROM ic_sales s
+           LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
+           WHERE s.order_customer_id = $1
+           ORDER BY s.created_at DESC`,
+          [currentUser!.customerId],
+        )
+      : await query(
+          `SELECT s.*, a.name as delivery_agent_name
+           FROM ic_sales s
+           LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
+           ORDER BY s.created_at DESC`,
+        );
+    let icSales = icSalesRes.rows.map(r => mapICSaleRow(r));
     const icWarehouseTxRes = await query('SELECT * FROM ic_warehouse_transactions ORDER BY created_at DESC');
     const icWarehouseTransactions = icWarehouseTxRes.rows.map(r => mapICWarehouseTransactionRow(r));
+
+    let icRateGroups = icRateGroupsRes.rows.map(r => mapICRateGroupRow(r));
+
+    if (isCustomerSession && currentUser?.customerId) {
+      const parentId = currentUser.customerId;
+      let branchId = currentUser.branchId || '';
+      if (!branchId) {
+        const custBranchRes = await query(
+          `SELECT branch_id FROM customers WHERE id = $1 LIMIT 1`,
+          [parentId],
+        );
+        branchId = custBranchRes.rows[0]?.branch_id
+          ? String(custBranchRes.rows[0].branch_id)
+          : '';
+      }
+      icSales = icSales.map(stripAdminRatesFromSale);
+      icRateGroups = filterRateGroupsForCustomerPortal(icRateGroups, parentId, branchId || undefined);
+    } else {
+      icSales = icSales.map(sale => {
+        const { subCustomerId: _id, subCustomerName: _name, ...rest } = sale;
+        return rest;
+      });
+    }
 
 
     let finalBranches = branches;

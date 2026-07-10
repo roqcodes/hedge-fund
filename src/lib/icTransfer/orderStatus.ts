@@ -3,6 +3,8 @@ import { isByHandSale } from './byHand';
 
 /** Internal workflow status — visible in admin panel only. */
 export type ICOrderStatus =
+  | 'pending_branch_review'
+  | 'branch_rejected'
   | 'pending'
   | 'accepted'
   | 'admin_rejected'
@@ -12,10 +14,12 @@ export type ICOrderStatus =
   | 'delivery_pending_admin'
   | 'cancellation_pending'
   | 'cancelled'
-  | 'completed';
+  | 'completed'
+  | 'unknown';
 
 /** Simplified status shown to branch/customer. */
 export type ICCustomerOrderStatus =
+  | 'Pending Review'
   | 'Pending'
   | 'Processing'
   | 'Admin Accepted'
@@ -29,6 +33,8 @@ export type ICCustomerOrderStatus =
   | 'Rejected';
 
 export const IC_ORDER_STATUSES: ICOrderStatus[] = [
+  'pending_branch_review',
+  'branch_rejected',
   'pending',
   'accepted',
   'admin_rejected',
@@ -41,7 +47,12 @@ export const IC_ORDER_STATUSES: ICOrderStatus[] = [
   'completed',
 ];
 
+/** Statuses that may appear in storage but are not valid workflow states. */
+export const INVALID_ORDER_STATUSES = ['unknown'] as const;
+
 export const ADMIN_STATUS_LABELS: Record<ICOrderStatus, string> = {
+  pending_branch_review: 'Awaiting Branch Review',
+  branch_rejected: 'Branch Rejected',
   pending: 'Pending',
   accepted: 'Admin Accepted',
   admin_rejected: 'Admin Rejected',
@@ -52,9 +63,12 @@ export const ADMIN_STATUS_LABELS: Record<ICOrderStatus, string> = {
   cancellation_pending: 'Cancellation Pending',
   cancelled: 'Cancelled',
   completed: 'Completed',
+  unknown: 'Unknown Status',
 };
 
 export const ADMIN_STATUS_STYLES: Record<ICOrderStatus, string> = {
+  pending_branch_review: 'bg-teal-50 text-teal-700 border-teal-200',
+  branch_rejected: 'bg-red-50 text-red-700 border-red-200',
   pending: 'bg-slate-50 text-slate-600 border-slate-200',
   accepted: 'bg-blue-50 text-blue-700 border-blue-200',
   admin_rejected: 'bg-red-50 text-red-700 border-red-200',
@@ -65,9 +79,11 @@ export const ADMIN_STATUS_STYLES: Record<ICOrderStatus, string> = {
   cancellation_pending: 'bg-red-50 text-red-700 border-red-200',
   cancelled: 'bg-slate-100 text-slate-500 border-slate-200',
   completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  unknown: 'bg-slate-100 text-slate-500 border-slate-300',
 };
 
 export const CUSTOMER_STATUS_STYLES: Record<ICCustomerOrderStatus, string> = {
+  'Pending Review': 'bg-teal-50 text-teal-700 border-teal-200',
   Pending: 'bg-slate-50 text-slate-600 border-slate-200',
   Processing: 'bg-violet-50 text-violet-700 border-violet-200',
   'Admin Accepted': 'bg-blue-50 text-blue-700 border-blue-200',
@@ -98,6 +114,9 @@ export function getAdminRowAccentClass(status?: string | null, transactionType?:
   if (s === 'cancellation_pending') {
     return 'bg-gradient-to-l from-red-100 via-red-50/50 to-transparent hover:from-red-200/90 hover:via-red-100/50';
   }
+  if (s === 'pending_branch_review') {
+    return 'bg-gradient-to-l from-teal-100 via-teal-50/50 to-transparent hover:from-teal-200/90 hover:via-teal-100/50';
+  }
   if (s === 'pending') {
     return 'bg-gradient-to-l from-amber-100 via-amber-50/50 to-transparent hover:from-amber-200/90 hover:via-amber-100/50';
   }
@@ -121,6 +140,9 @@ export function getAdminCardAccentClass(status?: string | null, transactionType?
   if (s === 'cancellation_pending') {
     return 'border-red-200 bg-gradient-to-l from-red-100 to-white ring-1 ring-red-100';
   }
+  if (s === 'pending_branch_review') {
+    return 'border-teal-200 bg-gradient-to-l from-teal-100 to-white ring-1 ring-teal-100';
+  }
   if (s === 'pending') {
     return 'border-amber-200 bg-gradient-to-l from-amber-100 to-white ring-1 ring-amber-100';
   }
@@ -131,10 +153,11 @@ export function getAdminCardAccentClass(status?: string | null, transactionType?
 }
 
 export function normalizeOrderStatus(status?: string | null): ICOrderStatus {
-  if (status && IC_ORDER_STATUSES.includes(status as ICOrderStatus)) {
+  if (!status) return 'unknown';
+  if (IC_ORDER_STATUSES.includes(status as ICOrderStatus)) {
     return status as ICOrderStatus;
   }
-  return 'pending';
+  return 'unknown';
 }
 
 /** Map internal workflow state to customer-facing label. */
@@ -143,9 +166,11 @@ export function getCustomerOrderStatus(
 ): ICCustomerOrderStatus {
   const status = normalizeOrderStatus(sale.orderStatus);
 
-  if (status === 'admin_rejected') return 'Rejected';
+  if (status === 'admin_rejected' || status === 'branch_rejected') return 'Rejected';
+  if (status === 'unknown') return 'Pending';
   if (status === 'cancellation_pending') return 'Cancellation Requested';
   if (status === 'cancelled') return 'Cancelled';
+  if (status === 'pending_branch_review') return 'Pending Review';
   if (status === 'pending') return 'Pending';
   if (status === 'accepted') {
     if (isByHandSale(sale)) return 'Processing';
@@ -261,7 +286,7 @@ export function canBranchRequestCancel(status?: string | null): boolean {
   return normalizeOrderStatus(status) === 'accepted';
 }
 
-/** Admin may approve or decline a pending cancellation request. */
+/** Admin may approve or decline a pending cancellation request (status-only check). */
 export function canAdminResolveCancellation(status?: string | null): boolean {
   return normalizeOrderStatus(status) === 'cancellation_pending';
 }

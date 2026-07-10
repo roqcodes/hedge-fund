@@ -1,21 +1,42 @@
 'use client';
 
-import React from 'react';
-import { dataTable, tableWrap } from '@/lib/ui';
+import React, { useCallback, useState } from 'react';
+import { dataTable, tableWrap, btnPrimary } from '@/lib/ui';
+import { useApp } from '@/context/AppContext';
 import { icThClass } from '../ui/tableStyles';
 import {
   formatRateGroupUpdatedAt,
   isRateGroupUpdatedToday,
 } from '@/lib/icTransfer/rateGroupUtils';
 import { getCurrencyUnitRate, formatAmount } from '@/lib/icTransfer/rateCalculations';
-import type { ICRateGroup } from '@/types';
+import {
+  getPricingSummaryLabel,
+  hasAdvancedPricing,
+  normalizePricingConfig,
+  validatePricingEditorForSave,
+} from '@/lib/icTransfer/ratePricing';
+import { coerceFlatRate } from '@/lib/icTransfer/rateFieldInput';
+import type { ICRateGroup, ICRateGroupPricingConfig } from '@/types';
+import RateGroupPricingEditor, {
+  arePricingEditorValuesEqual,
+  getInitialPricingEditorValue,
+  type RatePricingEditorValue,
+} from './RateGroupPricingEditor';
 
 type Props = {
   groups: ICRateGroup[];
   onView: (group: ICRateGroup) => void;
   onEdit: (group: ICRateGroup) => void;
   onDelete: (group: ICRateGroup) => void;
+  onSavePricing?: (
+    groupId: string,
+    saleRate: number,
+    conversionRate: number,
+    pricingConfig: ICRateGroupPricingConfig | null,
+  ) => Promise<boolean>;
+  savingGroupId?: string | null;
   hideBranchColumn?: boolean;
+  convertedRateOnly?: boolean;
 };
 
 const STALE_ROW_CLASS =
@@ -26,8 +47,31 @@ export default function RateGroupsTable({
   onView,
   onEdit,
   onDelete,
+  onSavePricing,
+  savingGroupId,
   hideBranchColumn = false,
+  convertedRateOnly = false,
 }: Props) {
+  const { showToast } = useApp();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [rowEditorValues, setRowEditorValues] = useState<
+    Record<string, RatePricingEditorValue>
+  >({});
+
+  const getRowEditorValue = useCallback(
+    (group: ICRateGroup): RatePricingEditorValue =>
+      rowEditorValues[group.id] ?? getInitialPricingEditorValue(group),
+    [rowEditorValues],
+  );
+
+  const setRowEditorValue = useCallback((groupId: string, value: RatePricingEditorValue) => {
+    setRowEditorValues(prev => {
+      const current = prev[groupId];
+      if (current && arePricingEditorValuesEqual(current, value)) return prev;
+      return { ...prev, [groupId]: value };
+    });
+  }, []);
+
   if (groups.length === 0) {
     return (
       <div className="px-4 py-12 text-center text-sm text-slate-400 md:px-6">
@@ -39,25 +83,63 @@ export default function RateGroupsTable({
   }
 
   const columns = [
+    '',
     'Group',
     'Country',
     'Currency',
-    'Sale Rate',
-    'Conversion',
+    ...(convertedRateOnly ? [] : ['Sale Rate', 'Conversion']),
     'Converted Rate',
+    'Pricing',
     'Last Updated',
     ...(hideBranchColumn ? [] : ['Branches']),
     'Customers',
     'Actions',
   ];
 
+  const handleRowSave = async (group: ICRateGroup) => {
+    if (!onSavePricing) return;
+    const value = getRowEditorValue(group);
+
+    const validationError = validatePricingEditorForSave(value.flat, value.pricingConfig);
+    if (validationError) {
+      showToast(validationError, 'error');
+      return;
+    }
+
+    const coerced = coerceFlatRate(value.flat);
+    if (!coerced) {
+      showToast('Enter a valid rate and conversion before saving.', 'error');
+      return;
+    }
+
+    const normalized = normalizePricingConfig(value.pricingConfig, coerced);
+    const configToSave = hasAdvancedPricing(normalized) ? normalized : null;
+    const success = await onSavePricing(
+      group.id,
+      coerced.saleRate,
+      coerced.conversionRate,
+      configToSave,
+    );
+    if (success) {
+      setExpandedId(null);
+      setRowEditorValues(prev => {
+        const next = { ...prev };
+        delete next[group.id];
+        return next;
+      });
+    }
+  };
+
   return (
     <div className={tableWrap}>
-      <table className={`${dataTable} min-w-[1120px]`}>
+      <table className={`${dataTable} min-w-[${convertedRateOnly ? '960' : '1120'}px]`}>
         <thead>
           <tr>
             {columns.map(col => (
-              <th key={col} className={icThClass(col === 'Actions' ? 'center' : 'left')}>
+              <th
+                key={col || 'expand'}
+                className={icThClass(col === 'Actions' ? 'center' : 'left')}
+              >
                 {col}
               </th>
             ))}
@@ -69,62 +151,139 @@ export default function RateGroupsTable({
             const customerCount = group.customerIds?.length ?? 0;
             const stale = !isRateGroupUpdatedToday(group.updatedAt);
             const cellBg = stale ? 'bg-transparent' : 'bg-white';
+            const isExpanded = expandedId === group.id;
+            const advanced = hasAdvancedPricing(group.pricingConfig);
+            const colSpan = columns.length;
 
             return (
-              <tr
-                key={group.id}
-                data-interactive-row
-                className={`group ${stale ? STALE_ROW_CLASS : ''}`}
-              >
-                <td className={`border-y border-l border-black/5 px-3 py-3.5 first:rounded-l-2xl sm:px-4 sm:py-4 ${cellBg}`}>
-                  <div className="flex items-center gap-2">
-                    {stale ? (
-                      <span
-                        className="size-2 shrink-0 rounded-full bg-orange-500"
-                        title="Not updated today"
+              <React.Fragment key={group.id}>
+                <tr
+                  data-interactive-row
+                  className={`group ${stale ? STALE_ROW_CLASS : ''}`}
+                >
+                  <td className={`border-y border-l border-black/5 px-2 py-3.5 first:rounded-l-2xl sm:px-3 sm:py-4 ${cellBg}`}>
+                    <button
+                      type="button"
+                      aria-label={isExpanded ? 'Collapse pricing' : 'Expand pricing'}
+                      aria-expanded={isExpanded}
+                      className="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/80 hover:text-accent"
+                      onClick={() => setExpandedId(isExpanded ? null : group.id)}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                         aria-hidden
-                      />
-                    ) : null}
-                    <span className="text-sm font-bold text-slate-900">{group.name}</span>
-                  </div>
-                </td>
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
-                  {group.country}
-                </td>
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold text-slate-800 sm:px-4 sm:py-4 ${cellBg}`}>
-                  {group.currency}
-                </td>
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold tabular-nums text-emerald-700 sm:px-4 sm:py-4 ${cellBg}`}>
-                  {group.saleRate.toLocaleString()}
-                </td>
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold tabular-nums text-indigo-700 sm:px-4 sm:py-4 ${cellBg}`}>
-                  {(group.conversionRate ?? 1).toLocaleString()}
-                </td>
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-bold tabular-nums text-slate-900 sm:px-4 sm:py-4 ${cellBg}`}>
-                  <span className="inline-flex items-baseline gap-1">
-                    {formatAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1), 4)}
-                    <span className="text-[11px] font-medium text-slate-400">{group.currency}</span>
-                  </span>
-                </td>
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm sm:px-4 sm:py-4 ${cellBg} ${stale ? 'font-medium text-orange-800' : 'text-slate-500'}`}>
-                  {formatRateGroupUpdatedAt(group.updatedAt)}
-                </td>
-                {!hideBranchColumn && (
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
-                  {branchCount}
-                </td>
-                )}
-                <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
-                  {customerCount}
-                </td>
-                <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-4 sm:py-4 ${cellBg}`}>
-                  <div className="flex items-center justify-center gap-1.5">
-                    <ActionIconButton label="View group" onClick={() => onView(group)} variant="view" />
-                    <ActionIconButton label="Edit group" onClick={() => onEdit(group)} variant="edit" />
-                    <ActionIconButton label="Delete group" onClick={() => onDelete(group)} variant="delete" />
-                  </div>
-                </td>
-              </tr>
+                      >
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </button>
+                  </td>
+                  <td className={`border-y border-black/5 px-3 py-3.5 sm:px-4 sm:py-4 ${cellBg}`}>
+                    <div className="flex items-center gap-2">
+                      {stale ? (
+                        <span
+                          className="size-2 shrink-0 rounded-full bg-orange-500"
+                          title="Not updated today"
+                          aria-hidden
+                        />
+                      ) : null}
+                      <span className="text-sm font-bold text-slate-900">{group.name}</span>
+                    </div>
+                  </td>
+                  <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
+                    {group.country}
+                  </td>
+                  <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold text-slate-800 sm:px-4 sm:py-4 ${cellBg}`}>
+                    {group.currency}
+                  </td>
+                  {!convertedRateOnly ? (
+                    <>
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold tabular-nums text-emerald-700 sm:px-4 sm:py-4 ${cellBg}`}>
+                        {group.saleRate.toLocaleString()}
+                      </td>
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold tabular-nums text-indigo-700 sm:px-4 sm:py-4 ${cellBg}`}>
+                        {(group.conversionRate ?? 1).toLocaleString()}
+                      </td>
+                    </>
+                  ) : null}
+                  <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-bold tabular-nums text-slate-900 sm:px-4 sm:py-4 ${cellBg}`}>
+                    <span className="inline-flex items-baseline gap-1">
+                      {formatAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1), 4)}
+                      <span className="text-[11px] font-medium text-slate-400">{group.currency}</span>
+                    </span>
+                  </td>
+                  <td className={`border-y border-black/5 px-3 py-3.5 text-xs sm:px-4 sm:py-4 ${cellBg}`}>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${
+                        advanced
+                          ? 'bg-indigo-50 text-indigo-700'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {getPricingSummaryLabel(group.pricingConfig)}
+                    </span>
+                  </td>
+                  <td className={`border-y border-black/5 px-3 py-3.5 text-sm sm:px-4 sm:py-4 ${cellBg} ${stale ? 'font-medium text-orange-800' : 'text-slate-500'}`}>
+                    {formatRateGroupUpdatedAt(group.updatedAt)}
+                  </td>
+                  {!hideBranchColumn && (
+                    <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
+                      {branchCount}
+                    </td>
+                  )}
+                  <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
+                    {customerCount}
+                  </td>
+                  <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-4 sm:py-4 ${cellBg}`}>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <ActionIconButton label="View group" onClick={() => onView(group)} variant="view" />
+                      <ActionIconButton label="Edit group" onClick={() => onEdit(group)} variant="edit" />
+                      <ActionIconButton label="Delete group" onClick={() => onDelete(group)} variant="delete" />
+                    </div>
+                  </td>
+                </tr>
+
+                {isExpanded ? (
+                  <tr className={stale ? STALE_ROW_CLASS : 'bg-slate-50/40'}>
+                    <td colSpan={colSpan} className="border-b border-black/5 px-4 py-4 sm:px-6">
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-surface-xs">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">{group.name}</p>
+                            <p className="text-xs text-slate-500">
+                              Configure flat or volume-based rates per transaction type.
+                            </p>
+                          </div>
+                          {onSavePricing ? (
+                            <button
+                              type="button"
+                              className={`${btnPrimary} shrink-0`}
+                              disabled={savingGroupId === group.id}
+                              onClick={() => handleRowSave(group)}
+                            >
+                              {savingGroupId === group.id ? 'Saving…' : 'Save pricing'}
+                            </button>
+                          ) : null}
+                        </div>
+                        <RateGroupPricingEditor
+                          group={group}
+                          currency={group.currency}
+                          convertedRateOnly={convertedRateOnly}
+                          defaultExpanded={advanced}
+                          showExpandToggle
+                          idPrefix={`row-${group.id}`}
+                          onChange={value => setRowEditorValue(group.id, value)}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </React.Fragment>
             );
           })}
         </tbody>

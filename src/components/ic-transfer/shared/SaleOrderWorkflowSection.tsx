@@ -13,6 +13,10 @@ import { ByHandAdminNotice } from './ByHandAdminActions';
 import { isByHandSale, canAdminCompleteByHand, canAdminReopenByHand } from '@/lib/icTransfer/byHand';
 import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import BranchHandledOrderActions, { BranchHandledOrderNotice } from './BranchHandledOrderActions';
+import BranchCustomerOrderReviewActions, {
+  BranchCustomerOrderReviewNotice,
+} from './BranchCustomerOrderReviewActions';
+import { canBranchReviewCustomerOrder } from '@/lib/icTransfer/customerOrderReview';
 import { WorkflowNotice } from './orderWorkflow';
 
 type Props = {
@@ -36,6 +40,7 @@ function hasAdminActions(sale: ICSale) {
 export default function SaleOrderWorkflowSection({ sale, variant, branchId, onUpdated, onResubmit }: Props) {
   const actionKey = `${sale.id}-${sale.orderStatus}-${sale.rejectionRemarks ?? ''}-${sale.fulfillmentHandler ?? 'hq_admin'}`;
   const branchHandled = isBranchHandledSale(sale);
+  const needsBranchReview = variant === 'branch' && canBranchReviewCustomerOrder(sale);
 
   return (
     <div
@@ -76,6 +81,21 @@ export default function SaleOrderWorkflowSection({ sale, variant, branchId, onUp
               key={actionKey}
               sale={sale}
               branchId={branchId}
+              onUpdated={onUpdated}
+              compact={false}
+            />
+            <BranchOrderWorkflowActions
+              sale={sale}
+              onResubmit={onResubmit}
+              compact={false}
+            />
+          </>
+        ) : needsBranchReview ? (
+          <>
+            <BranchCustomerOrderReviewNotice sale={sale} />
+            <BranchCustomerOrderReviewActions
+              key={actionKey}
+              sale={sale}
               onUpdated={onUpdated}
               compact={false}
             />

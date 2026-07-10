@@ -10,18 +10,22 @@ type Props = {
   displayName?: string;
   /** Branch portal: show rate values only — no group name or internal labels. */
   ratesOnly?: boolean;
+  /** Customer portal: hide AED sale rate — show destination currency rate only. */
+  hideAedRate?: boolean;
 };
 
-export default function RateGroupBanner({ group, displayName, ratesOnly = false }: Props) {
+export default function RateGroupBanner({ group, displayName, ratesOnly = false, hideAedRate = false }: Props) {
   const currencyUnitRate = getCurrencyUnitRate(group.saleRate, group.conversionRate || 1);
 
   if (ratesOnly) {
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <span>
-          <span className="font-semibold text-slate-400 uppercase">AED</span>{' '}
-          <span className="font-bold tabular-nums text-accent">{formatAmount(group.saleRate)}</span>
-        </span>
+        {!hideAedRate ? (
+          <span>
+            <span className="font-semibold text-slate-400 uppercase">AED</span>{' '}
+            <span className="font-bold tabular-nums text-accent">{formatAmount(group.saleRate)}</span>
+          </span>
+        ) : null}
         <span>
           <span className="font-semibold text-slate-400 uppercase">{group.currency}</span>{' '}
           <span className="font-bold tabular-nums text-indigo-600">{formatAmount(currencyUnitRate)}</span>
@@ -42,10 +46,12 @@ export default function RateGroupBanner({ group, displayName, ratesOnly = false 
         )}
       </span>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span>
-          <span className="font-semibold text-slate-400 uppercase">Sale Rate (AED):</span>{' '}
-          <span className="font-bold text-accent">{formatAmount(group.saleRate)}</span>
-        </span>
+        {!hideAedRate ? (
+          <span>
+            <span className="font-semibold text-slate-400 uppercase">Sale Rate (AED):</span>{' '}
+            <span className="font-bold text-accent">{formatAmount(group.saleRate)}</span>
+          </span>
+        ) : null}
         <span>
           <span className="font-semibold text-slate-400 uppercase">Rate ({group.currency}):</span>{' '}
           <span className="font-bold text-indigo-600">{formatAmount(currencyUnitRate)}</span>

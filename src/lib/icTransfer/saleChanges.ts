@@ -1,5 +1,5 @@
 import type { ICSale } from '@/types';
-import { DEFAULT_IC_SALE_TRANSACTION_TYPE } from '@/lib/icTransfer/transactionTypes';
+import { DEFAULT_IC_SALE_TRANSACTION_TYPE, transactionTypeRequiresBank } from '@/lib/icTransfer/transactionTypes';
 
 export type ICSaleContentFields = Pick<
   ICSale,
@@ -36,7 +36,12 @@ export function hasICSaleEditableFieldsChanged(
   if (normStr(updates.district) !== normStr(original.district)) return true;
   if (normStr(updates.imageUrl) !== normStr(original.imageUrl)) return true;
   if (Math.abs(normNum(updates.serviceCharge) - normNum(original.serviceCharge)) > 0.0001) return true;
-  if (normStr(updates.bank) !== normStr(original.bank)) return true;
+  if (
+    transactionTypeRequiresBank(updates.transactionType ?? original.transactionType) &&
+    normStr(updates.bank) !== normStr(original.bank)
+  ) {
+    return true;
+  }
   return false;
 }
 

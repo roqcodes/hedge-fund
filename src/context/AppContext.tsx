@@ -25,6 +25,7 @@ import {
   ICSupplier,
   ICWarehouse,
   ICRateGroup,
+  ICRateGroupPricingConfig,
   ICPurchase,
   ICSale,
   ICWarehouseTransaction,
@@ -72,6 +73,7 @@ import {
   dbAddICRateGroupAction,
   dbUpdateICRateGroupAction,
   dbBulkUpdateICRateGroupRatesAction,
+  dbUpdateICRateGroupPricingAction,
   dbDeleteICRateGroupAction,
   dbSetICRateGroupCustomersAction,
   dbSetICRateGroupBranchesAction,
@@ -247,7 +249,18 @@ interface AppContextType extends AppState {
     createdByBranchId?: string,
   ) => Promise<string | null>;
   updateICRateGroup: (id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number) => Promise<boolean>;
-  bulkUpdateICRateGroupRates: (groupIds: string[], saleRate: number, conversionRate: number) => Promise<boolean>;
+  bulkUpdateICRateGroupRates: (
+    groupIds: string[],
+    saleRate: number,
+    conversionRate: number,
+    pricingConfig?: ICRateGroupPricingConfig | null,
+  ) => Promise<boolean>;
+  updateICRateGroupPricing: (
+    groupId: string,
+    saleRate: number,
+    conversionRate: number,
+    pricingConfig: ICRateGroupPricingConfig | null,
+  ) => Promise<boolean>;
   deleteICRateGroup: (id: string) => Promise<boolean>;
   setICRateGroupCustomers: (groupId: string, customerIds: string[]) => Promise<boolean>;
   setICRateGroupBranches: (groupId: string, branchIds: string[]) => Promise<boolean>;
@@ -1628,22 +1641,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
-  const bulkUpdateICRateGroupRates = useCallback(async (groupIds: string[], saleRate: number, conversionRate: number) => {
+  const bulkUpdateICRateGroupRates = useCallback(async (
+    groupIds: string[],
+    saleRate: number,
+    conversionRate: number,
+    pricingConfig?: ICRateGroupPricingConfig | null,
+  ) => {
     try {
-      const res = await dbBulkUpdateICRateGroupRatesAction(groupIds, saleRate, conversionRate);
+      const res = await dbBulkUpdateICRateGroupRatesAction(groupIds, saleRate, conversionRate, pricingConfig);
       if (res.success && res.data) {
         const updatedMap = new Map(res.data.map(g => [g.id, g]));
         setState(s => ({
           ...s,
           icRateGroups: s.icRateGroups.map(g => {
             const updated = updatedMap.get(g.id);
-            if (!updated) return g;
-            return {
-              ...g,
-              saleRate: updated.saleRate,
-              conversionRate: updated.conversionRate,
-              updatedAt: updated.updatedAt,
-            };
+            return updated ?? g;
           }),
         }));
         showToast(`Updated ${res.data.length} rate group${res.data.length === 1 ? '' : 's'}`);
@@ -1653,6 +1665,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false;
     } catch {
       showToast('Error updating rate groups', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateICRateGroupPricing = useCallback(async (
+    groupId: string,
+    saleRate: number,
+    conversionRate: number,
+    pricingConfig: ICRateGroupPricingConfig | null,
+  ) => {
+    try {
+      const res = await dbUpdateICRateGroupPricingAction(groupId, saleRate, conversionRate, pricingConfig);
+      if (res.success && res.data) {
+        setState(s => ({
+          ...s,
+          icRateGroups: s.icRateGroups.map(g => (g.id === groupId ? res.data! : g)),
+        }));
+        showToast('Rate pricing updated');
+        return true;
+      }
+      showToast(res.error || 'Failed to update rate pricing', 'error');
+      return false;
+    } catch {
+      showToast('Error updating rate pricing', 'error');
       return false;
     }
   }, [showToast]);
@@ -1999,7 +2035,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
-      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale,
+      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale,
       deleteICPurchase,
       deleteICSale,
     };

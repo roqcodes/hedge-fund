@@ -38,8 +38,7 @@ export function canBranchReopenHandled(
 
 export function canBranchEditHandledOrder(sale: ICSale): boolean {
   if (!isBranchHandledSale(sale)) return false;
-  const status = normalizeOrderStatus(sale.orderStatus);
-  return status !== 'completed' && status !== 'cancelled';
+  return normalizeOrderStatus(sale.orderStatus) === 'pending';
 }
 
 /** Exclude branch-handled orders from HQ admin warehouse queues. */

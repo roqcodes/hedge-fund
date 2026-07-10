@@ -33,6 +33,7 @@ import FulfillmentHandlerControl, { FulfillmentHandlerBadge } from '../shared/Fu
 import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import SalePriorityControl from '../shared/SalePriorityControl';
 import { IC_ORDER_STATUSES, getAdminStatusLabel, normalizeOrderStatus, canAdminAccept, getCustomerOrderStatus, getAdminRowAccentClass, getAdminCardAccentClass } from '@/lib/icTransfer/orderStatus';
+import { hasAdminWorkflowActions } from '@/lib/icTransfer/orderWorkflowRules';
 import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
 import { getDeliveredUnits, getRemainingUnits } from '@/lib/icTransfer/saleUnits';
 import { PriorityBadge } from '@/components/warehouse/shared';
@@ -47,7 +48,7 @@ const verifyCheckboxClass =
 
 const fmt = (n: number) => `AED ${n.toLocaleString('en-AE', { minimumFractionDigits: 2 })}`;
 
-type SalesTab = 'all' | 'awaiting_verification';
+type SalesTab = 'needs_action' | 'all' | 'awaiting_verification';
 
 const SALE_COLUMNS = [
   'Date', 'Customer', 'Handling', 'Units', 'Total AED', 'Delivered Units', 'Remaining Units', 'Warehouse', 'Priority', 'Status', 'Actions'
@@ -64,7 +65,7 @@ export default function ICTransferSales() {
   
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterWarehouse, setFilterWarehouse] = useState('All');
-  const [tab, setTab] = useState<SalesTab>('all');
+  const [tab, setTab] = useState<SalesTab>('needs_action');
 
   const [sortField, setSortField] = useState<string>('Priority');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -167,6 +168,7 @@ export default function ICTransferSales() {
   }, [scopedSales, search, selectedRegionIds, icWarehouses, filterStatus, filterWarehouse, dateFilter, customStartDate, customEndDate, branches, branchName]);
 
   const tabCounts = useMemo(() => ({
+    needsAction: baseFilteredSales.filter(s => hasAdminWorkflowActions(s)).length,
     all: baseFilteredSales.length,
     awaitingVerification: baseFilteredSales.filter(
       s => normalizeOrderStatus(s.orderStatus) === 'delivery_pending_admin',
@@ -174,6 +176,9 @@ export default function ICTransferSales() {
   }), [baseFilteredSales]);
 
   const filteredSales = useMemo<ICSale[]>(() => {
+    if (tab === 'needs_action') {
+      return baseFilteredSales.filter(s => hasAdminWorkflowActions(s));
+    }
     if (tab === 'awaiting_verification') {
       return baseFilteredSales.filter(
         s => normalizeOrderStatus(s.orderStatus) === 'delivery_pending_admin',
@@ -206,8 +211,13 @@ export default function ICTransferSales() {
   const sortedSales = useMemo<ICSale[]>(() => {
     const sorted = [...filteredSales];
     sorted.sort((a, b) => {
-      let valA: any;
-      let valB: any;
+      if (tab === 'all') {
+        const actionDiff = Number(hasAdminWorkflowActions(b)) - Number(hasAdminWorkflowActions(a));
+        if (actionDiff !== 0) return actionDiff;
+      }
+
+      let valA: string | number;
+      let valB: string | number;
 
       if (sortField === 'Customer') {
         valA = getAdminSaleCustomerName(a, branchName, branches) || '';
@@ -458,6 +468,16 @@ export default function ICTransferSales() {
       <div className="mb-4 flex items-center gap-1 border-b border-slate-200 pb-px overflow-x-auto scrollbar-none">
         <button
           type="button"
+          onClick={() => setTab('needs_action')}
+          className={tab === 'needs_action' ? tabBtnActive : tabBtn}
+        >
+          Needs Action
+          <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">
+            {tabCounts.needsAction}
+          </span>
+        </button>
+        <button
+          type="button"
           onClick={() => setTab('all')}
           className={tab === 'all' ? tabBtnActive : tabBtn}
         >
@@ -490,7 +510,7 @@ export default function ICTransferSales() {
       </div>
 
       <DataTableSection
-        title={tab === 'awaiting_verification' ? 'Awaiting Verification' : 'All Sales'}
+        title={tab === 'needs_action' ? 'Needs Action' : tab === 'awaiting_verification' ? 'Awaiting Verification' : 'All Sales'}
         columns={tableColumns}
         searchValue={search}
         onSearchChange={setSearch}
@@ -557,9 +577,11 @@ export default function ICTransferSales() {
         mobileView={
           sortedSales.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">
-              {tab === 'awaiting_verification'
-                ? 'No orders awaiting delivery verification.'
-                : 'No sales found.'}
+              {tab === 'needs_action'
+                ? 'No orders need admin action right now.'
+                : tab === 'awaiting_verification'
+                  ? 'No orders awaiting delivery verification.'
+                  : 'No sales found.'}
             </div>
           ) : (
             sortedSales.map((s: ICSale) => {

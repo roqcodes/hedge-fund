@@ -9,6 +9,7 @@ import {
   isCustomerCreatedOrder,
   type FulfillmentHandler,
 } from '@/lib/icTransfer/fulfillmentHandler';
+import { canAdminChangeFulfillmentHandler } from '@/lib/icTransfer/orderWorkflowRules';
 import { canPerformICTransferAdminActions } from '@/lib/rbac';
 
 type Props = {
@@ -23,6 +24,21 @@ export default function FulfillmentHandlerControl({ sale, onUpdated }: Props) {
 
   if (!canPerformICTransferAdminActions(user) || !isCustomerCreatedOrder(sale)) {
     return <span className="text-[10px] text-slate-400">—</span>;
+  }
+
+  if (!canAdminChangeFulfillmentHandler(sale)) {
+    if (sale.orderCustomerId && sale.orderStatus === 'pending_branch_review') {
+      return (
+        <span className="text-[10px] font-medium text-teal-700" title="Awaiting branch manager review">
+          Branch review
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10px] text-slate-400" title="Handling locked after acceptance">
+        {sale.fulfillmentHandler === 'branch' ? 'Branch' : 'Admin'}
+      </span>
+    );
   }
 
   const current = sale.fulfillmentHandler === 'branch' ? 'branch' : 'hq_admin';

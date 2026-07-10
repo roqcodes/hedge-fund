@@ -5,6 +5,7 @@ import { isDateInRange } from '@/lib/dateFilterRange';
 import { toBusinessDate } from '@/lib/businessTime';
 import type { DateFilterRange } from '@/lib/dateFilterRange';
 import { isBranchPageEnabled } from '@/lib/branchPages';
+import { DATE_FILTER_PINNED_STATUSES } from '@/lib/icTransfer/orderWorkflowRules';
 
 /** Order placed by branch staff/manager on behalf of an end customer. */
 export function isBranchSubmittedSale(sale: ICSale, branchName: string): boolean {
@@ -22,6 +23,14 @@ export function isDirectCustomerNamedSale(sale: ICSale, branchName: string): boo
 }
 
 /** Customer-portal order stored under branch name (entered by the customer, not branch staff). */
+export function isCustomerEnteredOrder(
+  sale: Pick<ICSale, 'orderCustomerId' | 'enteredByName' | 'orderCustomerName'>,
+): boolean {
+  if (!sale.orderCustomerId || !sale.enteredByName || !sale.orderCustomerName) return false;
+  return sale.enteredByName.trim().toLowerCase() === sale.orderCustomerName.trim().toLowerCase();
+}
+
+/** @deprecated Use isCustomerEnteredOrder — async DB check for legacy paths. */
 export function isCustomerPortalOrderUnderBranch(sale: ICSale, branchName: string): boolean {
   if (!isBranchSubmittedSale(sale, branchName) || !sale.orderCustomerId) return false;
   if (!sale.enteredByName || !sale.orderCustomerName) return false;
@@ -175,9 +184,10 @@ export function scopeSalesForBranchAdmin(
   );
 }
 
-/** Date filter that keeps pending orders visible regardless of created date. */
+/** Date filter that keeps pre-accepted orders visible regardless of created date. */
 export function saleMatchesDateFilter(sale: ICSale, range: DateFilterRange): boolean {
-  if (normalizeOrderStatus(sale.orderStatus) === 'pending') return true;
+  const status = normalizeOrderStatus(sale.orderStatus);
+  if (DATE_FILTER_PINNED_STATUSES.includes(status)) return true;
   if (!sale.createdAt) return true;
   return isDateInRange(toBusinessDate(sale.createdAt, 'Asia/Dubai'), range);
 }

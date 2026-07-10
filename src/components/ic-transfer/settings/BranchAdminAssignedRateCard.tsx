@@ -8,7 +8,7 @@ type Props = {
   group: ICRateGroup;
 };
 
-/** Read-only admin-assigned branch rate — numbers only, no group metadata. */
+/** Read-only admin-assigned branch rate — converted rate only for branch portal. */
 export default function BranchAdminAssignedRateCard({ group }: Props) {
   const currencyUnitRate = getCurrencyUnitRate(group.saleRate, group.conversionRate || 1);
 
@@ -20,19 +20,13 @@ export default function BranchAdminAssignedRateCard({ group }: Props) {
       <p className="mt-1 text-xs text-slate-500">
         Applied when HQ fulfills your orders. Used with your customer rate to calculate branch profit.
       </p>
-      <div className="mt-4 flex flex-wrap gap-6">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Sale rate (AED)</p>
-          <p className="mt-1 text-xl font-bold tabular-nums text-accent">{formatAmount(group.saleRate)}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Unit rate ({group.currency})
-          </p>
-          <p className="mt-1 text-xl font-bold tabular-nums text-indigo-600">
-            {formatAmount(currencyUnitRate)}
-          </p>
-        </div>
+      <div className="mt-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Unit rate ({group.currency})
+        </p>
+        <p className="mt-1 text-2xl font-bold tabular-nums text-indigo-600">
+          {formatAmount(currencyUnitRate)}
+        </p>
       </div>
     </div>
   );

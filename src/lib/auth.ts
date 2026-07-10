@@ -159,14 +159,16 @@ async function loadCustomerProfile(user: User): Promise<User> {
 
   try {
     const res = await query(
-      `SELECT id, name FROM customers WHERE cognito_user_id = $1 LIMIT 1`,
+      `SELECT id, name, branch_id FROM customers WHERE cognito_user_id = $1 LIMIT 1`,
       [user.id],
     );
     if (res.rows.length === 0) return user;
+    const branchId = user.branchId || (res.rows[0].branch_id ? String(res.rows[0].branch_id) : undefined);
     return {
       ...user,
       customerId: String(res.rows[0].id),
       name: String(res.rows[0].name || user.name),
+      branchId,
     };
   } catch {
     return user;

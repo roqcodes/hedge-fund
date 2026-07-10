@@ -24,3 +24,8 @@ export function formatICSaleTransactionTypeLabel(type?: string | null): string {
   if (!type) return 'Transfer';
   return type.replace(/_/g, ' ');
 }
+
+/** Bank name is only collected for non–by-hand IC sale transaction types. */
+export function transactionTypeRequiresBank(type?: string | null): boolean {
+  return type !== 'by_hand';
+}

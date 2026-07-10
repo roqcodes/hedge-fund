@@ -132,6 +132,16 @@ export interface Customer {
   cognitoUserId?: string;
 }
 
+/** Third-party recipient scoped to a portal customer — no login, used on IC Transfer orders. */
+export interface ICSubCustomer {
+  id: string;
+  parentCustomerId: string;
+  name: string;
+  contact?: string;
+  createdAt?: string;
+  hasOrders?: boolean;
+}
+
 export interface Invoice {
   id: string;
   clientName: string;
@@ -504,6 +514,34 @@ export interface ICWarehouse {
   createdAt?: string;
 }
 
+export type ICRateSlabTier = {
+  minUnits: number;
+  /** null = unlimited (open-ended top tier) */
+  maxUnits: number | null;
+  saleRate: number;
+  conversionRate: number;
+};
+
+export type ICRateTransactionPricing = {
+  mode: 'flat' | 'slab';
+  saleRate?: number;
+  conversionRate?: number;
+  slabs?: ICRateSlabTier[];
+};
+
+export type ICRateGroupPricingConfig = {
+  /** Same flat rate for all types (default) or per transaction type. */
+  scope: 'all_types' | 'per_type';
+  /** Flat or volume-based slabs. */
+  kind: 'flat' | 'slab';
+  /** When scope=all_types and kind=slab. */
+  common?: ICRateTransactionPricing;
+  /** When scope=per_type. */
+  byTransactionType?: Partial<
+    Record<'transfer' | 'cdm' | 'by_hand' | 'nre', ICRateTransactionPricing>
+  >;
+};
+
 export interface ICRateGroup {
   id: string;
   name: string;
@@ -515,6 +553,7 @@ export interface ICRateGroup {
   branchIds?: string[];
   /** Set when a branch manager creates the group from the branch portal. */
   createdByBranchId?: string;
+  pricingConfig?: ICRateGroupPricingConfig;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -535,6 +574,8 @@ export interface ICPurchase {
 }
 
 export type ICOrderStatus =
+  | 'pending_branch_review'
+  | 'branch_rejected'
   | 'pending'
   | 'accepted'
   | 'admin_rejected'
@@ -544,7 +585,8 @@ export type ICOrderStatus =
   | 'delivery_pending_admin'
   | 'cancellation_pending'
   | 'cancelled'
-  | 'completed';
+  | 'completed'
+  | 'unknown';
 
 export interface ICSale {
   id: string;
@@ -553,6 +595,9 @@ export interface ICSale {
   /** End-customer chosen by the branch manager (falls back to customerName when absent). */
   orderCustomerName?: string;
   orderCustomerId?: string;
+  /** Portal customer's third-party recipient (customer portal only). */
+  subCustomerId?: string;
+  subCustomerName?: string;
   warehouseId?: string;
   transactionType?: ICSaleTransactionType;
   units: number;

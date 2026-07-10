@@ -21,7 +21,7 @@ import RateGroupBulkUpdateBar from './RateGroupBulkUpdateBar';
 import RateGroupFormModal, { type RateGroupFormValues } from './RateGroupFormModal';
 import RateGroupManageUsersModal, { type RateGroupMembersPayload } from './RateGroupManageUsersModal';
 import RateGroupViewModal from './RateGroupViewModal';
-import type { ICRateGroup } from '@/types';
+import type { ICRateGroup, ICRateGroupPricingConfig } from '@/types';
 
 const WORLD_CURRENCIES = [
   'AED', 'AFN', 'ALL', 'AMD', 'ANG', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN',
@@ -54,6 +54,7 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
     updateICRateGroup,
     deleteICRateGroup,
     bulkUpdateICRateGroupRates,
+    updateICRateGroupPricing,
     setICRateGroupCustomers,
     setICRateGroupBranches,
     allBranches,
@@ -72,6 +73,7 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
   const [isSaving, setIsSaving] = useState(false);
   const [isManagingUsers, setIsManagingUsers] = useState(false);
   const [isBulkSaving, setIsBulkSaving] = useState(false);
+  const [savingPricingGroupId, setSavingPricingGroupId] = useState<string | null>(null);
   const [branchCustomers, setBranchCustomers] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -114,13 +116,62 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
     return sortRateGroupsForTable(base);
   }, [scopedRateGroups, search]);
 
-  const handleBulkSave = async (groupIds: string[], saleRate: number, conversionRate: number) => {
+  const handleBulkSave = async (
+    groupIds: string[],
+    saleRate: number,
+    conversionRate: number,
+    pricingConfig: ICRateGroupPricingConfig | null,
+  ) => {
     setIsBulkSaving(true);
     const allowedIds = isBranchPortal
       ? groupIds.filter(id => scopedRateGroups.some(g => g.id === id))
       : groupIds;
-    const success = await bulkUpdateICRateGroupRates(allowedIds, saleRate, conversionRate);
+
+    let success = false;
+
+    if (isBranchPortal) {
+      const convertedRate = saleRate * conversionRate;
+      const results = await Promise.all(
+        allowedIds.map(async id => {
+          const group = scopedRateGroups.find(g => g.id === id);
+          const conv = group?.conversionRate ?? 1;
+          const derivedSale = conv > 0 ? convertedRate / conv : saleRate;
+          return updateICRateGroupPricing(id, derivedSale, conv, pricingConfig);
+        }),
+      );
+      success = results.every(Boolean);
+    } else {
+      success = await bulkUpdateICRateGroupRates(
+        allowedIds,
+        saleRate,
+        conversionRate,
+        pricingConfig,
+      );
+    }
+
     setIsBulkSaving(false);
+    return success;
+  };
+
+  const handleSaveGroupPricing = async (
+    groupId: string,
+    saleRate: number,
+    conversionRate: number,
+    pricingConfig: ICRateGroupPricingConfig | null,
+  ) => {
+    if (isBranchPortal && !scopedRateGroups.some(g => g.id === groupId)) return false;
+    setSavingPricingGroupId(groupId);
+    const group = scopedRateGroups.find(g => g.id === groupId);
+    let finalSale = saleRate;
+    const finalConv = group?.conversionRate ?? conversionRate;
+
+    if (isBranchPortal && group) {
+      const convertedRate = saleRate * conversionRate;
+      finalSale = finalConv > 0 ? convertedRate / finalConv : saleRate;
+    }
+
+    const success = await updateICRateGroupPricing(groupId, finalSale, finalConv, pricingConfig);
+    setSavingPricingGroupId(null);
     return success;
   };
 
@@ -258,6 +309,7 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
         <RateGroupBulkUpdateBar
           groups={scopedRateGroups}
           isSaving={isBulkSaving}
+          convertedRateOnly={isBranchPortal}
           onSave={handleBulkSave}
         />
 
@@ -278,7 +330,10 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
             onView={openViewModal}
             onEdit={openEditModal}
             onDelete={handleDelete}
+            onSavePricing={handleSaveGroupPricing}
+            savingGroupId={savingPricingGroupId}
             hideBranchColumn={isBranchPortal}
+            convertedRateOnly={isBranchPortal}
           />
         </div>
       </SectionCard>
@@ -317,6 +372,7 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
         customers={branchCustomers}
         onClose={() => setViewGroup(null)}
         onEdit={openEditModal}
+        hideAedRate={isBranchPortal}
       />
     </PageShell>
   );

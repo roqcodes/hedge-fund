@@ -17,8 +17,6 @@ export function useLinkedRateFields() {
   const lastDerivedFrom = useRef<Exclude<LinkedRateField, 'sale'> | null>(null);
 
   const syncFromSale = useCallback((sale: number, conversion: string, converted: string) => {
-    if (sale <= 0) return;
-
     if (lastDerivedFrom.current === 'converted') {
       const convertedNum = parseRateInputValue(converted);
       if (convertedNum === null) return;
@@ -35,6 +33,9 @@ export function useLinkedRateFields() {
 
   const onSaleChange = useCallback((value: string) => {
     setSaleRate(value);
+    if (value.trim() === '') {
+      return;
+    }
     const sale = parseRateInputValue(value);
     if (sale !== null && sale > 0) {
       syncFromSale(sale, conversionRate, convertedRate);
@@ -44,6 +45,7 @@ export function useLinkedRateFields() {
   const onConversionChange = useCallback((value: string) => {
     lastDerivedFrom.current = 'conversion';
     setConversionRate(value);
+    if (value.trim() === '') return;
 
     const sale = parseRateInputValue(saleRate);
     const conversion = parseRateInputValue(value);
@@ -56,6 +58,7 @@ export function useLinkedRateFields() {
   const onConvertedChange = useCallback((value: string) => {
     lastDerivedFrom.current = 'converted';
     setConvertedRate(value);
+    if (value.trim() === '') return;
 
     const sale = parseRateInputValue(saleRate);
     const converted = parseRateInputValue(value);

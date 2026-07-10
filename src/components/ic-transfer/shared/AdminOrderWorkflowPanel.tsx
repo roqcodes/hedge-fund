@@ -16,12 +16,13 @@ import {
   canAdminAccept,
   canAdminReject,
   canAdminReassignWarehouse,
-  canAdminResolveCancellation,
   canAdminVerifyDelivery,
   getAdminStatusLabel,
   getAdminStatusStyle,
   normalizeOrderStatus,
 } from '@/lib/icTransfer/orderStatus';
+import { canAdminResolveBranchCancellation } from '@/lib/icTransfer/orderWorkflowRules';
+import { getOrderStatusDescription } from '@/lib/icTransfer/orderStatusDescriptions';
 import RejectRemarkModal from './RejectRemarkModal';
 import { ConfirmModal } from '@/components/warehouse/shared';
 import {
@@ -48,7 +49,9 @@ type SharedProps = {
 function getRemarksVariant(status?: string | null) {
   const normalized = normalizeOrderStatus(status);
   if (normalized === 'da_rejected') return 'warning' as const;
-  if (normalized === 'admin_rejected' || normalized === 'wh_rejected') return 'danger' as const;
+  if (normalized === 'admin_rejected' || normalized === 'wh_rejected' || normalized === 'branch_rejected') {
+    return 'danger' as const;
+  }
   return 'info' as const;
 }
 
@@ -66,6 +69,7 @@ export function AdminOrderStatusCard({
     <OrderStatusCard
       label={getAdminStatusLabel(sale.orderStatus, sale.transactionType)}
       statusStyle={getAdminStatusStyle(sale.orderStatus, sale.transactionType)}
+      flowDescription={getOrderStatusDescription(sale, 'admin')}
       remarks={sale.rejectionRemarks}
       remarksVariant={getRemarksVariant(sale.orderStatus)}
       compact={compact}
@@ -182,7 +186,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
   const showAccept = canAdminAccept(sale.orderStatus);
   const showReject = canAdminReject(sale.orderStatus);
   const showReassign = canAdminReassignWarehouse(sale.orderStatus);
-  const showResolveCancel = canAdminResolveCancellation(sale.orderStatus);
+  const showResolveCancel = canAdminResolveBranchCancellation(sale);
   const showVerifyDelivery = canAdminVerifyDelivery(sale.orderStatus);
   const showByHandActions = isByHandSale(sale);
   const branchHandled = isBranchHandledSale(sale);

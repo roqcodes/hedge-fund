@@ -6,6 +6,8 @@ import { btnSecondary } from '@/lib/ui';
 import type { ICRateGroup } from '@/types';
 import type { Branch } from '@/types';
 import { formatRateGroupUpdatedAt, isRateGroupUpdatedToday } from '@/lib/icTransfer/rateGroupUtils';
+import { getPricingSummaryLabel } from '@/lib/icTransfer/ratePricing';
+import { getCurrencyUnitRate, formatAmount } from '@/lib/icTransfer/rateCalculations';
 
 type CustomerOption = { id: string; name: string };
 
@@ -15,6 +17,7 @@ type Props = {
   customers: CustomerOption[];
   onClose: () => void;
   onEdit: (group: ICRateGroup) => void;
+  hideAedRate?: boolean;
 };
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -44,7 +47,14 @@ function ChipList({ items, emptyLabel }: { items: string[]; emptyLabel: string }
   );
 }
 
-export default function RateGroupViewModal({ group, branches, customers, onClose, onEdit }: Props) {
+export default function RateGroupViewModal({
+  group,
+  branches,
+  customers,
+  onClose,
+  onEdit,
+  hideAedRate = false,
+}: Props) {
   if (!group) return null;
 
   const branchNames = (group.branchIds ?? [])
@@ -78,11 +88,20 @@ export default function RateGroupViewModal({ group, branches, customers, onClose
           <DetailRow label="Group Name" value={group.name} />
           <DetailRow label="Currency" value={group.currency} />
           <DetailRow label="Country" value={group.country} />
-          <DetailRow label="Sale Rate (AED)" value={group.saleRate.toLocaleString()} />
+          {!hideAedRate ? (
+            <>
+              <DetailRow label="Sale Rate (AED)" value={group.saleRate.toLocaleString()} />
+              <DetailRow
+                label={`Conversion (AED → ${group.currency})`}
+                value={(group.conversionRate ?? 1).toLocaleString()}
+              />
+            </>
+          ) : null}
           <DetailRow
-            label={`Conversion (AED → ${group.currency})`}
-            value={(group.conversionRate ?? 1).toLocaleString()}
+            label={`Rate (${group.currency})`}
+            value={formatAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1), 4)}
           />
+          <DetailRow label="Pricing" value={getPricingSummaryLabel(group.pricingConfig)} />
           <DetailRow
             label="Last updated"
             value={

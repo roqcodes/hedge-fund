@@ -35,9 +35,14 @@ import { normalizeHiddenPages } from '@/lib/branchPages';
 import {
   customerOwnsSale,
   isBranchSubmittedSale,
+  isCustomerEnteredOrder,
   saleBelongsToBranchPortal,
   shouldRecordCustomerOrderUnderBranch,
 } from '@/lib/icTransfer/branchOrderOwnership';
+import { canEditOrder, canDeleteOrder } from '@/lib/icTransfer/orderWorkflowRules';
+import { validateSubCustomerForOrder } from '@/app/actions/subCustomerActions';
+import { transactionTypeRequiresBank } from '@/lib/icTransfer/transactionTypes';
+import { normalizePricingConfig, validatePricingConfig } from '@/lib/icTransfer/ratePricing';
 import { logger } from '@/lib/logger';
 import {
   addRegionSchema,
@@ -49,6 +54,8 @@ import {
   addRateGroupSchema,
   updateRateGroupSchema,
   bulkUpdateRateGroupRatesSchema,
+  bulkUpdateRateGroupPricingSchema,
+  updateRateGroupPricingSchema,
   setRateGroupCustomersSchema,
   setRateGroupBranchesSchema,
   addPurchaseSchema,
@@ -75,6 +82,8 @@ const SALE_COLUMNS: Record<string, string> = {
   customerName: 'customer_name',
   orderCustomerName: 'order_customer_name',
   orderCustomerId: 'order_customer_id',
+  subCustomerId: 'sub_customer_id',
+  subCustomerName: 'sub_customer_name',
   warehouseId: 'warehouse_id',
   transactionType: 'transaction_type',
   units: 'units',
@@ -491,20 +500,86 @@ export async function dbBulkUpdateICRateGroupRatesAction(
   groupIds: string[],
   saleRate: number,
   conversionRate: number,
+  pricingConfig?: import('@/types').ICRateGroupPricingConfig | null,
 ): Promise<DbActionResult<import('@/types').ICRateGroup[]>> {
   try {
-    const parsed = bulkUpdateRateGroupRatesSchema.parse({ groupIds, saleRate, conversionRate });
+    const parsed = bulkUpdateRateGroupPricingSchema.parse({
+      groupIds,
+      saleRate,
+      conversionRate,
+      pricingConfig: pricingConfig ?? null,
+    });
+
+    const flat = { saleRate: parsed.saleRate, conversionRate: parsed.conversionRate };
+    if (parsed.pricingConfig) {
+      const validationError = validatePricingConfig(parsed.pricingConfig, flat);
+      if (validationError) return { success: false, error: validationError };
+    }
+
+    const normalizedConfig = parsed.pricingConfig
+      ? normalizePricingConfig(parsed.pricingConfig, flat)
+      : null;
+    const configPayload =
+      normalizedConfig &&
+      !(normalizedConfig.scope === 'all_types' && normalizedConfig.kind === 'flat')
+        ? JSON.stringify(normalizedConfig)
+        : null;
+
     const res = await query(
       `UPDATE ic_rate_groups
-       SET sale_rate = $1, conversion_rate = $2, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ANY($3::text[])
+       SET sale_rate = $1, conversion_rate = $2, pricing_config = $3::jsonb, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ANY($4::text[])
        RETURNING *`,
-      [parsed.saleRate, parsed.conversionRate, parsed.groupIds],
+      [parsed.saleRate, parsed.conversionRate, configPayload, parsed.groupIds],
     );
     if (res.rowCount === 0) return { success: false, error: 'No groups were updated' };
     return { success: true, data: res.rows.map(mapICRateGroupRow) };
   } catch (error: unknown) {
     logger.error({ error, groupIds }, 'Error in dbBulkUpdateICRateGroupRatesAction');
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
+export async function dbUpdateICRateGroupPricingAction(
+  groupId: string,
+  saleRate: number,
+  conversionRate: number,
+  pricingConfig: import('@/types').ICRateGroupPricingConfig | null,
+): Promise<DbActionResult<import('@/types').ICRateGroup>> {
+  try {
+    const parsed = updateRateGroupPricingSchema.parse({
+      groupId,
+      saleRate,
+      conversionRate,
+      pricingConfig,
+    });
+
+    const flat = { saleRate: parsed.saleRate, conversionRate: parsed.conversionRate };
+    if (parsed.pricingConfig) {
+      const validationError = validatePricingConfig(parsed.pricingConfig, flat);
+      if (validationError) return { success: false, error: validationError };
+    }
+
+    const normalizedConfig = parsed.pricingConfig
+      ? normalizePricingConfig(parsed.pricingConfig, flat)
+      : null;
+    const configPayload =
+      normalizedConfig &&
+      !(normalizedConfig.scope === 'all_types' && normalizedConfig.kind === 'flat')
+        ? JSON.stringify(normalizedConfig)
+        : null;
+
+    const res = await query(
+      `UPDATE ic_rate_groups
+       SET sale_rate = $1, conversion_rate = $2, pricing_config = $3::jsonb, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4
+       RETURNING *`,
+      [parsed.saleRate, parsed.conversionRate, configPayload, parsed.groupId],
+    );
+    if (res.rowCount === 0) return { success: false, error: 'Group not found' };
+    return { success: true, data: mapICRateGroupRow(res.rows[0]) };
+  } catch (error: unknown) {
+    logger.error({ error, groupId }, 'Error in dbUpdateICRateGroupPricingAction');
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   }
 }
@@ -705,11 +780,18 @@ export async function dbAddICSaleAction(
       const customerName = user.name?.trim() || parsed.customerName;
       const recordUnderBranch = Boolean(branchName && shouldRecordCustomerOrderUnderBranch(branchHiddenPages));
 
+      const subCustomer = await validateSubCustomerForOrder(user.customerId, parsed.subCustomerId);
+      if ('error' in subCustomer) {
+        return { success: false, error: subCustomer.error };
+      }
+
       salePayload = {
         ...salePayload,
         customerName: recordUnderBranch ? branchName : customerName,
         orderCustomerId: user.customerId,
         orderCustomerName: customerName,
+        subCustomerId: subCustomer.id,
+        subCustomerName: subCustomer.name,
         warehouseId: undefined,
       };
     } else if (user && slug && (user.role === 'branch_manager' || user.role === 'staff') && branchName) {
@@ -722,20 +804,34 @@ export async function dbAddICSaleAction(
       }
     }
 
+    if (!transactionTypeRequiresBank(salePayload.transactionType)) {
+      salePayload = { ...salePayload, bank: undefined };
+    }
+
     const { enteredBy, enteredByName, enteredByUserId } = await resolveEnteredByForBranch(branchSlug);
-    const initialOrderStatus = salePayload.warehouseId ? 'accepted' : 'pending';
+    const isCustomerOrder = user?.role === 'customer';
+    let initialOrderStatus = salePayload.warehouseId ? 'accepted' : 'pending';
+    let fulfillmentHandler = salePayload.fulfillmentHandler === 'branch' ? 'branch' : 'hq_admin';
+
+    if (isCustomerOrder) {
+      initialOrderStatus = 'pending_branch_review';
+      fulfillmentHandler = 'hq_admin';
+    }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       const res = await client.query(
         `INSERT INTO ic_sales (
-          customer_name, order_customer_name, order_customer_id, warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
+          customer_name, order_customer_name, order_customer_id, sub_customer_id, sub_customer_name,
+          warehouse_id, transaction_type, units, unit_rate, converted_amount, aed_amount,
           entered_by, entered_by_name, entered_by_user_id, address, location, district, image_url, service_charge, order_status, priority, bank, conversion_rate, currency, fulfillment_handler, admin_unit_rate, admin_conversion_rate
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25) RETURNING *`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING *`,
         [
           salePayload.customerName,
           salePayload.orderCustomerName || null,
           salePayload.orderCustomerId || null,
+          salePayload.subCustomerId || null,
+          salePayload.subCustomerName || null,
           salePayload.warehouseId || null,
           salePayload.transactionType || null,
           salePayload.units,
@@ -755,7 +851,7 @@ export async function dbAddICSaleAction(
           salePayload.bank || null,
           salePayload.conversionRate ?? 1.0,
           salePayload.currency || 'AED',
-          salePayload.fulfillmentHandler === 'branch' ? 'branch' : 'hq_admin',
+          fulfillmentHandler,
           salePayload.adminUnitRate ?? null,
           salePayload.adminConversionRate ?? null,
         ]
@@ -1064,6 +1160,144 @@ async function assertBranchManagerHandlesSale(
   };
 }
 
+async function assertBranchManagerCanReviewCustomerOrder(
+  saleId: string,
+  branchSlug?: string,
+): Promise<
+  { sale: ICSale; updatedBy: string; branchId: string; branchName: string } | { error: string }
+> {
+  const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
+  const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
+  const user = userRes.success ? userRes.data : null;
+
+  if (!user || user.role !== 'branch_manager') {
+    return { error: 'Only branch managers can review customer orders' };
+  }
+
+  let branchId: string;
+  let branchName: string;
+
+  if (slug) {
+    const branchRes = await query(
+      `SELECT id, name FROM branches WHERE slug = $1 LIMIT 1`,
+      [slug],
+    );
+    if (branchRes.rows.length === 0) return { error: 'Branch not found' };
+    if (user.branchId && branchRes.rows[0].id !== user.branchId) {
+      return { error: 'You are not authorized for this branch' };
+    }
+    branchId = String(branchRes.rows[0].id);
+    branchName = String(branchRes.rows[0].name || '');
+  } else if (user.branchId) {
+    const branchRes = await query(`SELECT id, name FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
+    if (branchRes.rows.length === 0) return { error: 'Branch not found' };
+    branchId = String(branchRes.rows[0].id);
+    branchName = String(branchRes.rows[0].name || '');
+  } else {
+    return { error: 'Branch not found' };
+  }
+
+  const sale = await fetchICSaleById(saleId);
+  if (!sale) return { error: 'Order not found' };
+  if (!sale.orderCustomerId) {
+    return { error: 'Only customer orders require branch review' };
+  }
+  if (normalizeOrderStatus(sale.orderStatus) !== 'pending_branch_review') {
+    return { error: 'Order is not awaiting branch review' };
+  }
+
+  const custRes = await query(`SELECT id FROM customers WHERE branch_id = $1`, [branchId]);
+  const branchCustomerIds = new Set(custRes.rows.map((r: { id: string }) => String(r.id)));
+
+  if (!saleBelongsToBranchPortal(sale, branchName, branchCustomerIds)) {
+    return { error: 'You can only review orders for your branch customers' };
+  }
+
+  return {
+    sale,
+    updatedBy: user.email || user.name || 'branch',
+    branchId,
+    branchName,
+  };
+}
+
+/** Branch manager accepts a customer order and routes it to admin or branch fulfillment. */
+export async function branchReviewAcceptICSaleAction(
+  id: string,
+  handler: 'hq_admin' | 'branch',
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsed = z
+      .object({
+        id: z.string().min(1),
+        handler: z.enum(['hq_admin', 'branch']),
+      })
+      .parse({ id, handler });
+    const auth = await assertBranchManagerCanReviewCustomerOrder(parsed.id, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'pending',
+           fulfillment_handler = $1,
+           rejection_remarks = NULL,
+           warehouse_id = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3 AND order_status = 'pending_branch_review'
+       RETURNING id`,
+      [parsed.handler, auth.updatedBy, parsed.id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or no longer awaiting review' };
+    }
+    const updated = await fetchICSaleById(parsed.id);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id, handler }, 'Validation error in branchReviewAcceptICSaleAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/** Branch manager rejects a customer order before it enters fulfillment. */
+export async function branchReviewRejectICSaleAction(
+  id: string,
+  remarks: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsed = z
+      .object({
+        id: z.string().min(1),
+        remarks: z.string().min(1),
+      })
+      .parse({ id, remarks });
+    const auth = await assertBranchManagerCanReviewCustomerOrder(parsed.id, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'branch_rejected',
+           rejection_remarks = $1,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $3 AND order_status = 'pending_branch_review'
+       RETURNING id`,
+      [parsed.remarks, auth.updatedBy, parsed.id],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or no longer awaiting review' };
+    }
+    const updated = await fetchICSaleById(parsed.id);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id, remarks }, 'Validation error in branchReviewRejectICSaleAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
 async function assertBranchWarehouseForBranch(
   warehouseId: string,
   branchId: string,
@@ -1356,7 +1590,7 @@ export async function adminReassignICSaleWarehouseAction(
   }
 }
 
-/** Branch updates a rejected order and resubmits it to admin review. */
+/** Branch portal user edits a pre-accepted order or resubmits a rejected one. */
 export async function branchResubmitICSaleAction(
   id: string,
   updates: ICSaleContentFields,
@@ -1373,13 +1607,41 @@ export async function branchResubmitICSaleAction(
     }
 
     const { sale, updatedBy } = auth;
-    if (normalizeOrderStatus(sale.orderStatus) !== 'admin_rejected') {
-      return { success: false, error: 'Only admin-rejected orders can be resubmitted' };
+    const status = normalizeOrderStatus(sale.orderStatus);
+    const slug = parsedSlug && parsedSlug !== 'superadmin' ? parsedSlug : undefined;
+    const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
+    const user = userRes.success ? userRes.data : null;
+
+    if (!canEditOrder(sale, user?.role)) {
+      return { success: false, error: 'This order can no longer be edited' };
+    }
+
+    let targetStatus = status;
+    let resetHandler = '';
+    const isResubmit = status === 'branch_rejected' || status === 'admin_rejected';
+
+    if (status === 'branch_rejected') {
+      targetStatus = 'pending_branch_review';
+      resetHandler = `, fulfillment_handler = 'hq_admin'`;
+    } else if (status === 'admin_rejected') {
+      targetStatus = isCustomerEnteredOrder(sale) ? 'pending_branch_review' : 'pending';
+      if (targetStatus === 'pending_branch_review') {
+        resetHandler = `, fulfillment_handler = 'hq_admin'`;
+      }
     }
 
     if (!hasICSaleEditableFieldsChanged(sale, parsedUpdates as ICSaleContentFields)) {
-      return { success: false, error: 'Update at least one field before resubmitting the order' };
+      return { success: false, error: 'Update at least one field before saving' };
     }
+
+    const resubmitTxnType = parsedUpdates.transactionType || sale.transactionType;
+    const resubmitBank = transactionTypeRequiresBank(resubmitTxnType)
+      ? (parsedUpdates.bank || null)
+      : null;
+
+    const clearOnResubmit = isResubmit
+      ? `, rejection_remarks = NULL, warehouse_id = NULL, delivery_agent_id = NULL${resetHandler}`
+      : '';
 
     try {
       const res = await query(
@@ -1396,13 +1658,11 @@ export async function branchResubmitICSaleAction(
              bank = $10,
              conversion_rate = $11,
              currency = $12,
-             order_status = 'pending',
-             rejection_remarks = NULL,
-             warehouse_id = NULL,
-             delivery_agent_id = NULL,
+             order_status = $13,
              status_updated_at = CURRENT_TIMESTAMP,
-             status_updated_by = $13
-         WHERE id = $14 AND order_status = 'admin_rejected'
+             status_updated_by = $14
+             ${clearOnResubmit}
+         WHERE id = $15 AND order_status = $16
          RETURNING id`,
         [
           parsedUpdates.transactionType || null,
@@ -1414,15 +1674,17 @@ export async function branchResubmitICSaleAction(
           parsedUpdates.district || null,
           parsedUpdates.imageUrl || null,
           parsedUpdates.serviceCharge ?? 0,
-          parsedUpdates.bank || null,
+          resubmitBank,
           parsedUpdates.conversionRate ?? 1.0,
           parsedUpdates.currency || 'AED',
+          targetStatus,
           updatedBy,
           parsedId,
+          status,
         ],
       );
       if (res.rowCount === 0) {
-        return { success: false, error: 'Order not found or no longer rejected' };
+        return { success: false, error: 'Order not found or status has changed' };
       }
       const updated = await fetchICSaleById(parsedId);
       return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
@@ -1448,13 +1710,29 @@ export async function branchDeleteICSaleAction(
     if ('error' in auth) {
       return { success: false, error: auth.error };
     }
-    if (normalizeOrderStatus(auth.sale.orderStatus) !== 'pending') {
-      return { success: false, error: 'Only pending orders can be deleted' };
+
+    const slug = parsedSlug && parsedSlug !== 'superadmin' ? parsedSlug : undefined;
+    const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
+    const user = userRes.success ? userRes.data : null;
+
+    if (!canDeleteOrder(auth.sale, user?.role)) {
+      return { success: false, error: 'This order can no longer be deleted' };
     }
+
+    const allowedStatuses =
+      user?.role === 'customer'
+        ? ['pending_branch_review', 'branch_rejected']
+        : isBranchHandledSale(auth.sale)
+          ? ['pending']
+          : ['pending', 'admin_rejected'];
+
     try {
       const res = await query(
-        `DELETE FROM ic_sales WHERE id = $1 AND order_status = 'pending' RETURNING id`,
-        [parsedId],
+        `DELETE FROM ic_sales
+         WHERE id = $1
+           AND order_status = ANY($2::text[])
+         RETURNING id`,
+        [parsedId, allowedStatuses],
       );
       if (res.rowCount === 0) {
         return { success: false, error: 'Order not found or no longer pending' };
@@ -1483,7 +1761,10 @@ export async function branchRequestCancelICSaleAction(
       return { success: false, error: auth.error };
     }
     if (normalizeOrderStatus(auth.sale.orderStatus) !== 'accepted') {
-      return { success: false, error: 'Only admin-accepted orders can be cancelled' };
+      return { success: false, error: 'Only accepted orders can be cancelled' };
+    }
+    if (isCustomerEnteredOrder(auth.sale)) {
+      return { success: false, error: 'Customer must request cancellation on their own orders' };
     }
     try {
       const res = await query(
@@ -1510,6 +1791,154 @@ export async function branchRequestCancelICSaleAction(
   }
 }
 
+/** Customer requests cancellation of an accepted order (branch manager reviews). */
+export async function customerRequestCancelICSaleAction(
+  id: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsedId = z.string().min(1).parse(id);
+    const parsedSlug = z.string().optional().parse(branchSlug);
+    const auth = await assertBranchOwnsSale(parsedId, parsedSlug);
+    if ('error' in auth) {
+      return { success: false, error: auth.error };
+    }
+    if (!isCustomerEnteredOrder(auth.sale)) {
+      return { success: false, error: 'Only customer portal orders can use this action' };
+    }
+    if (normalizeOrderStatus(auth.sale.orderStatus) !== 'accepted') {
+      return { success: false, error: 'Only accepted orders can be cancelled' };
+    }
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'cancellation_pending',
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $1 AND order_status = 'accepted'
+       RETURNING id`,
+      [parsedId, auth.updatedBy],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or no longer eligible for cancellation' };
+    }
+    const updated = await fetchICSaleById(parsedId);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id }, 'Validation error in customerRequestCancelICSaleAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+async function assertBranchManagerForCustomerCancellation(
+  saleId: string,
+  branchSlug?: string,
+): Promise<{ sale: ICSale; updatedBy: string } | { error: string }> {
+  const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
+  const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();
+  const user = userRes.success ? userRes.data : null;
+
+  if (!user || user.role !== 'branch_manager') {
+    return { error: 'Only branch managers can resolve customer cancellations' };
+  }
+
+  let branchId: string;
+  let branchName: string;
+
+  if (slug) {
+    const branchRes = await query(`SELECT id, name FROM branches WHERE slug = $1 LIMIT 1`, [slug]);
+    if (branchRes.rows.length === 0) return { error: 'Branch not found' };
+    branchId = String(branchRes.rows[0].id);
+    branchName = String(branchRes.rows[0].name || '');
+  } else if (user.branchId) {
+    const branchRes = await query(`SELECT id, name FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
+    if (branchRes.rows.length === 0) return { error: 'Branch not found' };
+    branchId = String(branchRes.rows[0].id);
+    branchName = String(branchRes.rows[0].name || '');
+  } else {
+    return { error: 'Branch not found' };
+  }
+
+  const sale = await fetchICSaleById(saleId);
+  if (!sale) return { error: 'Order not found' };
+  if (!isCustomerEnteredOrder(sale)) {
+    return { error: 'Only customer-requested cancellations can be resolved by the branch' };
+  }
+  if (normalizeOrderStatus(sale.orderStatus) !== 'cancellation_pending') {
+    return { error: 'Order is not awaiting cancellation review' };
+  }
+
+  const custRes = await query(`SELECT id FROM customers WHERE branch_id = $1`, [branchId]);
+  const branchCustomerIds = new Set(custRes.rows.map((r: { id: string }) => String(r.id)));
+  if (!saleBelongsToBranchPortal(sale, branchName, branchCustomerIds)) {
+    return { error: 'You can only resolve cancellations for your branch customers' };
+  }
+
+  return { sale, updatedBy: user.email || user.name || 'branch' };
+}
+
+/** Branch manager approves a customer cancellation request. */
+export async function branchApproveCustomerCancelICSaleAction(
+  id: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsedId = z.string().min(1).parse(id);
+    const auth = await assertBranchManagerForCustomerCancellation(parsedId, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'cancelled',
+           warehouse_id = NULL,
+           delivery_agent_id = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $1 AND order_status = 'cancellation_pending'
+       RETURNING id`,
+      [parsedId, auth.updatedBy],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or not awaiting cancellation' };
+    }
+    const updated = await fetchICSaleById(parsedId);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id }, 'Validation error in branchApproveCustomerCancelICSaleAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
+/** Branch manager declines a customer cancellation request. */
+export async function branchDeclineCustomerCancelICSaleAction(
+  id: string,
+  branchSlug?: string,
+): Promise<DbActionResult<ICSale>> {
+  try {
+    const parsedId = z.string().min(1).parse(id);
+    const auth = await assertBranchManagerForCustomerCancellation(parsedId, branchSlug);
+    if ('error' in auth) return { success: false, error: auth.error };
+
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'accepted',
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $2
+       WHERE id = $1 AND order_status = 'cancellation_pending'
+       RETURNING id`,
+      [parsedId, auth.updatedBy],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or not awaiting cancellation' };
+    }
+    const updated = await fetchICSaleById(parsedId);
+    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+  } catch (err: unknown) {
+    logger.error({ err, id }, 'Validation error in branchDeclineCustomerCancelICSaleAction');
+    return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
+  }
+}
+
 /** Admin approves a cancellation request — order becomes cancelled. */
 export async function adminApproveCancelICSaleAction(id: string, branchSlug?: string): Promise<DbActionResult<ICSale>> {
   try {
@@ -1518,6 +1947,12 @@ export async function adminApproveCancelICSaleAction(id: string, branchSlug?: st
     if ('error' in auth) return { success: false, error: auth.error };
     const modCheck = await assertAdminCanModifySale(parsedId);
     if ('error' in modCheck) return { success: false, error: modCheck.error };
+    if (isCustomerEnteredOrder(modCheck.sale)) {
+      return {
+        success: false,
+        error: 'Customer cancellation requests are resolved by the branch manager',
+      };
+    }
     try {
       const res = await query(
         `UPDATE ic_sales
@@ -1553,6 +1988,12 @@ export async function adminDeclineCancelICSaleAction(id: string, branchSlug?: st
     if ('error' in auth) return { success: false, error: auth.error };
     const modCheck = await assertAdminCanModifySale(parsedId);
     if ('error' in modCheck) return { success: false, error: modCheck.error };
+    if (isCustomerEnteredOrder(modCheck.sale)) {
+      return {
+        success: false,
+        error: 'Customer cancellation requests are resolved by the branch manager',
+      };
+    }
     try {
       const res = await query(
         `UPDATE ic_sales
@@ -1741,6 +2182,18 @@ export async function adminSetFulfillmentHandlerAction(
     if (!sale) return { success: false, error: 'Order not found' };
     if (!sale.orderCustomerId) {
       return { success: false, error: 'Only customer orders can be assigned branch or admin handling' };
+    }
+    if (normalizeOrderStatus(sale.orderStatus) === 'pending_branch_review') {
+      return {
+        success: false,
+        error: 'Branch manager must approve this order before assigning handling',
+      };
+    }
+    if (normalizeOrderStatus(sale.orderStatus) !== 'pending') {
+      return {
+        success: false,
+        error: 'Handling can only be changed while the order is pending',
+      };
     }
 
     const res = await query(

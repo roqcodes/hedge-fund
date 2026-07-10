@@ -67,6 +67,43 @@ export const bulkUpdateRateGroupRatesSchema = z.object({
   conversionRate: z.number().positive(),
 });
 
+const rateSlabTierSchema = z.object({
+  minUnits: z.number().nonnegative(),
+  maxUnits: z.number().positive().nullable(),
+  saleRate: z.number().positive(),
+  conversionRate: z.number().positive(),
+});
+
+const rateTransactionPricingSchema = z.object({
+  mode: z.enum(['flat', 'slab']),
+  saleRate: z.number().positive().optional(),
+  conversionRate: z.number().positive().optional(),
+  slabs: z.array(rateSlabTierSchema).optional(),
+});
+
+export const rateGroupPricingConfigSchema = z.object({
+  scope: z.enum(['all_types', 'per_type']),
+  kind: z.enum(['flat', 'slab']),
+  common: rateTransactionPricingSchema.optional(),
+  byTransactionType: z
+    .record(z.enum(['transfer', 'cdm', 'by_hand', 'nre']), rateTransactionPricingSchema)
+    .optional(),
+});
+
+export const updateRateGroupPricingSchema = z.object({
+  groupId: z.string().min(1),
+  saleRate: z.number().nonnegative(),
+  conversionRate: z.number().positive(),
+  pricingConfig: rateGroupPricingConfigSchema.nullable(),
+});
+
+export const bulkUpdateRateGroupPricingSchema = z.object({
+  groupIds: z.array(z.string().min(1)),
+  saleRate: z.number().nonnegative(),
+  conversionRate: z.number().positive(),
+  pricingConfig: rateGroupPricingConfigSchema.nullable(),
+});
+
 export const setRateGroupCustomersSchema = z.object({
   groupId: z.string().min(1),
   customerIds: z.array(z.string().min(1)),
@@ -95,6 +132,8 @@ export const addSaleSchema = z.object({
   customerName: nameSchema,
   orderCustomerName: z.string().optional().nullable(),
   orderCustomerId: z.string().optional().nullable(),
+  subCustomerId: z.string().optional().nullable(),
+  subCustomerName: z.string().optional().nullable(),
   warehouseId: z.string().optional().nullable(),
   transactionType: icSaleTransactionTypeSchema.optional().nullable(),
   units: z.number().positive(),
@@ -121,6 +160,12 @@ export const addSaleSchema = z.object({
 });
 
 export const updateSaleSchema = addSaleSchema.partial();
+
+export const saveSubCustomerSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().trim().min(1, 'Name is required'),
+  contact: z.string().trim().optional().nullable(),
+});
 
 // Warehouse Schemas
 export const createDeliveryAgentSchema = z.object({
