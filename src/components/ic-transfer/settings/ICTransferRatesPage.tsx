@@ -15,6 +15,7 @@ import {
   getBranchManageableRateGroups,
   filterRateGroupsForAdminPortal,
 } from '@/lib/icTransfer/branchRateScope';
+import { hasAdvancedPricing, remapPricingConfigToConversion } from '@/lib/icTransfer/ratePricing';
 import BranchAdminAssignedRateCard from './BranchAdminAssignedRateCard';
 import RateGroupsTable from './RateGroupsTable';
 import RateGroupBulkUpdateBar from './RateGroupBulkUpdateBar';
@@ -121,36 +122,59 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
     saleRate: number,
     conversionRate: number,
     pricingConfig: ICRateGroupPricingConfig | null,
+    convertedRateExact?: number | null,
   ) => {
     setIsBulkSaving(true);
-    const allowedIds = isBranchPortal
-      ? groupIds.filter(id => scopedRateGroups.some(g => g.id === id))
-      : groupIds;
+    try {
+      const allowedIds = isBranchPortal
+        ? groupIds.filter(id => scopedRateGroups.some(g => g.id === id))
+        : groupIds;
 
-    let success = false;
+      if (allowedIds.length === 0) {
+        showToast('Select at least one rate group you can manage.', 'error');
+        return false;
+      }
 
-    if (isBranchPortal) {
-      const convertedRate = saleRate * conversionRate;
-      const results = await Promise.all(
-        allowedIds.map(async id => {
-          const group = scopedRateGroups.find(g => g.id === id);
-          const conv = group?.conversionRate ?? 1;
-          const derivedSale = conv > 0 ? convertedRate / conv : saleRate;
-          return updateICRateGroupPricing(id, derivedSale, conv, pricingConfig);
-        }),
-      );
-      success = results.every(Boolean);
-    } else {
-      success = await bulkUpdateICRateGroupRates(
-        allowedIds,
-        saleRate,
-        conversionRate,
-        pricingConfig,
-      );
+      let success = false;
+
+      if (isBranchPortal) {
+        const advanced = hasAdvancedPricing(pricingConfig);
+        // Simple flat: prefer the exact local rate typed in the editor.
+        // Advanced: derive from seeded AED×conversion (per-type/slab config is remapped separately).
+        const targetConverted =
+          !advanced && convertedRateExact != null && convertedRateExact > 0
+            ? convertedRateExact
+            : saleRate * conversionRate;
+        const results = await Promise.all(
+          allowedIds.map(async id => {
+            const group = scopedRateGroups.find(g => g.id === id);
+            const conv = group?.conversionRate && group.conversionRate > 0 ? group.conversionRate : 1;
+            const derivedSale = conv > 0 ? targetConverted / conv : saleRate;
+            // Rebase any advanced per-type / slab rates onto this group's conversion.
+            const remappedConfig = remapPricingConfigToConversion(pricingConfig, conv);
+            return updateICRateGroupPricing(id, derivedSale, conv, remappedConfig);
+          }),
+        );
+        success = results.every(Boolean);
+        if (!success) {
+          showToast('Some rate groups failed to update.', 'error');
+        }
+      } else {
+        success = await bulkUpdateICRateGroupRates(
+          allowedIds,
+          saleRate,
+          conversionRate,
+          pricingConfig,
+        );
+      }
+
+      return success;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to apply rates', 'error');
+      return false;
+    } finally {
+      setIsBulkSaving(false);
     }
-
-    setIsBulkSaving(false);
-    return success;
   };
 
   const handleSaveGroupPricing = async (
@@ -163,14 +187,21 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
     setSavingPricingGroupId(groupId);
     const group = scopedRateGroups.find(g => g.id === groupId);
     let finalSale = saleRate;
-    const finalConv = group?.conversionRate ?? conversionRate;
+    const finalConv =
+      isBranchPortal && group?.conversionRate && group.conversionRate > 0
+        ? group.conversionRate
+        : conversionRate;
 
     if (isBranchPortal && group) {
       const convertedRate = saleRate * conversionRate;
       finalSale = finalConv > 0 ? convertedRate / finalConv : saleRate;
     }
 
-    const success = await updateICRateGroupPricing(groupId, finalSale, finalConv, pricingConfig);
+    const remappedConfig = isBranchPortal
+      ? remapPricingConfigToConversion(pricingConfig, finalConv)
+      : pricingConfig;
+
+    const success = await updateICRateGroupPricing(groupId, finalSale, finalConv, remappedConfig);
     setSavingPricingGroupId(null);
     return success;
   };
@@ -373,6 +404,7 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
         onClose={() => setViewGroup(null)}
         onEdit={openEditModal}
         hideAedRate={isBranchPortal}
+        hideBranches={isBranchPortal}
       />
     </PageShell>
   );

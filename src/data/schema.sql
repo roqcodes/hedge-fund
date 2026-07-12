@@ -622,8 +622,8 @@ CREATE TABLE IF NOT EXISTS ic_rate_groups (
     name VARCHAR(255) NOT NULL,
     country VARCHAR(255) NOT NULL,
     currency VARCHAR(10) NOT NULL,
-    sale_rate DECIMAL(15, 6) NOT NULL DEFAULT 0,
-    conversion_rate DECIMAL(15, 6) NOT NULL DEFAULT 1,
+    sale_rate DECIMAL(28, 14) NOT NULL DEFAULT 0,
+    conversion_rate DECIMAL(28, 14) NOT NULL DEFAULT 1,
     created_by_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -632,6 +632,8 @@ CREATE TABLE IF NOT EXISTS ic_rate_groups (
 ALTER TABLE ic_rate_groups ADD COLUMN IF NOT EXISTS created_by_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_ic_rate_groups_created_by_branch ON ic_rate_groups(created_by_branch_id);
 ALTER TABLE ic_rate_groups ADD COLUMN IF NOT EXISTS pricing_config JSONB DEFAULT NULL;
+ALTER TABLE ic_rate_groups ALTER COLUMN sale_rate TYPE NUMERIC(28, 14);
+ALTER TABLE ic_rate_groups ALTER COLUMN conversion_rate TYPE NUMERIC(28, 14);
 
 CREATE TABLE IF NOT EXISTS ic_rate_group_customers (
     group_id VARCHAR(50) REFERENCES ic_rate_groups(id) ON DELETE CASCADE,

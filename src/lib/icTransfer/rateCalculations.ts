@@ -1,5 +1,8 @@
 import type { ICRateGroup } from '@/types';
 
+/** Max fractional digits for IC rate inputs / storage display. */
+export const RATE_DECIMAL_PLACES = 14;
+
 /** Sale rate on rate groups is always AED per unit. */
 export function getCurrencyUnitRate(saleRateAed: number, conversionRate: number = 1): number {
   return saleRateAed * conversionRate;
@@ -15,14 +18,31 @@ export function deriveConvertedRate(saleRateAed: number, conversionRate: number)
   return getCurrencyUnitRate(saleRateAed, conversionRate);
 }
 
-export function formatRateInputValue(value: number, fractionDigits = 6): string {
+/**
+ * Format a derived rate for an input field.
+ * Keeps up to `fractionDigits` decimals without forcing trailing zeros or early rounding.
+ */
+export function formatRateInputValue(
+  value: number,
+  fractionDigits: number = RATE_DECIMAL_PLACES,
+): string {
   if (!Number.isFinite(value)) return '';
-  return String(Number(value.toFixed(fractionDigits)));
+  if (value === 0) return '0';
+
+  // Avoid scientific notation; trim binary float noise beyond the allowed precision.
+  const fixed = value.toFixed(fractionDigits);
+  if (!fixed.includes('.')) return fixed;
+  return fixed.replace(/(\.\d*?[1-9])0+$/u, '$1').replace(/\.0+$/u, '');
 }
 
 export function parseRateInputValue(value: string): number | null {
   if (value.trim() === '') return null;
-  const parsed = parseFloat(value);
+  // Allow intermediate typing states like "3." or "0."
+  if (/^-?\d+\.$/u.test(value.trim())) {
+    const whole = parseFloat(value);
+    return Number.isFinite(whole) ? whole : null;
+  }
+  const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -67,5 +87,18 @@ export function formatAmount(value: number, fractionDigits = 2): string {
   return value.toLocaleString(undefined, {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
+  });
+}
+
+/** Display rates with up to 14 decimals (no forced trailing zeros). */
+export function formatRateAmount(
+  value: number,
+  maxFractionDigits: number = RATE_DECIMAL_PLACES,
+): string {
+  if (!Number.isFinite(value)) return '';
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxFractionDigits,
+    useGrouping: false,
   });
 }

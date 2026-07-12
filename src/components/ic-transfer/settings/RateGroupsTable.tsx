@@ -10,12 +10,13 @@ import {
 } from '@/lib/icTransfer/rateGroupUtils';
 import { getCurrencyUnitRate, formatAmount } from '@/lib/icTransfer/rateCalculations';
 import {
+  ensurePricingConversions,
   getPricingSummaryLabel,
   hasAdvancedPricing,
   normalizePricingConfig,
+  seedFlatRateForSave,
   validatePricingEditorForSave,
 } from '@/lib/icTransfer/ratePricing';
-import { coerceFlatRate } from '@/lib/icTransfer/rateFieldInput';
 import type { ICRateGroup, ICRateGroupPricingConfig } from '@/types';
 import RateGroupPricingEditor, {
   arePricingEditorValuesEqual,
@@ -85,12 +86,10 @@ export default function RateGroupsTable({
   const columns = [
     '',
     'Group',
-    'Country',
-    'Currency',
-    ...(convertedRateOnly ? [] : ['Sale Rate', 'Conversion']),
-    'Converted Rate',
+    ...(convertedRateOnly ? [] : ['Country', 'Currency', 'Sale Rate', 'Conversion']),
+    convertedRateOnly ? 'Rate' : 'Converted Rate',
     'Pricing',
-    'Last Updated',
+    'Updated',
     ...(hideBranchColumn ? [] : ['Branches']),
     'Customers',
     'Actions',
@@ -100,24 +99,37 @@ export default function RateGroupsTable({
     if (!onSavePricing) return;
     const value = getRowEditorValue(group);
 
-    const validationError = validatePricingEditorForSave(value.flat, value.pricingConfig);
+    const validationError = validatePricingEditorForSave(value.flat, value.pricingConfig, {
+      lockedConversionRate:
+        convertedRateOnly && group.conversionRate > 0 ? group.conversionRate : undefined,
+    });
     if (validationError) {
       showToast(validationError, 'error');
       return;
     }
 
-    const coerced = coerceFlatRate(value.flat);
-    if (!coerced) {
-      showToast('Enter a valid rate and conversion before saving.', 'error');
+    const seeded = seedFlatRateForSave(value.flat, value.pricingConfig, {
+      lockedConversionRate:
+        convertedRateOnly && group.conversionRate > 0 ? group.conversionRate : undefined,
+      convertedRate: value.convertedRate,
+    });
+    if (!seeded) {
+      showToast('Enter a valid rate before saving.', 'error');
       return;
     }
 
-    const normalized = normalizePricingConfig(value.pricingConfig, coerced);
+    const prepared = ensurePricingConversions(
+      value.pricingConfig,
+      (convertedRateOnly && group.conversionRate > 0
+        ? group.conversionRate
+        : seeded.conversionRate),
+    );
+    const normalized = normalizePricingConfig(prepared, seeded);
     const configToSave = hasAdvancedPricing(normalized) ? normalized : null;
     const success = await onSavePricing(
       group.id,
-      coerced.saleRate,
-      coerced.conversionRate,
+      seeded.saleRate,
+      seeded.conversionRate,
       configToSave,
     );
     if (success) {
@@ -132,7 +144,7 @@ export default function RateGroupsTable({
 
   return (
     <div className={tableWrap}>
-      <table className={`${dataTable} min-w-[${convertedRateOnly ? '960' : '1120'}px]`}>
+      <table className={`${dataTable} min-w-[${convertedRateOnly ? '720' : '1120'}px]`}>
         <thead>
           <tr>
             {columns.map(col => (
@@ -154,20 +166,39 @@ export default function RateGroupsTable({
             const isExpanded = expandedId === group.id;
             const advanced = hasAdvancedPricing(group.pricingConfig);
             const colSpan = columns.length;
+            const converted = getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1);
+
+            const openView = () => onView(group);
 
             return (
               <React.Fragment key={group.id}>
                 <tr
                   data-interactive-row
-                  className={`group ${stale ? STALE_ROW_CLASS : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View ${group.name}`}
+                  className={`group cursor-pointer outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 ${
+                    stale ? STALE_ROW_CLASS : 'hover:bg-slate-50/80'
+                  }`}
+                  onClick={openView}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openView();
+                    }
+                  }}
                 >
                   <td className={`border-y border-l border-black/5 px-2 py-3.5 first:rounded-l-2xl sm:px-3 sm:py-4 ${cellBg}`}>
                     <button
                       type="button"
-                      aria-label={isExpanded ? 'Collapse pricing' : 'Expand pricing'}
+                      aria-label={isExpanded ? 'Collapse pricing editor' : 'Edit pricing'}
                       aria-expanded={isExpanded}
+                      title={isExpanded ? 'Collapse pricing editor' : 'Edit pricing'}
                       className="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/80 hover:text-accent"
-                      onClick={() => setExpandedId(isExpanded ? null : group.id)}
+                      onClick={e => {
+                        e.stopPropagation();
+                        setExpandedId(isExpanded ? null : group.id);
+                      }}
                     >
                       <svg
                         width="14"
@@ -184,7 +215,7 @@ export default function RateGroupsTable({
                     </button>
                   </td>
                   <td className={`border-y border-black/5 px-3 py-3.5 sm:px-4 sm:py-4 ${cellBg}`}>
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       {stale ? (
                         <span
                           className="size-2 shrink-0 rounded-full bg-orange-500"
@@ -192,17 +223,24 @@ export default function RateGroupsTable({
                           aria-hidden
                         />
                       ) : null}
-                      <span className="text-sm font-bold text-slate-900">{group.name}</span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-900">{group.name}</p>
+                        {convertedRateOnly ? (
+                          <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                            {group.country} · {group.currency}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                  </td>
-                  <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
-                    {group.country}
-                  </td>
-                  <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold text-slate-800 sm:px-4 sm:py-4 ${cellBg}`}>
-                    {group.currency}
                   </td>
                   {!convertedRateOnly ? (
                     <>
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-4 sm:py-4 ${cellBg}`}>
+                        {group.country}
+                      </td>
+                      <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold text-slate-800 sm:px-4 sm:py-4 ${cellBg}`}>
+                        {group.currency}
+                      </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-semibold tabular-nums text-emerald-700 sm:px-4 sm:py-4 ${cellBg}`}>
                         {group.saleRate.toLocaleString()}
                       </td>
@@ -213,9 +251,14 @@ export default function RateGroupsTable({
                   ) : null}
                   <td className={`border-y border-black/5 px-3 py-3.5 text-sm font-bold tabular-nums text-slate-900 sm:px-4 sm:py-4 ${cellBg}`}>
                     <span className="inline-flex items-baseline gap-1">
-                      {formatAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1), 4)}
+                      {formatAmount(converted, 4)}
                       <span className="text-[11px] font-medium text-slate-400">{group.currency}</span>
                     </span>
+                    {advanced ? (
+                      <span className="mt-0.5 block text-[10px] font-medium text-slate-400">
+                        Base · see pricing
+                      </span>
+                    ) : null}
                   </td>
                   <td className={`border-y border-black/5 px-3 py-3.5 text-xs sm:px-4 sm:py-4 ${cellBg}`}>
                     <span
@@ -240,7 +283,11 @@ export default function RateGroupsTable({
                     {customerCount}
                   </td>
                   <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-4 sm:py-4 ${cellBg}`}>
-                    <div className="flex items-center justify-center gap-1.5">
+                    <div
+                      className="flex items-center justify-center gap-1.5"
+                      onClick={e => e.stopPropagation()}
+                      onKeyDown={e => e.stopPropagation()}
+                    >
                       <ActionIconButton label="View group" onClick={() => onView(group)} variant="view" />
                       <ActionIconButton label="Edit group" onClick={() => onEdit(group)} variant="edit" />
                       <ActionIconButton label="Delete group" onClick={() => onDelete(group)} variant="delete" />
@@ -274,6 +321,11 @@ export default function RateGroupsTable({
                           group={group}
                           currency={group.currency}
                           convertedRateOnly={convertedRateOnly}
+                          lockedConversionRate={
+                            convertedRateOnly && group.conversionRate > 0
+                              ? group.conversionRate
+                              : undefined
+                          }
                           defaultExpanded={advanced}
                           showExpandToggle
                           idPrefix={`row-${group.id}`}

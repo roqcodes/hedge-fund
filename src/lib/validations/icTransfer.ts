@@ -69,7 +69,11 @@ export const bulkUpdateRateGroupRatesSchema = z.object({
 
 const rateSlabTierSchema = z.object({
   minUnits: z.number().nonnegative(),
-  maxUnits: z.number().positive().nullable(),
+  maxUnits: z
+    .number()
+    .nonnegative()
+    .nullish()
+    .transform((value): number | null => value ?? null),
   saleRate: z.number().positive(),
   conversionRate: z.number().positive(),
 });

@@ -8,12 +8,13 @@ import RateGroupPricingEditor, {
   getInitialPricingEditorValue,
   type RatePricingEditorValue,
 } from './RateGroupPricingEditor';
-import { coerceFlatRate } from '@/lib/icTransfer/rateFieldInput';
-import { getCurrencyUnitRate, formatAmount } from '@/lib/icTransfer/rateCalculations';
+import { getCurrencyUnitRate, formatRateAmount } from '@/lib/icTransfer/rateCalculations';
 import {
+  ensurePricingConversions,
   getPricingSummaryLabel,
   hasAdvancedPricing,
   normalizePricingConfig,
+  seedFlatRateForSave,
   validatePricingEditorForSave,
 } from '@/lib/icTransfer/ratePricing';
 import type { ICRateGroup, ICRateGroupPricingConfig } from '@/types';
@@ -27,6 +28,7 @@ type Props = {
     saleRate: number,
     conversionRate: number,
     pricingConfig: ICRateGroupPricingConfig | null,
+    convertedRate?: number | null,
   ) => Promise<boolean>;
 };
 
@@ -61,6 +63,8 @@ export default function RateGroupBulkUpdateBar({
     getInitialPricingEditorValue(),
   );
 
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const selectedGroups = useMemo(
     () => selectedGroupIds
       .map(id => groups.find(g => g.id === id))
@@ -81,6 +85,11 @@ export default function RateGroupBulkUpdateBar({
   }, [selectedGroups, groups]);
 
   const currency = referenceGroup?.currency ?? 'Currency';
+
+  const lockedConversion =
+    convertedRateOnly && referenceGroup?.conversionRate && referenceGroup.conversionRate > 0
+      ? referenceGroup.conversionRate
+      : undefined;
 
   const filteredGroups = useMemo(() => {
     const q = groupSearch.trim().toLowerCase();
@@ -117,61 +126,107 @@ export default function RateGroupBulkUpdateBar({
   };
 
   const handleEditorChange = useCallback((value: RatePricingEditorValue) => {
+    setSubmitError(null);
     setEditorValue(prev => (arePricingEditorValuesEqual(prev, value) ? prev : value));
   }, []);
 
   const resetForm = () => {
     setSelectedGroupIds([]);
     setGroupSearch('');
+    setSubmitError(null);
     setEditorValue(getInitialPricingEditorValue());
     setEditorKey(k => k + 1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
+
     if (selectedGroupIds.length === 0) {
-      showToast('Select at least one rate group.', 'error');
+      const msg = 'Select at least one rate group.';
+      setSubmitError(msg);
+      showToast(msg, 'error');
       return;
     }
     if (mixedCurrencies) {
-      showToast('Selected groups must share the same currency.', 'error');
+      const msg = 'Selected groups must share the same currency.';
+      setSubmitError(msg);
+      showToast(msg, 'error');
       return;
     }
 
-    const validationError = validatePricingEditorForSave(
-      editorValue.flat,
+    const conversionForSave =
+      lockedConversion ??
+      (editorValue.flat.conversionRate != null && editorValue.flat.conversionRate > 0
+        ? editorValue.flat.conversionRate
+        : 1);
+
+    const preparedConfig = ensurePricingConversions(
       editorValue.pricingConfig,
+      conversionForSave,
     );
+
+    const validationError = validatePricingEditorForSave(editorValue.flat, preparedConfig, {
+      lockedConversionRate: lockedConversion,
+    });
     if (validationError) {
+      setSubmitError(validationError);
       showToast(validationError, 'error');
       return;
     }
 
-    const coerced = coerceFlatRate(editorValue.flat);
-    if (!coerced) {
-      showToast('Enter a valid rate and conversion before saving.', 'error');
+    const flat = seedFlatRateForSave(editorValue.flat, preparedConfig, {
+      lockedConversionRate: lockedConversion,
+      convertedRate: editorValue.convertedRate,
+    });
+    if (!flat) {
+      const msg = 'Enter a valid rate before saving.';
+      setSubmitError(msg);
+      showToast(msg, 'error');
       return;
     }
 
-    const normalized = normalizePricingConfig(editorValue.pricingConfig, coerced);
-    const configToSave = hasAdvancedPricing(normalized) ? normalized : null;
+    const normalized = normalizePricingConfig(preparedConfig, flat);
+    const configToSave = hasAdvancedPricing(normalized)
+      ? ensurePricingConversions(normalized, flat.conversionRate)
+      : null;
 
-    const success = await onSave(
-      selectedGroupIds,
-      coerced.saleRate,
-      coerced.conversionRate,
-      configToSave,
-    );
-    if (success) resetForm();
+    try {
+      const success = await onSave(
+        selectedGroupIds,
+        flat.saleRate,
+        flat.conversionRate,
+        configToSave,
+        // Only pass exact converted for simple flat — advanced modes use per-type / slab rates.
+        hasAdvancedPricing(normalized) ? null : editorValue.convertedRate,
+      );
+      if (success) resetForm();
+      else {
+        const msg = 'Could not apply rates. Check the toast for details.';
+        setSubmitError(msg);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not apply rates.';
+      setSubmitError(msg);
+      showToast(msg, 'error');
+    }
   };
 
   const selectedCount = selectedGroupIds.length;
-  const canSave = selectedCount > 0 && !mixedCurrencies && !isSaving;
-  const previewConverted =
-    editorValue.flat.saleRate != null && editorValue.flat.conversionRate != null
-      ? getCurrencyUnitRate(editorValue.flat.saleRate, editorValue.flat.conversionRate)
-      : null;
+  // Keep Apply clickable so validation/selection errors can surface via toast + inline message.
+  const canSave = !isSaving && !mixedCurrencies;
   const pricingLabel = getPricingSummaryLabel(editorValue.pricingConfig);
+  const isAdvanced = hasAdvancedPricing(editorValue.pricingConfig);
+
+  // Preview: exact converted for flat-all; for advanced modes show mode label only.
+  const previewConverted =
+    !isAdvanced && editorValue.convertedRate != null && editorValue.convertedRate > 0
+      ? editorValue.convertedRate
+      : !isAdvanced &&
+          editorValue.flat.saleRate != null &&
+          editorValue.flat.conversionRate != null
+        ? getCurrencyUnitRate(editorValue.flat.saleRate, editorValue.flat.conversionRate)
+        : null;
 
   if (groups.length === 0) {
     return (
@@ -273,7 +328,7 @@ export default function RateGroupBulkUpdateBar({
                           <span className="block truncate text-[11px] text-slate-400">
                             {group.country} · {group.currency}
                             {group.saleRate > 0
-                              ? ` · ${formatAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1), 2)}`
+                              ? ` · ${formatRateAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1))}`
                               : ''}
                           </span>
                         </span>
@@ -326,8 +381,8 @@ export default function RateGroupBulkUpdateBar({
             <p className="text-sm font-bold text-slate-900">Set the rate</p>
             <p className="mt-0.5 text-xs text-slate-500">
               {convertedRateOnly
-                ? `Enter the ${currency} rate. Choose a pricing mode if you need per-type or volume slabs.`
-                : 'Enter AED + conversion (or converted rate). Choose a pricing mode if needed.'}
+                ? `Choose a pricing mode, then enter ${currency} rates. Conversion is locked to your branch rate.`
+                : 'Choose a pricing mode, then enter rates. One flat rate is the default.'}
             </p>
           </div>
 
@@ -337,6 +392,7 @@ export default function RateGroupBulkUpdateBar({
               group={undefined}
               currency={currency}
               convertedRateOnly={convertedRateOnly}
+              lockedConversionRate={lockedConversion}
               variant="guided"
               showExpandToggle={false}
               idPrefix="bulk-pricing"
@@ -346,7 +402,9 @@ export default function RateGroupBulkUpdateBar({
 
           <div className="mt-auto flex flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-6">
             <div className="min-w-0 text-xs text-slate-500">
-              {selectedCount === 0 ? (
+              {submitError ? (
+                <span className="font-medium text-red-600">{submitError}</span>
+              ) : selectedCount === 0 ? (
                 <span>Select groups on the left to enable apply.</span>
               ) : mixedCurrencies ? (
                 <span className="font-medium text-amber-700">Fix currency mix before applying.</span>
@@ -359,9 +417,11 @@ export default function RateGroupBulkUpdateBar({
                       {' '}
                       ·{' '}
                       <strong className="tabular-nums text-slate-800">
-                        {formatAmount(previewConverted, 4)} {currency}
+                        {formatRateAmount(previewConverted)} {currency}
                       </strong>
                     </>
+                  ) : isAdvanced ? (
+                    <> · rates by transaction type / volume</>
                   ) : null}
                   {' '}to {selectedCount} group{selectedCount === 1 ? '' : 's'}
                 </span>
