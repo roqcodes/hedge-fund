@@ -125,19 +125,32 @@ export default function ICTransferDashboard() {
 
   const { filteredPurchases, filteredSales } = useMemo(() => {
     const isFiltered = (dateStr: string) => !range.startDate && !range.endDate ? true : isDateInRange(dateStr, range);
+    
+    const activeBranch = branches.find(b => b.slug === currentSlug)
+      || allBranches.find(b => b.slug === currentSlug);
+    const activeBranchId = activeBranch?.id;
+
+    const allowedWarehouseIds = new Set(
+      icWarehouses
+        .filter(w => !branchSlug ? !w.branchId : w.branchId === activeBranchId)
+        .map(w => w.id)
+    );
+
     return {
       filteredPurchases: icPurchases.filter(
         p =>
           isFiltered(p.createdAt || '') &&
-          matchesSelectedRegions(p.locationId, selectedRegionIds),
+          matchesSelectedRegions(p.locationId, selectedRegionIds) &&
+          (!p.warehouseId || allowedWarehouseIds.has(p.warehouseId)),
       ),
       filteredSales: scopedSales.filter(
         s =>
           saleMatchesDateFilter(s, range) &&
-          matchesSaleRegionFilter(s, icWarehouses, selectedRegionIds),
+          matchesSaleRegionFilter(s, icWarehouses, selectedRegionIds) &&
+          (!s.warehouseId || allowedWarehouseIds.has(s.warehouseId)),
       ),
     };
-  }, [icPurchases, scopedSales, icWarehouses, range, selectedRegionIds]);
+  }, [icPurchases, scopedSales, icWarehouses, range, selectedRegionIds, branchSlug, branches, allBranches, currentSlug]);
 
   const { kpis, trendData, supplierData, regionData } = useMemo(() => {
     let totalPurchaseVol = 0;

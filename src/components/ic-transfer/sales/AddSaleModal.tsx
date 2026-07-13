@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { filterWarehousesForAdminPortal, filterWarehousesForBranchPortal } from '@/lib/icTransfer/branchPortalScope';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput, formSelect } from '@/lib/ui';
@@ -30,6 +31,18 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
 
 export default function AddSaleModal({ open, onClose, initialData }: Props) {
   const { icWarehouses, addICSale, updateICSale, icRateGroups, user, currentSlug } = useApp();
+
+  const allowedWarehouses = useMemo(() => {
+    const isAdmin = user?.role === 'admin';
+    if (isAdmin) {
+      return filterWarehousesForAdminPortal(icWarehouses);
+    }
+    const branchId = user?.branchId;
+    if (branchId) {
+      return filterWarehousesForBranchPortal(icWarehouses, branchId);
+    }
+    return icWarehouses;
+  }, [icWarehouses, user]);
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [customerName, setCustomerName] = useState(initialData?.customerName || '');
@@ -294,7 +307,7 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
               <InputField label="Warehouse (Optional)">
                 <select className={formSelect} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
                   <option value="">None</option>
-                  {icWarehouses.map(w => (
+                  {allowedWarehouses.map(w => (
                     <option key={w.id} value={w.id}>{w.name}</option>
                   ))}
                 </select>

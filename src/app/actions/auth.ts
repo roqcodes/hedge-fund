@@ -49,7 +49,7 @@ export async function loginAction(email: string, securityKey: string, branchSlug
       }
     }
 
-    await createSession(user, branchSlug);
+    const enrichedUser = await createSession(user, branchSlug);
 
     if (user.role === 'customer' && user.id) {
       const customerRes = await query(
@@ -66,7 +66,7 @@ export async function loginAction(email: string, securityKey: string, branchSlug
       }
     }
     
-    return { success: true, data: user };
+    return { success: true, data: enrichedUser };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'An error occurred during authentication.';
     return { success: false, error: message };

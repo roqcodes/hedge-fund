@@ -44,6 +44,13 @@ export function filterWarehousesForBranchPortal(
   return warehouses.filter(w => w.branchId === branchId);
 }
 
+/** HQ admin warehouses only — excludes branch-owned warehouses. */
+export function filterWarehousesForAdminPortal(
+  warehouses: ICWarehouse[],
+): ICWarehouse[] {
+  return warehouses.filter(w => !w.branchId);
+}
+
 export function filterSuppliersForBranchPortal(
   suppliers: ICSupplier[],
   branchId: string,

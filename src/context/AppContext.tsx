@@ -370,9 +370,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (dbRes.success && dbRes.data) {
         const data = dbRes.data;
         
+        let currentUser: User | null = null;
+        try {
+          const authRes = await getCurrentUserAction(slug);
+          if (authRes.success && authRes.data) {
+            currentUser = authRes.data;
+          }
+        } catch (e) {
+          console.error('Failed to get user in refetchData:', e);
+        }
+        
         setState(s => {
           return {
             ...s,
+            user: currentUser || s.user,
             branches: data.branches,
             transactions: data.transactions,
             expenses: data.expenses,

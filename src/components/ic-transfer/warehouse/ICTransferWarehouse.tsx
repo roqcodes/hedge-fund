@@ -11,6 +11,7 @@ import {
 import {
   filterSalesForBranchPortal,
   filterWarehousesForBranchPortal,
+  filterWarehousesForAdminPortal,
   type ICTransferPortalMode,
 } from '@/lib/icTransfer/branchPortalScope';
 import WarehouseKpiGrid from '@/components/warehouse/WarehouseKpiGrid';
@@ -53,7 +54,7 @@ export default function ICTransferWarehouse({
   const isBranchPortal = portalMode === 'branch' && !!branchId;
 
   const scopedWarehouses = useMemo(() => {
-    if (!isBranchPortal) return icWarehouses;
+    if (!isBranchPortal) return filterWarehousesForAdminPortal(icWarehouses);
     return filterWarehousesForBranchPortal(icWarehouses, branchId!);
   }, [icWarehouses, isBranchPortal, branchId]);
 

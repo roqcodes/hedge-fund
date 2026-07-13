@@ -196,7 +196,7 @@ async function loadStaffPermissions(user: User): Promise<User> {
 /**
  * Creates a session cookie with the authenticated user data.
  */
-export async function createSession(user: User, branchSlug?: string) {
+export async function createSession(user: User, branchSlug?: string): Promise<User> {
   let enriched = user;
   if (user.role === 'staff') {
     enriched = await loadStaffPermissions(user);
@@ -220,6 +220,8 @@ export async function createSession(user: User, branchSlug?: string) {
     sameSite: 'lax',
     path: cookiePath,
   });
+
+  return enriched;
 }
 
 /**

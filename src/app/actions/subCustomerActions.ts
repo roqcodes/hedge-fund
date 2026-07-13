@@ -145,7 +145,7 @@ export async function deleteSubCustomer(slug: string, subCustomerId: string) {
     }
 
     const existing = await query(
-      `SELECT id, ${subCustomerHasOrdersExpr('id')} AS has_orders
+      `SELECT id, ${subCustomerHasOrdersExpr('ic_sub_customers.id')} AS has_orders
        FROM ic_sub_customers WHERE id = $1 AND parent_customer_id = $2 LIMIT 1`,
       [subCustomerId, access.customerId],
     );

@@ -149,7 +149,7 @@ export function CreateUserModal({
           ) : (
             <select className={formInput} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} disabled={loading}>
               <option value="">-- Select a warehouse --</option>
-              {icWarehouses?.map((w: any) => (
+              {icWarehouses?.filter((w: any) => w.branchId === fixedBranchId).map((w: any) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>
