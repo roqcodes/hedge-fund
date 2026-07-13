@@ -2303,31 +2303,67 @@ export async function branchCompleteHandledOrderAction(
     const parsedId = z.string().min(1).parse(id);
     const auth = await assertBranchManagerHandlesSale(parsedId, branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
-    if (!auth.sale.warehouseId) {
-      return { success: false, error: 'Assign a warehouse before completing' };
-    }
-    if (normalizeOrderStatus(auth.sale.orderStatus) !== 'accepted') {
-      return { success: false, error: 'Order must be accepted before completing' };
-    }
 
-    const res = await query(
-      `UPDATE ic_sales
-       SET order_status = 'completed',
-           collected_units = units,
-           payment_status = 'paid',
-           status_updated_at = CURRENT_TIMESTAMP,
-           status_updated_by = $1
-       WHERE id = $2
-         AND fulfillment_handler = 'branch'
-         AND order_status = 'accepted'
-       RETURNING id`,
-      [auth.updatedBy, parsedId],
-    );
-    if (res.rowCount === 0) {
-      return { success: false, error: 'Order could not be completed' };
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const saleRes = await client.query(
+        `SELECT id, warehouse_id, units, order_status, fulfillment_handler FROM ic_sales WHERE id = $1 FOR UPDATE`,
+        [parsedId],
+      );
+      if (saleRes.rows.length === 0) {
+        throw new Error('Order not found');
+      }
+      const dbSale = saleRes.rows[0];
+      if (dbSale.fulfillment_handler !== 'branch') {
+        throw new Error('This action is only for branch-managed orders');
+      }
+      if (normalizeOrderStatus(dbSale.order_status) !== 'accepted') {
+        throw new Error('Order must be accepted before completing');
+      }
+      if (!dbSale.warehouse_id) {
+        throw new Error('Assign a warehouse before completing');
+      }
+
+      const res = await client.query(
+        `UPDATE ic_sales
+         SET order_status = 'completed',
+             collected_units = units,
+             payment_status = 'paid',
+             status_updated_at = CURRENT_TIMESTAMP,
+             status_updated_by = $1
+         WHERE id = $2
+           AND fulfillment_handler = 'branch'
+           AND order_status = 'accepted'
+         RETURNING id`,
+        [auth.updatedBy, parsedId],
+      );
+      if (res.rowCount === 0) {
+        throw new Error('Order could not be completed');
+      }
+
+      // Log clearing transaction and decrement warehouse stock
+      await logWarehouseStockTransaction(
+        client,
+        dbSale.warehouse_id,
+        'clear',
+        Number(dbSale.units),
+        'sale',
+        parsedId,
+      );
+      await adjustWarehouseStock(client, dbSale.warehouse_id, -Number(dbSale.units));
+
+      await client.query('COMMIT');
+      const updated = await fetchICSaleById(parsedId);
+      return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+    } catch (error: unknown) {
+      await client.query('ROLLBACK');
+      logger.error({ error, id }, 'Error in branchCompleteHandledOrderAction execution');
+      return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+    } finally {
+      client.release();
     }
-    const updated = await fetchICSaleById(parsedId);
-    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
     logger.error({ err, id }, 'Validation error in branchCompleteHandledOrderAction');
     return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };
@@ -2343,28 +2379,62 @@ export async function branchReopenHandledOrderAction(
     const parsedId = z.string().min(1).parse(id);
     const auth = await assertBranchManagerHandlesSale(parsedId, branchSlug);
     if ('error' in auth) return { success: false, error: auth.error };
-    if (normalizeOrderStatus(auth.sale.orderStatus) !== 'completed') {
-      return { success: false, error: 'Only completed orders can be reopened' };
-    }
 
-    const res = await query(
-      `UPDATE ic_sales
-       SET order_status = 'accepted',
-           collected_units = 0,
-           payment_status = 'pending',
-           status_updated_at = CURRENT_TIMESTAMP,
-           status_updated_by = $1
-       WHERE id = $2
-         AND fulfillment_handler = 'branch'
-         AND order_status = 'completed'
-       RETURNING id`,
-      [auth.updatedBy, parsedId],
-    );
-    if (res.rowCount === 0) {
-      return { success: false, error: 'Order could not be reopened' };
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const saleRes = await client.query(
+        `SELECT id, warehouse_id, units, order_status, fulfillment_handler FROM ic_sales WHERE id = $1 FOR UPDATE`,
+        [parsedId],
+      );
+      if (saleRes.rows.length === 0) {
+        throw new Error('Order not found');
+      }
+      const dbSale = saleRes.rows[0];
+      if (dbSale.fulfillment_handler !== 'branch') {
+        throw new Error('This action is only for branch-managed orders');
+      }
+      if (normalizeOrderStatus(dbSale.order_status) !== 'completed') {
+        throw new Error('Only completed orders can be reopened');
+      }
+
+      const res = await client.query(
+        `UPDATE ic_sales
+         SET order_status = 'accepted',
+             collected_units = 0,
+             payment_status = 'pending',
+             status_updated_at = CURRENT_TIMESTAMP,
+             status_updated_by = $1
+         WHERE id = $2
+           AND fulfillment_handler = 'branch'
+           AND order_status = 'completed'
+         RETURNING id`,
+        [auth.updatedBy, parsedId],
+      );
+      if (res.rowCount === 0) {
+        throw new Error('Order could not be reopened');
+      }
+
+      if (dbSale.warehouse_id) {
+        // Clean up stock transaction log and restore stock to warehouse
+        await client.query(
+          `DELETE FROM ic_warehouse_transactions WHERE reference_type = 'sale' AND reference_id = $1`,
+          [parsedId],
+        );
+        await adjustWarehouseStock(client, dbSale.warehouse_id, Number(dbSale.units));
+      }
+
+      await client.query('COMMIT');
+      const updated = await fetchICSaleById(parsedId);
+      return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
+    } catch (error: unknown) {
+      await client.query('ROLLBACK');
+      logger.error({ error, id }, 'Error in branchReopenHandledOrderAction execution');
+      return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+    } finally {
+      client.release();
     }
-    const updated = await fetchICSaleById(parsedId);
-    return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
     logger.error({ err, id }, 'Validation error in branchReopenHandledOrderAction');
     return { success: false, error: err instanceof Error ? err.message : 'Invalid data format' };

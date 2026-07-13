@@ -116,6 +116,19 @@ function TopbarActions({
   onOpenMobileSearch,
   hideOnMobileSearch = false,
 }: TopbarActionsProps) {
+  const [isProfileOpen, setIsProfileOpen] = React.useState(false);
+  const profileRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
     <div
       className={`flex shrink-0 items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 ${
@@ -151,8 +164,14 @@ function TopbarActions({
       </button>
 
       {user ? (
-        <div className="group relative">
-          <div className="flex cursor-pointer items-center gap-2 rounded-xl border border-transparent p-1 transition-colors hover:bg-slate-50 md:gap-3">
+        <div ref={profileRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setIsProfileOpen(!isProfileOpen)}
+            className="flex cursor-pointer items-center gap-2 rounded-xl border border-transparent p-1 transition-colors hover:bg-slate-50 md:gap-3"
+            aria-expanded={isProfileOpen}
+            aria-haspopup="true"
+          >
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-bold text-accent shadow-surface-xs ring-1 ring-slate-200/80">
               {(user.name || 'User')
                 .split(' ')
@@ -165,9 +184,15 @@ function TopbarActions({
               <div className="truncate text-sm font-semibold text-slate-900">{user.name || 'User'}</div>
               <div className="truncate text-[11px] font-medium capitalize text-slate-500">{(user.role || '').replace('_', ' ')}</div>
             </div>
-          </div>
+          </button>
 
-          <div className="invisible absolute right-0 top-[calc(100%+4px)] z-[300] w-64 origin-top-right scale-95 rounded-2xl border border-slate-200/90 bg-white p-2 opacity-0 shadow-dropdown transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:visible group-hover:scale-100 group-hover:opacity-100">
+          <div
+            className={`absolute right-0 top-[calc(100%+4px)] z-[300] w-64 origin-top-right rounded-2xl border border-slate-200/90 bg-white p-2 shadow-dropdown transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isProfileOpen
+                ? 'visible scale-100 opacity-100'
+                : 'invisible scale-95 opacity-0'
+            }`}
+          >
             <div className="mb-2 border-b border-slate-100 px-3 pb-3 pt-2">
               <div className="text-sm font-bold text-slate-900">{user.name || 'User'}</div>
               <div className="text-xs text-slate-500">{user.email || ''}</div>
@@ -186,7 +211,10 @@ function TopbarActions({
               <button
                 type="button"
                 className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
-                onClick={logout}
+                onClick={() => {
+                  setIsProfileOpen(false);
+                  logout();
+                }}
               >
                 <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
@@ -241,7 +269,7 @@ export default function Topbar() {
 
   const searchOpen = isSearchOpen || searchQuery.length > 0;
   const headerShell =
-    'min-h-14 shrink-0 border-b border-slate-200/80 bg-white/90 px-4 py-2.5 shadow-surface-xs backdrop-blur-xl sm:min-h-[3.5rem] sm:px-5 md:px-6 lg:px-8';
+    'relative z-10 min-h-14 shrink-0 border-b border-slate-200/80 bg-white/90 px-4 py-2.5 shadow-surface-xs backdrop-blur-xl sm:min-h-[3.5rem] sm:px-5 md:px-6 lg:px-8';
 
   const searchProps = {
     searchWrapRef,
