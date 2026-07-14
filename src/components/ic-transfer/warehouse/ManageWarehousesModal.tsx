@@ -115,6 +115,7 @@ export default function ManageWarehousesModal({
         loading={deleteLoading}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTargetId(null)}
+        zIndexClass="z-[500]"
       />
       <Modal
         open={open}
@@ -191,6 +192,7 @@ export default function ManageWarehousesModal({
         showRegion={false}
         initialData={editingWarehouse}
         onAdd={handleSave}
+        zIndexClass="z-[500]"
       />
     </>
   );

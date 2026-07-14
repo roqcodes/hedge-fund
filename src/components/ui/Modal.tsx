@@ -10,7 +10,10 @@ type ModalProps = {
   children: React.ReactNode;
   footer?: React.ReactNode;
   maxWidth?: string;
+  zIndexClass?: string;
 };
+
+let openModalsCount = 0;
 
 export default function Modal({
   open,
@@ -19,6 +22,7 @@ export default function Modal({
   children,
   footer,
   maxWidth = 'max-w-lg',
+  zIndexClass = 'z-[400]',
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -28,10 +32,16 @@ export default function Modal({
 
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    openModalsCount++;
+    if (openModalsCount === 1) {
+      document.body.style.overflow = 'hidden';
+    }
     return () => {
-      document.body.style.overflow = prev;
+      openModalsCount--;
+      if (openModalsCount <= 0) {
+        openModalsCount = 0;
+        document.body.style.overflow = '';
+      }
     };
   }, [open]);
 
@@ -48,7 +58,7 @@ export default function Modal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[400] flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 ${
+      className={`fixed inset-0 ${zIndexClass} flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 ${
         open ? 'visible opacity-100' : 'invisible pointer-events-none opacity-0'
       }`}
       onClick={onClose}

@@ -1,6 +1,7 @@
 import type { ICSale, ICRateGroup } from '@/types';
 import { getCurrencyUnitRate } from './rateCalculations';
 import { getAdminAssignedBranchRateGroup, resolveBranchCustomerOrderRate } from './branchRateScope';
+import { isBranchHandledSale } from './fulfillmentHandler';
 
 /** Profit in order currency: (units × admin rate) − (units × branch rate). */
 export function computeBranchSaleProfit(
@@ -21,6 +22,7 @@ export function resolveSaleBranchProfit(
   branchId: string | undefined,
 ): { profit: number; currency: string } | null {
   if (!branchId) return null;
+  if (isBranchHandledSale(sale)) return null;
 
   const adminGroup = getAdminAssignedBranchRateGroup(groups, branchId);
   let adminSaleRate = sale.adminUnitRate ?? adminGroup?.saleRate;

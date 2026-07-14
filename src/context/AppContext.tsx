@@ -370,20 +370,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (dbRes.success && dbRes.data) {
         const data = dbRes.data;
         
-        let currentUser: User | null = null;
-        try {
-          const authRes = await getCurrentUserAction(slug);
-          if (authRes.success && authRes.data) {
-            currentUser = authRes.data;
-          }
-        } catch (e) {
-          console.error('Failed to get user in refetchData:', e);
-        }
-        
         setState(s => {
           return {
             ...s,
-            user: currentUser || s.user,
             branches: data.branches,
             transactions: data.transactions,
             expenses: data.expenses,
@@ -1434,7 +1423,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addICRegion = useCallback(async (name: string, country: string) => {
     try {
-      const res = await dbAddICRegionAction(name, country);
+      const res = await dbAddICRegionAction(name, country, currentSlug ?? undefined);
       if (res.success && res.data) {
         setState(s => ({ ...s, icRegions: [...s.icRegions, res.data!] }));
         showToast('Region added successfully');
@@ -1447,11 +1436,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error adding region', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const updateICRegion = useCallback(async (id: string, name: string, country: string) => {
     try {
-      const res = await dbUpdateICRegionAction(id, name, country);
+      const res = await dbUpdateICRegionAction(id, name, country, currentSlug ?? undefined);
       if (res.success && res.data) {
         setState(s => ({ ...s, icRegions: s.icRegions.map(r => r.id === id ? res.data! : r) }));
         showToast('Region updated successfully');
@@ -1464,11 +1453,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating region', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const deleteICRegion = useCallback(async (id: string) => {
     try {
-      const res = await dbDeleteICRegionAction(id);
+      const res = await dbDeleteICRegionAction(id, currentSlug ?? undefined);
       if (res.success) {
         setState(s => ({ ...s, icRegions: s.icRegions.filter(r => r.id !== id) }));
         showToast('Region deleted successfully');
@@ -1481,7 +1470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error deleting region', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const addICSupplier = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, branchId?: string | null) => {
     try {
@@ -1493,7 +1482,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         email,
         address,
         branchId,
-        branchId ? currentSlug ?? undefined : undefined,
+        currentSlug ?? undefined,
       );
       if (res.success && res.data) {
         setState(s => ({ ...s, icSuppliers: [...s.icSuppliers, res.data!] }));
@@ -1554,7 +1543,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addICWarehouse = useCallback(async (name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer: boolean = true, branchId?: string | null) => {
     try {
-      const res = await dbAddICWarehouseAction(name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer, branchId);
+      const res = await dbAddICWarehouseAction(name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer, branchId, currentSlug ?? undefined);
       if (res.success && res.data) {
         setState(s => ({ ...s, icWarehouses: [...s.icWarehouses, res.data!] }));
         showToast('Warehouse added successfully');
@@ -1567,11 +1556,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error adding warehouse', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const updateICWarehouse = useCallback(async (id: string, name: string, phone: string, commission: number | null, regionId: string, email: string, address: string, sendDeliveryProofToCustomer: boolean = true) => {
     try {
-      const res = await dbUpdateICWarehouseAction(id, name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer);
+      const res = await dbUpdateICWarehouseAction(id, name, phone, commission, regionId, email, address, sendDeliveryProofToCustomer, currentSlug ?? undefined);
       if (res.success && res.data) {
         setState(s => ({ ...s, icWarehouses: s.icWarehouses.map(w => w.id === id ? res.data! : w) }));
         showToast('Warehouse updated successfully');
@@ -1584,11 +1573,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating warehouse', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const deleteICWarehouse = useCallback(async (id: string) => {
     try {
-      const res = await dbDeleteICWarehouseAction(id);
+      const res = await dbDeleteICWarehouseAction(id, currentSlug ?? undefined);
       if (res.success) {
         setState(s => ({ ...s, icWarehouses: s.icWarehouses.filter(w => w.id !== id) }));
         showToast('Warehouse deleted successfully');
@@ -1601,7 +1590,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error deleting warehouse', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const addICRateGroup = useCallback(async (
     name: string,
@@ -1637,7 +1626,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateICRateGroup = useCallback(async (id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number) => {
     try {
-      const res = await dbUpdateICRateGroupAction(id, name, country, currency, saleRate, conversionRate);
+      const res = await dbUpdateICRateGroupAction(id, name, country, currency, saleRate, conversionRate, currentSlug ?? undefined);
       if (res.success && res.data) {
         setState(s => ({ ...s, icRateGroups: s.icRateGroups.map(g => g.id === id ? res.data! : g) }));
         showToast('Rate group updated successfully');
@@ -1650,7 +1639,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating rate group', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const bulkUpdateICRateGroupRates = useCallback(async (
     groupIds: string[],
@@ -1659,7 +1648,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pricingConfig?: ICRateGroupPricingConfig | null,
   ) => {
     try {
-      const res = await dbBulkUpdateICRateGroupRatesAction(groupIds, saleRate, conversionRate, pricingConfig);
+      const res = await dbBulkUpdateICRateGroupRatesAction(groupIds, saleRate, conversionRate, pricingConfig, currentSlug ?? undefined);
       if (res.success && res.data) {
         const updatedMap = new Map(res.data.map(g => [g.id, g]));
         setState(s => ({
@@ -1678,7 +1667,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating rate groups', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const updateICRateGroupPricing = useCallback(async (
     groupId: string,
@@ -1687,7 +1676,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pricingConfig: ICRateGroupPricingConfig | null,
   ) => {
     try {
-      const res = await dbUpdateICRateGroupPricingAction(groupId, saleRate, conversionRate, pricingConfig);
+      const res = await dbUpdateICRateGroupPricingAction(groupId, saleRate, conversionRate, pricingConfig, currentSlug ?? undefined);
       if (res.success && res.data) {
         setState(s => ({
           ...s,
@@ -1702,11 +1691,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating rate pricing', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const deleteICRateGroup = useCallback(async (id: string) => {
     try {
-      const res = await dbDeleteICRateGroupAction(id);
+      const res = await dbDeleteICRateGroupAction(id, currentSlug ?? undefined);
       if (res.success) {
         setState(s => ({ ...s, icRateGroups: s.icRateGroups.filter(g => g.id !== id) }));
         showToast('Rate group deleted successfully');
@@ -1719,11 +1708,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error deleting rate group', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const setICRateGroupCustomers = useCallback(async (groupId: string, customerIds: string[]) => {
     try {
-      const res = await dbSetICRateGroupCustomersAction(groupId, customerIds);
+      const res = await dbSetICRateGroupCustomersAction(groupId, customerIds, currentSlug ?? undefined);
       if (res.success) {
         setState(s => ({ ...s, icRateGroups: s.icRateGroups.map(g => g.id === groupId ? { ...g, customerIds } : g) }));
         showToast('Rate group customers updated successfully');
@@ -1736,11 +1725,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating rate group customers', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const setICRateGroupBranches = useCallback(async (groupId: string, branchIds: string[]) => {
     try {
-      const res = await dbSetICRateGroupBranchesAction(groupId, branchIds);
+      const res = await dbSetICRateGroupBranchesAction(groupId, branchIds, currentSlug ?? undefined);
       if (res.success) {
         setState(s => ({ ...s, icRateGroups: s.icRateGroups.map(g => g.id === groupId ? { ...g, branchIds } : g) }));
         showToast('Rate group branches updated successfully');
@@ -1753,7 +1742,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showToast('Error updating rate group branches', 'error');
       return false;
     }
-  }, [showToast]);
+  }, [showToast, currentSlug]);
 
   const addICPurchase = useCallback(async (purchase: Omit<ICPurchase, 'id' | 'createdAt'>) => {
     try {

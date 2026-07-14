@@ -13,6 +13,7 @@ interface ConfirmModalProps {
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  zIndexClass?: string;
 }
 
 export default function ConfirmModal({
@@ -24,6 +25,7 @@ export default function ConfirmModal({
   loading = false,
   onConfirm,
   onCancel,
+  zIndexClass,
 }: ConfirmModalProps) {
   const dangerBtn =
     'inline-flex items-center justify-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all duration-150 hover:bg-red-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -41,6 +43,7 @@ export default function ConfirmModal({
       onClose={onCancel}
       title={title}
       maxWidth="max-w-sm"
+      zIndexClass={zIndexClass}
       footer={
         <div className="flex w-full justify-end gap-3">
           <button type="button" className={btnSecondary} onClick={onCancel} disabled={loading}>

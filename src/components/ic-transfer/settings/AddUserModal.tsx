@@ -16,6 +16,7 @@ type Props = {
   showDeliveryProofToggle?: boolean;
   initialData?: any;
   regions?: { id: string; name: string }[];
+  zIndexClass?: string;
   onAdd?: (data: {
     id?: string;
     name: string;
@@ -39,6 +40,7 @@ export default function AddUserModal({
   showDeliveryProofToggle = false,
   initialData,
   regions,
+  zIndexClass,
   onAdd,
 }: Props) {
   const [name, setName] = useState('');
@@ -96,6 +98,7 @@ export default function AddUserModal({
       onClose={onClose}
       title={title}
       maxWidth="max-w-lg"
+      zIndexClass={zIndexClass}
       footer={
         <>
           <button type="button" className={btnSecondary} onClick={onClose} disabled={isSubmitting}>Cancel</button>

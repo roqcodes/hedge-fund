@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { filterWarehousesForAdminPortal } from '@/lib/icTransfer/branchPortalScope';
+import React, { useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/context/AppContext';
 import { ICSale } from '@/types';
@@ -83,9 +82,6 @@ export function AdminOrderStatusCard({
 export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: SharedProps & { compact?: boolean }) {
   const { icWarehouses, showToast, refetchData, currentSlug, user } = useApp();
   const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
-  const hqWarehouses = useMemo(() => {
-    return filterWarehousesForAdminPortal(icWarehouses);
-  }, [icWarehouses]);
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -299,7 +295,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
             required
           >
             <option value="">Select warehouse...</option>
-            {hqWarehouses.map(w => (
+            {icWarehouses.map(w => (
               <option key={w.id} value={w.id}>{w.name}</option>
             ))}
           </select>
@@ -334,7 +330,7 @@ export function AdminOrderWorkflowActions({ sale, onUpdated, compact = true }: S
             required
           >
             <option value="">Select warehouse...</option>
-            {hqWarehouses.map(w => (
+            {icWarehouses.map(w => (
               <option key={w.id} value={w.id}>{w.name}</option>
             ))}
           </select>

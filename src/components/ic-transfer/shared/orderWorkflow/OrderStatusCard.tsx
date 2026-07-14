@@ -72,7 +72,7 @@ export function OrderStatusCard({
         <div
           role="tooltip"
           className={[
-            'pointer-events-none absolute left-1/2 z-50 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg whitespace-normal',
+            'pointer-events-none absolute left-1/2 z-50 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg',
             'opacity-0 transition-opacity duration-150 group-hover:opacity-100',
             compact ? 'bottom-full mb-2' : 'top-full mt-2',
           ].join(' ')}
