@@ -140,6 +140,10 @@ export default function ICTransferSales() {
     const range = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);
 
     return scopedSales.filter((s: ICSale) => {
+      if (normalizeOrderStatus(s.orderStatus) === 'pending_branch_review') {
+        return false;
+      }
+
       if (!saleMatchesDateFilter(s, range)) {
         return false;
       }
@@ -653,7 +657,7 @@ export default function ICTransferSales() {
             <tr
               key={s.id}
               onClick={() => handleView(s)}
-              className={`cursor-pointer transition-colors border-b border-slate-100 last:border-0 ${getAdminRowAccentClass(s.orderStatus, s.transactionType) ?? highPriorityRowClass(s.priority)}`}
+              className={`cursor-pointer transition-colors border-b border-slate-100 last:border-0 hover:relative hover:z-50 ${getAdminRowAccentClass(s.orderStatus, s.transactionType) ?? highPriorityRowClass(s.priority)}`}
             >
               {isVerificationTab && (
                 <td className={icCompactTd('center')} onClick={e => e.stopPropagation()}>

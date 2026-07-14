@@ -17,7 +17,7 @@ const saveSubCustomerSchema = z.object({
 });
 
 function subCustomerHasOrdersExpr(subCustomerIdRef: string): string {
-  return `EXISTS (SELECT 1 FROM ic_sales WHERE sub_customer_id = ${subCustomerIdRef} LIMIT 1)`;
+  return `EXISTS (SELECT 1 FROM ic_sales WHERE sub_customer_id::text = ${subCustomerIdRef}::text LIMIT 1)`;
 }
 
 async function assertParentCustomerAccess(slug: string) {
@@ -85,7 +85,7 @@ export async function saveSubCustomer(
 
     if (!isNew) {
       const existing = await query(
-        `SELECT id FROM ic_sub_customers WHERE id = $1 AND parent_customer_id = $2 LIMIT 1`,
+        `SELECT id FROM ic_sub_customers WHERE id::text = $1::text AND parent_customer_id::text = $2::text LIMIT 1`,
         [id, access.customerId],
       );
       if (existing.rows.length === 0) {
@@ -93,12 +93,12 @@ export async function saveSubCustomer(
       }
 
       await query(
-        `UPDATE ic_sub_customers SET name = $1, contact = $2 WHERE id = $3 AND parent_customer_id = $4`,
+        `UPDATE ic_sub_customers SET name = $1, contact = $2 WHERE id::text = $3::text AND parent_customer_id::text = $4::text`,
         [parsed.name, contact, id, access.customerId],
       );
     } else {
       const duplicate = await query(
-        `SELECT id FROM ic_sub_customers WHERE parent_customer_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`,
+        `SELECT id FROM ic_sub_customers WHERE parent_customer_id::text = $1::text AND LOWER(name) = LOWER($2) LIMIT 1`,
         [access.customerId, parsed.name],
       );
       if (duplicate.rows.length > 0) {
@@ -146,7 +146,7 @@ export async function deleteSubCustomer(slug: string, subCustomerId: string) {
 
     const existing = await query(
       `SELECT id, ${subCustomerHasOrdersExpr('id')} AS has_orders
-       FROM ic_sub_customers WHERE id = $1 AND parent_customer_id = $2 LIMIT 1`,
+       FROM ic_sub_customers WHERE id::text = $1::text AND parent_customer_id::text = $2::text LIMIT 1`,
       [subCustomerId, access.customerId],
     );
     if (existing.rows.length === 0) {
@@ -157,7 +157,7 @@ export async function deleteSubCustomer(slug: string, subCustomerId: string) {
     }
 
     await query(
-      `DELETE FROM ic_sub_customers WHERE id = $1 AND parent_customer_id = $2`,
+      `DELETE FROM ic_sub_customers WHERE id::text = $1::text AND parent_customer_id::text = $2::text`,
       [subCustomerId, access.customerId],
     );
 
@@ -180,7 +180,7 @@ export async function validateSubCustomerForOrder(
   }
 
   const res = await query(
-    `SELECT id, name FROM ic_sub_customers WHERE id = $1 AND parent_customer_id = $2 LIMIT 1`,
+    `SELECT id, name FROM ic_sub_customers WHERE id::text = $1::text AND parent_customer_id::text = $2::text LIMIT 1`,
     [subCustomerId.trim(), parentCustomerId],
   );
 

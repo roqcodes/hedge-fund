@@ -58,9 +58,8 @@ export default function Modal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 ${zIndexClass} flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 ${
-        open ? 'visible opacity-100' : 'invisible pointer-events-none opacity-0'
-      }`}
+      className={`fixed inset-0 ${zIndexClass} flex items-end justify-center bg-slate-900/40 backdrop-blur-[2px] transition-[opacity,visibility] duration-300 ease-out sm:items-center sm:p-4 ${open ? 'visible opacity-100' : 'invisible pointer-events-none opacity-0'
+        }`}
       onClick={onClose}
       role="presentation"
     >
@@ -68,9 +67,8 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`flex max-h-[min(92dvh,100%)] w-full ${maxWidth} flex-col overflow-hidden rounded-t-2xl border border-slate-200/90 bg-white shadow-[0_24px_64px_-12px_rgba(15,23,42,0.35)] transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:max-h-[min(88dvh,720px)] sm:rounded-2xl ${
-          open ? 'translate-y-0 scale-100 sm:translate-y-0' : 'translate-y-full scale-100 sm:translate-y-4 sm:scale-[0.98]'
-        }`}
+        className={`flex max-h-[min(92dvh,100%)] w-full ${maxWidth} flex-col overflow-hidden rounded-t-2xl border border-slate-200/90 bg-white shadow-[0_24px_64px_-12px_rgba(15,23,42,0.35)] transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:max-h-[min(88dvh,720px)] sm:rounded-2xl ${open ? 'translate-y-0 scale-100 sm:translate-y-0' : 'translate-y-full scale-100 sm:translate-y-4 sm:scale-[0.98]'
+          }`}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3.5 sm:px-5 sm:py-4">

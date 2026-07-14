@@ -70,7 +70,7 @@ export default function DataTableSection({
       <div className="p-0 pb-3 md:pb-5">
         <div className={`${tableWrap} ${tableVisibility}`}>
           <table className={dataTable} style={{ minWidth }}>
-            <thead>
+            <thead className="relative z-0">
               <tr>
                 {columns.map(col => {
                   const isSorted = sortField && col.toLowerCase().replace(/\s/g, '') === sortField.toLowerCase().replace(/\s/g, '');

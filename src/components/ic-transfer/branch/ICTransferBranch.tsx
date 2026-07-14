@@ -494,7 +494,7 @@ export default function ICTransferBranch() {
         }
       >
         {filteredSales.map((s) => (
-          <tr key={s.id} onClick={() => handleView(s)} className="cursor-pointer hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 group">
+          <tr key={s.id} onClick={() => handleView(s)} className="cursor-pointer hover:bg-slate-50/50 hover:relative hover:z-50 transition-colors border-b border-slate-100 last:border-0 group">
             <td className={icCompactTd('left')}>{new Date(s.createdAt || '').toLocaleDateString()}</td>
             <td className={icCompactTd('left')}><span className="font-mono text-slate-500">{getFormattedTxnId(s.id, 'sale', s, branches, branchName)}</span></td>
             <td className={icCompactTd('left')}><span className="font-semibold text-slate-900">{getOrderCustomer(s)}</span></td>

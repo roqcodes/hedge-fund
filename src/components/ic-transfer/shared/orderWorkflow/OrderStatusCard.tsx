@@ -63,7 +63,7 @@ export function OrderStatusCard({
             >
               {remarksTitle}
             </p>
-            <p className={`mt-0.5 leading-snug ${compact ? 'text-[10px]' : 'text-sm'}`}>{trimmedRemarks}</p>
+            <p className={`mt-0.5 leading-snug ${compact ? 'text-[10px]' : 'text-sm'} break-words whitespace-normal`}>{trimmedRemarks}</p>
           </div>
         )}
       </div>
@@ -72,13 +72,13 @@ export function OrderStatusCard({
         <div
           role="tooltip"
           className={[
-            'pointer-events-none absolute left-1/2 z-50 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg',
+            'pointer-events-none absolute left-1/2 z-[100] w-64 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg',
             'opacity-0 transition-opacity duration-150 group-hover:opacity-100',
             compact ? 'bottom-full mb-2' : 'top-full mt-2',
           ].join(' ')}
         >
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">What&apos;s happening</p>
-          <p className="mt-1 text-xs leading-relaxed text-slate-700">{trimmedFlow}</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-700 break-words whitespace-normal">{trimmedFlow}</p>
         </div>
       )}
     </div>
