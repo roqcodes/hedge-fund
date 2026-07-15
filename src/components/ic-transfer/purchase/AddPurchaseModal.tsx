@@ -12,6 +12,8 @@ import { getAdminAssignedBranchRateGroup } from '@/lib/icTransfer/branchRateScop
 import {
   filterSuppliersForAdminPortal,
   filterSuppliersForBranchPortal,
+  filterWarehousesForAdminPortal,
+  filterWarehousesForBranchPortal,
 } from '@/lib/icTransfer/branchPortalScope';
 
 type Props = {
@@ -31,7 +33,11 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
 
 export default function AddPurchaseModal({ open, onClose, initialData, branchId, warehouses }: Props) {
   const { icSuppliers, icWarehouses, addICPurchase, updateICPurchase, icPurchases, icRateGroups, user } = useApp();
-  const warehouseOptions = warehouses ?? icWarehouses;
+  const warehouseOptions = useMemo(() => {
+    if (warehouses) return warehouses;
+    if (branchId) return filterWarehousesForBranchPortal(icWarehouses, branchId);
+    return filterWarehousesForAdminPortal(icWarehouses);
+  }, [warehouses, icWarehouses, branchId]);
   const supplierOptions = useMemo(() => {
     if (branchId) return filterSuppliersForBranchPortal(icSuppliers, branchId);
     return filterSuppliersForAdminPortal(icSuppliers);

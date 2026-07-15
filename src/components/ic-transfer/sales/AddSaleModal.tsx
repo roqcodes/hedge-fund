@@ -33,16 +33,16 @@ export default function AddSaleModal({ open, onClose, initialData }: Props) {
   const { icWarehouses, addICSale, updateICSale, icRateGroups, user, currentSlug } = useApp();
 
   const allowedWarehouses = useMemo(() => {
-    const isAdmin = user?.role === 'admin';
-    if (isAdmin) {
-      return filterWarehousesForAdminPortal(icWarehouses);
+    const isGlobalAdmin = currentSlug === 'superadmin';
+    if (isGlobalAdmin) {
+      return icWarehouses;
     }
     const branchId = user?.branchId;
     if (branchId) {
       return filterWarehousesForBranchPortal(icWarehouses, branchId);
     }
     return icWarehouses;
-  }, [icWarehouses, user]);
+  }, [icWarehouses, user, currentSlug]);
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [customerName, setCustomerName] = useState(initialData?.customerName || '');
