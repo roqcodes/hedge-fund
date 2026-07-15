@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { usePathname } from 'next/navigation';
 import { filterWarehousesForAdminPortal, filterWarehousesForBranchPortal } from '@/lib/icTransfer/branchPortalScope';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
@@ -31,18 +32,19 @@ const InputField = ({ label, children }: { label: string; children: React.ReactN
 
 export default function AddSaleModal({ open, onClose, initialData }: Props) {
   const { icWarehouses, addICSale, updateICSale, icRateGroups, user, currentSlug } = useApp();
+  const pathname = usePathname();
 
   const allowedWarehouses = useMemo(() => {
-    const isGlobalAdmin = currentSlug === 'superadmin';
-    if (isGlobalAdmin) {
-      return icWarehouses;
+    const isAdminPage = pathname.includes('/ic-transfer-admin');
+    if (isAdminPage) {
+      return filterWarehousesForAdminPortal(icWarehouses);
     }
     const branchId = user?.branchId;
     if (branchId) {
       return filterWarehousesForBranchPortal(icWarehouses, branchId);
     }
     return icWarehouses;
-  }, [icWarehouses, user, currentSlug]);
+  }, [icWarehouses, user, pathname]);
   const [units, setUnits] = useState(initialData?.units?.toString() || '');
   const [rate, setRate] = useState(initialData?.unitRate?.toString() || '');
   const [customerName, setCustomerName] = useState(initialData?.customerName || '');
