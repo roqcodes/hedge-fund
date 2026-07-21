@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import type { Customer } from '@/types';
 import type { FundEntryDirection } from '@/types';
@@ -20,6 +20,8 @@ interface NewEntryModalProps {
     amount: number;
     description: string;
     entryDate?: string;
+    customerCurrency?: string;
+    customerCurrencyRate?: number;
   }) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -37,6 +39,7 @@ export default function NewEntryModal({
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [currencyRate, setCurrencyRate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +48,7 @@ export default function NewEntryModal({
   );
 
   const selectedCustomer = customers.find(c => c.id === customerId);
+  const customerCurrency = selectedCustomer?.currency || 'AED';
   const showDropdown = focused && !customerId;
 
   const handleFocus = () => {
@@ -62,6 +66,7 @@ export default function NewEntryModal({
     setFocused(false);
     setDirection('debit');
     setAmount('');
+    setCurrencyRate('');
     setDescription('');
     setEntryDate(new Date().toISOString().slice(0, 10));
     setError(null);
@@ -73,6 +78,8 @@ export default function NewEntryModal({
   };
 
   const numAmount = parseFloat(amount) || 0;
+  const numCurrencyRate = parseFloat(currencyRate) || 0;
+  const secondaryAmount = numCurrencyRate > 0 ? numAmount * numCurrencyRate : 0;
   const canSubmit = customerId && numAmount > 0 && !submitting;
 
   const handleSubmit = async () => {
@@ -86,6 +93,8 @@ export default function NewEntryModal({
       amount: numAmount,
       description: description.trim() || `${direction === 'debit' ? 'Receivable' : 'Payable'} - ${selectedCustomer?.name ?? ''}`,
       entryDate: entryDate || undefined,
+      customerCurrency: numCurrencyRate > 0 ? customerCurrency : undefined,
+      customerCurrencyRate: numCurrencyRate > 0 ? numCurrencyRate : undefined,
     });
 
     setSubmitting(false);
@@ -177,7 +186,7 @@ export default function NewEntryModal({
         {/* Amount + Date */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Amount</label>
+            <label className={labelClass}>Amount (USDT)</label>
             <input
               type="number"
               step="0.01"
@@ -198,6 +207,24 @@ export default function NewEntryModal({
             />
           </div>
         </div>
+
+        {/* Currency Rate */}
+        {selectedCustomer && (
+          <div>
+            <label className={labelClass}>
+              1 USDT = ? {customerCurrency} <span className="text-slate-300 font-normal normal-case tracking-normal">(optional)</span>
+            </label>
+            <input
+              type="number"
+              step="0.0001"
+              min="0"
+              className={inputClass}
+              value={currencyRate}
+              onChange={e => setCurrencyRate(e.target.value)}
+              placeholder={customerCurrency === 'AED' ? 'e.g. 3.67' : 'e.g. 16000'}
+            />
+          </div>
+        )}
 
         {/* Description */}
         <div>
@@ -230,8 +257,13 @@ export default function NewEntryModal({
               Summary
             </p>
             <p className={`text-sm font-bold mt-0.5 ${direction === 'debit' ? 'text-emerald-800' : 'text-red-800'}`}>
-              {selectedCustomer?.name} {direction === 'debit' ? 'owes branch' : 'is owed by branch'} {numAmount.toFixed(2)}
+              {selectedCustomer?.name} {direction === 'debit' ? 'owes branch' : 'is owed by branch'} {numAmount.toFixed(2)} USDT
             </p>
+            {secondaryAmount > 0 && (
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                ≈ {secondaryAmount.toFixed(2)} {customerCurrency} @ {numCurrencyRate}
+              </p>
+            )}
           </div>
         )}
 

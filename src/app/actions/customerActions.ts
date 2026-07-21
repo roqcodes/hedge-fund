@@ -38,6 +38,7 @@ function mapCustomerRow(r: Record<string, unknown>) {
     status: String(r.status ?? 'active'),
     createdAt: r.created_at ? new Date(String(r.created_at)).toISOString() : undefined,
     cognitoUserId: r.cognito_user_id ? String(r.cognito_user_id) : undefined,
+    currency: r.currency ? String(r.currency) : 'AED',
     hasOrders: Boolean(r.has_orders),
   };
 }
@@ -149,6 +150,7 @@ export async function saveCustomer(
     password?: string;
     balance?: number | string;
     status?: string;
+    currency?: string;
   },
 ) {
   try {
@@ -207,15 +209,16 @@ export async function saveCustomer(
 
     await query(
       `
-      INSERT INTO customers (id, branch_id, name, phone, email, balance, status, cognito_user_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO customers (id, branch_id, name, phone, email, balance, status, cognito_user_id, currency)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         phone = EXCLUDED.phone,
         email = EXCLUDED.email,
         balance = EXCLUDED.balance,
         status = EXCLUDED.status,
-        cognito_user_id = COALESCE(EXCLUDED.cognito_user_id, customers.cognito_user_id)
+        cognito_user_id = COALESCE(EXCLUDED.cognito_user_id, customers.cognito_user_id),
+        currency = EXCLUDED.currency
     `,
       [
         id,
@@ -226,6 +229,7 @@ export async function saveCustomer(
         balance,
         status,
         cognitoUserId,
+        data.currency?.toUpperCase() || 'AED',
       ],
     );
 

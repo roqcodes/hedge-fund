@@ -279,10 +279,28 @@ export default function EntryTable({
                 </span>
               </td>
               <td className="border-y border-black/5 bg-white px-3 py-2.5 text-right font-mono font-bold text-slate-900">
-                {entry.debit > 0 ? entry.debit.toFixed(2) : <span className="text-slate-300">—</span>}
+                {entry.debit > 0 ? (
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span>{entry.debit.toFixed(2)}</span>
+                    {entry.customerCurrencyRate && entry.customerCurrency && (
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        {(entry.debit * entry.customerCurrencyRate).toFixed(2)} {entry.customerCurrency}
+                      </span>
+                    )}
+                  </div>
+                ) : <span className="text-slate-300">—</span>}
               </td>
               <td className="border-y border-black/5 bg-white px-3 py-2.5 text-right font-mono font-bold text-slate-900">
-                {entry.credit > 0 ? entry.credit.toFixed(2) : <span className="text-slate-300">—</span>}
+                {entry.credit > 0 ? (
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span>{entry.credit.toFixed(2)}</span>
+                    {entry.customerCurrencyRate && entry.customerCurrency && (
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        {(entry.credit * entry.customerCurrencyRate).toFixed(2)} {entry.customerCurrency}
+                      </span>
+                    )}
+                  </div>
+                ) : <span className="text-slate-300">—</span>}
               </td>
               <td className="border-y border-black/5 bg-white px-3 py-2.5 text-right text-slate-400 font-mono text-[10px]">
                 {entry.referenceType !== 'manual' ? (

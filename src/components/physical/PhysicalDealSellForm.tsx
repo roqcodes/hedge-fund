@@ -18,9 +18,6 @@ import {
   formatNumberWithCommas,
   cleanCommaNumber,
 } from '@/lib/physicalCalculations';
-import { convertFromAed } from '@/lib/currency';
-import { convertAedToUsdt } from '@/lib/physicalCurrencyDisplay';
-import { useApp } from '@/context/AppContext';
 import PhysicalTxnPreview, { buildSellPreviewRow, SELL_PREVIEW_COLUMNS } from './PhysicalTxnPreview';
 import StockMetalSelect from './StockMetalSelect';
 import { PhysicalBuy } from '@/types';
@@ -55,7 +52,6 @@ export default function PhysicalDealSellForm({
   onSuccess,
   onSaveDraft,
 }: PhysicalStockSellModalProps) {
-  const { currencyRates } = useApp();
   const [selectedBuyId, setSelectedBuyId] = useState('');
   const [form, setForm] = useState(() =>
     normalizePhysicalSellForm({
@@ -127,11 +123,10 @@ export default function PhysicalDealSellForm({
     const touchLoss = parseFloat(cleanCommaNumber(form.touchLossStr)) || 0;
     const idrGram = parseFloat(cleanCommaNumber(form.idrGramStr)) || 0;
     const idrToUsdt = parseFloat(cleanCommaNumber(form.idrToUsdtStr)) || 17770;
-    const base = computePhysicalTxn({ grossWeight, touch, touchLoss, idrGram, idrToUsdt });
+    const usdtToAed = parseFloat(cleanCommaNumber(form.usdtToAedStr)) || 0;
+    const base = computePhysicalTxn({ grossWeight, touch, touchLoss, idrGram, idrToUsdt, usdtToAed: usdtToAed || undefined });
     const metrics = computeSellMetrics(base, costPerGram);
-    // Sell value in USDT equals the deal's totalUsdt; derive cost & profit in USDT
-    // from the same rate so the trio stays internally consistent.
-    const costValueUsdt = convertAedToUsdt(metrics.costValue, currencyRates);
+    const costValueUsdt = base.totalUsdt > 0 ? (metrics.costValue / base.total) * base.totalUsdt : 0;
     const profitUsdt = base.totalUsdt - costValueUsdt;
     return {
       grossWeight,
@@ -139,6 +134,7 @@ export default function PhysicalDealSellForm({
       actualPurity: base.actualPurity,
       idrGram,
       idrToUsdt,
+      usdtToAed,
       tltIdrValue: base.tltIdrValue,
       tltAedValue: base.tltAedValue,
       totalUsdt: base.totalUsdt,
@@ -149,30 +145,21 @@ export default function PhysicalDealSellForm({
       costValueUsdt,
       profitUsdt,
     };
-  }, [form, costPerGram, currencyRates]);
+  }, [form, costPerGram]);
 
   useEffect(() => {
-    const sellValue = calc.sellValue;
-    if (sellValue <= 0) {
+    const usdtVal = calc.totalUsdt;
+    if (usdtVal <= 0) {
       setForm(prev =>
-        normalizePhysicalSellForm({
-          ...prev,
-          usdAmountStr: '',
-          aedAmountStr: '',
-        }),
+        normalizePhysicalSellForm({ ...prev, aedAmountStr: '' }),
       );
       return;
     }
-    const aedStr = formatNumberWithCommas(sellValue.toFixed(3));
-    const usdStr = formatNumberWithCommas(convertFromAed(sellValue, 'USD').toFixed(3));
+    const usdtStr = formatNumberWithCommas(usdtVal.toFixed(3));
     setForm(prev =>
-      normalizePhysicalSellForm({
-        ...prev,
-        aedAmountStr: aedStr,
-        usdAmountStr: usdStr,
-      }),
+      normalizePhysicalSellForm({ ...prev, aedAmountStr: usdtStr }),
     );
-  }, [calc.sellValue, currencyRates]);
+  }, [calc.totalUsdt]);
 
   const customerOptions = customers.map(c => ({
     value: c.id,
@@ -208,8 +195,7 @@ export default function PhysicalDealSellForm({
       deal: parseFloat(form.dealStr) || undefined,
       paymentMode: form.paymentMode,
       idrAmount: calc.idrGram || undefined,
-      usdAmount: parseFloat(form.usdAmountStr) || undefined,
-      aedAmount: parseFloat(form.aedAmountStr) || undefined,
+      aedAmount: calc.usdtToAed > 0 ? calc.sellValue : undefined,
       totalWeight: calc.actualPurity,
       tltIdrValue: calc.tltIdrValue,
       tltAedValue: calc.tltAedValue,
@@ -376,13 +362,13 @@ export default function PhysicalDealSellForm({
               <input type="text" className={cleanInput} value={form.idrToUsdtStr} onChange={e => set({ idrToUsdtStr: formatNumberWithCommas(e.target.value) })} disabled={!selectedBuy} required />
             </InputField>
             
-            <InputField label="USD">
-              <input type="text" className={cleanInput} value={form.usdAmountStr} onChange={(e) => set({ usdAmountStr: formatNumberWithCommas(e.target.value) })} placeholder="0.000" disabled={!selectedBuy} />
+            <InputField label="AED Rate">
+              <input type="text" className={cleanInput} value={form.usdtToAedStr} onChange={(e) => set({ usdtToAedStr: formatNumberWithCommas(e.target.value) })} placeholder="Optional" disabled={!selectedBuy} />
             </InputField>
             
-            <InputField label="AED">
-              <input type="text" className={cleanInput} value={form.aedAmountStr} onChange={(e) => set({ aedAmountStr: formatNumberWithCommas(e.target.value) })} placeholder="0.000" disabled={!selectedBuy} />
-            </InputField>
+              <InputField label="USDT">
+                <input type="text" className={cleanInput} value={form.aedAmountStr} onChange={(e) => set({ aedAmountStr: formatNumberWithCommas(e.target.value) })} placeholder="0.000" disabled={!selectedBuy} />
+              </InputField>
             
             <InputField label="Payment Mode">
               <select className={cleanSelect} value={form.paymentMode} onChange={e => set({ paymentMode: e.target.value as PhysicalPaymentMode })}>
@@ -433,6 +419,12 @@ export default function PhysicalDealSellForm({
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total IDR</span>
               <span className="text-xl md:text-2xl font-black text-slate-800 font-mono tracking-tight">{calc.tltIdrValue.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
             </div>
+            {calc.usdtToAed > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total AED</span>
+                <span className="text-xl md:text-2xl font-black text-slate-800 font-mono tracking-tight">{calc.tltAedValue.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
+              </div>
+            )}
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total USDT</span>
               <span className="text-xl md:text-2xl font-black text-emerald-600 font-mono tracking-tight">{calc.totalUsdt.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>

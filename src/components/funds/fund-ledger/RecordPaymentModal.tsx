@@ -21,6 +21,8 @@ interface RecordPaymentModalProps {
     amount: number;
     description: string;
     entryDate?: string;
+    customerCurrency?: string;
+    customerCurrencyRate?: number;
   }) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -40,6 +42,7 @@ export default function RecordPaymentModal({
   const [amount, setAmount] = useState(preselectedAmount ? preselectedAmount.toFixed(2) : '');
   const [description, setDescription] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [currencyRate, setCurrencyRate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +51,7 @@ export default function RecordPaymentModal({
   );
 
   const selectedCustomer = customers.find(c => c.id === customerId);
+  const customerCurrency = selectedCustomer?.currency || 'AED';
   const showDropdown = focused && !customerId;
 
   const handleFocus = () => {
@@ -65,6 +69,7 @@ export default function RecordPaymentModal({
     setFocused(false);
     setDirection('credit');
     setAmount('');
+    setCurrencyRate('');
     setDescription('');
     setEntryDate(new Date().toISOString().slice(0, 10));
     setError(null);
@@ -76,6 +81,8 @@ export default function RecordPaymentModal({
   };
 
   const numAmount = parseFloat(amount) || 0;
+  const numCurrencyRate = parseFloat(currencyRate) || 0;
+  const secondaryAmount = numCurrencyRate > 0 ? numAmount * numCurrencyRate : 0;
   const canSubmit = customerId && numAmount > 0 && !submitting;
 
   const handleSubmit = async () => {
@@ -89,6 +96,8 @@ export default function RecordPaymentModal({
       amount: numAmount,
       description: description.trim() || `Payment ${direction === 'credit' ? 'received from' : 'made to'} ${selectedCustomer?.name ?? 'entity'}`,
       entryDate: entryDate || undefined,
+      customerCurrency: numCurrencyRate > 0 ? customerCurrency : undefined,
+      customerCurrencyRate: numCurrencyRate > 0 ? numCurrencyRate : undefined,
     });
 
     setSubmitting(false);
@@ -180,7 +189,7 @@ export default function RecordPaymentModal({
         {/* Amount + Date */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Amount</label>
+            <label className={labelClass}>Amount (USDT)</label>
             <input
               type="number"
               step="0.01"
@@ -201,6 +210,24 @@ export default function RecordPaymentModal({
             />
           </div>
         </div>
+
+        {/* Currency Rate */}
+        {selectedCustomer && (
+          <div>
+            <label className={labelClass}>
+              1 USDT = ? {customerCurrency} <span className="text-slate-300 font-normal normal-case tracking-normal">(optional)</span>
+            </label>
+            <input
+              type="number"
+              step="0.0001"
+              min="0"
+              className={inputClass}
+              value={currencyRate}
+              onChange={e => setCurrencyRate(e.target.value)}
+              placeholder={customerCurrency === 'AED' ? 'e.g. 3.67' : 'e.g. 16000'}
+            />
+          </div>
+        )}
 
         {/* Description */}
         <div>
@@ -234,9 +261,14 @@ export default function RecordPaymentModal({
             </p>
             <p className={`text-sm font-bold mt-0.5 ${direction === 'credit' ? 'text-emerald-800' : 'text-red-800'}`}>
               {direction === 'credit'
-                ? `${selectedCustomer?.name} pays branch ${numAmount.toFixed(2)}`
-                : `Branch pays ${selectedCustomer?.name} ${numAmount.toFixed(2)}`}
+                ? `${selectedCustomer?.name} pays branch ${numAmount.toFixed(2)} USDT`
+                : `Branch pays ${selectedCustomer?.name} ${numAmount.toFixed(2)} USDT`}
             </p>
+            {secondaryAmount > 0 && (
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                ≈ {secondaryAmount.toFixed(2)} {customerCurrency} @ {numCurrencyRate}
+              </p>
+            )}
           </div>
         )}
 

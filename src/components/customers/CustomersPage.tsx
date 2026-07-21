@@ -22,6 +22,7 @@ type CustomerRow = {
   status: string;
   created_at?: string;
   hasOrders?: boolean;
+  currency?: string;
 };
 
 const CUSTOMER_DELETE_BLOCKED_TOOLTIP =
@@ -301,6 +302,9 @@ export default function CustomersPage() {
                           Balance <SortIcon field="balance" />
                         </div>
                       </th>
+                      <th className="group px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">
+                        Currency
+                      </th>
                       <th className={getThClass('center')} onClick={() => handleSort('status')}>
                         <div className="flex items-center justify-center gap-2">
                           Status <SortIcon field="status" />
@@ -330,6 +334,11 @@ export default function CustomersPage() {
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-right font-mono text-sm font-bold sm:px-5 sm:py-4">
                           {fmtBalance(customer.balance)}
+                        </td>
+                        <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center sm:px-5 sm:py-4">
+                          <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                            {customer.currency || 'AED'}
+                          </span>
                         </td>
                         <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center sm:px-5 sm:py-4">
                           <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${getStatusColor(customer.status)}`}>
@@ -370,7 +379,7 @@ export default function CustomersPage() {
                     ))}
                     {filteredAndSorted.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
+                        <td colSpan={7} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
                           No customers found.
                         </td>
                       </tr>
@@ -399,6 +408,10 @@ export default function CustomersPage() {
                         <div>
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Email</span>
                           <p className="truncate text-sm text-slate-700">{customer.email || '—'}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Currency</span>
+                          <p className="text-sm font-bold text-slate-900">{customer.currency || 'AED'}</p>
                         </div>
                         <div className="col-span-2">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Balance</span>

@@ -130,6 +130,8 @@ export interface Customer {
   createdAt?: string;
   /** Cognito `sub` when this customer has portal login credentials. */
   cognitoUserId?: string;
+  /** ISO 4217 currency code for this customer (default AED). */
+  currency?: string;
 }
 
 /** Third-party recipient scoped to a portal customer — no login, used on IC Transfer orders. */
@@ -709,6 +711,8 @@ export interface FundEntityLedgerEntry {
   credit: number;
   referenceType: FundReferenceType;
   referenceId?: string;
+  customerCurrency?: string;
+  customerCurrencyRate?: number;
   createdBy?: string;
   createdByName?: string;
   createdByUserId?: string;

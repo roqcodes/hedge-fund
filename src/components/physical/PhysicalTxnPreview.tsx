@@ -76,7 +76,6 @@ export function buildBuyPreviewRow(form: {
   marketUsd: number;
   deal: number;
   idrGram: number;
-  usdAmount: number;
   aedAmount: number;
   idrToUsdt: number;
   idrRate: number;
@@ -101,7 +100,6 @@ export function buildBuyPreviewRow(form: {
     deal: calc.deal ? fmtNum(calc.deal) : '—',
     paymentMode: form.paymentMode,
     idr: calc.idrGram ? fmtNum(calc.idrGram, 0) : '—',
-    usd: calc.usdAmount ? fmtNum(calc.usdAmount) : '—',
     aed: calc.aedAmount ? fmtNum(calc.aedAmount) : '—',
     totalWeight: fmtNum(calc.actualPurity, 3),
     idrRateUsdt: calc.idrToUsdt ? fmtNum(calc.idrToUsdt, 0) : '—',

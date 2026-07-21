@@ -197,21 +197,21 @@ export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbA
 
     if (buy.customerId) {
       try {
-        const aedVal = buy.buyValue;
-        const usdtVal = buy.totalUsdt;
+        const usdtVal = buy.totalUsdt ?? buy.buyValue;
         const idrVal = buy.tltIdrValue;
         const parts = [`Physical buy - ${buy.item || buy.particulars || ''}`];
-        if (aedVal) parts.push(`AED ${aedVal.toFixed(2)}`);
         if (usdtVal) parts.push(`USDT ${usdtVal.toFixed(2)}`);
         if (idrVal) parts.push(`IDR ${idrVal.toFixed(2)}`);
+        const currencyInfo = await getCustomerCurrencyInfo(buy.customerId, usdtVal, buy.tltAedValue, buy.tltIdrValue);
         await createAutoLedgerEntry({
           branchId: buy.branchId,
           customerId: buy.customerId,
           direction: 'credit',
-          amount: aedVal,
+          amount: usdtVal,
           referenceType: 'physical_buy',
           referenceId: id,
           description: parts.join(' | '),
+          ...currencyInfo,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, buyId: id }, 'Auto ledger entry failed for buy');
@@ -349,21 +349,21 @@ export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<
 
     if (sell.customerId) {
       try {
-        const aedVal = sell.sellValue;
-        const usdtVal = sell.totalUsdt;
+        const usdtVal = sell.totalUsdt ?? sell.sellValue;
         const idrVal = sell.tltIdrValue;
         const parts = [`Physical sell - ${sell.narration || sell.particulars || ''}`];
-        if (aedVal) parts.push(`AED ${aedVal.toFixed(2)}`);
         if (usdtVal) parts.push(`USDT ${usdtVal.toFixed(2)}`);
         if (idrVal) parts.push(`IDR ${idrVal.toFixed(2)}`);
+        const currencyInfo = await getCustomerCurrencyInfo(sell.customerId, usdtVal, sell.tltAedValue, sell.tltIdrValue);
         await createAutoLedgerEntry({
           branchId,
           customerId: sell.customerId,
           direction: 'debit',
-          amount: aedVal,
+          amount: usdtVal,
           referenceType: 'physical_sell',
           referenceId: id,
           description: parts.join(' | '),
+          ...currencyInfo,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, sellId: id }, 'Auto ledger entry failed for sell');
@@ -894,21 +894,21 @@ export async function dbAddPhysicalBulkSellAction(bulk: {
 
     if (bulk.customerId) {
       try {
-        const aedVal = bulk.sellValue;
-        const usdtVal = bulk.totalUsdt;
+        const usdtVal = bulk.totalUsdt ?? bulk.sellValue;
         const idrVal = bulk.tltIdrValue;
         const parts = [`Physical bulk sell - ${bulk.particulars || ''}`];
-        if (aedVal) parts.push(`AED ${aedVal.toFixed(2)}`);
         if (usdtVal) parts.push(`USDT ${usdtVal.toFixed(2)}`);
         if (idrVal) parts.push(`IDR ${idrVal.toFixed(2)}`);
+        const currencyInfo = await getCustomerCurrencyInfo(bulk.customerId, usdtVal, bulk.tltAedValue, bulk.tltIdrValue);
         await createAutoLedgerEntry({
           branchId: bulk.branchId,
           customerId: bulk.customerId,
           direction: 'debit',
-          amount: aedVal,
+          amount: usdtVal,
           referenceType: 'physical_sell',
           referenceId: bulkSellId,
           description: parts.join(' | '),
+          ...currencyInfo,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, bulkSellId }, 'Auto ledger entry failed for bulk sell');
@@ -975,6 +975,20 @@ export async function dbDeletePhysicalBulkSellAction(bulkSellId: string): Promis
     return { success: false, error: message };
   } finally {
     client.release();
+  }
+}
+
+async function getCustomerCurrencyInfo(customerId: string, usdtVal: number, aedVal: number | undefined, idrVal: number | undefined): Promise<{ customerCurrency?: string; customerCurrencyRate?: number }> {
+  try {
+    const result = await query('SELECT currency FROM customers WHERE id = $1', [customerId]);
+    if (!result?.rows?.length || !usdtVal) return {};
+    const currency: string | null = result.rows[0]?.currency;
+    if (!currency) return {};
+    if (currency === 'AED' && aedVal) return { customerCurrency: 'AED', customerCurrencyRate: aedVal / usdtVal };
+    if (currency === 'IDR' && idrVal) return { customerCurrency: 'IDR', customerCurrencyRate: idrVal / usdtVal };
+    return {};
+  } catch {
+    return {};
   }
 }
 

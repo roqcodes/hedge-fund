@@ -105,6 +105,8 @@ export async function dbAddUsdtBuyAction(
       ],
     );
 
+    await adjustUsdtCapitalInTx(client, buy.branchId, buy.usdtAmount);
+
     await client.query('COMMIT');
     return { success: true, data: mapUsdtBuyRow(res.rows[0]) };
   } catch (error: unknown) {
@@ -163,6 +165,8 @@ export async function dbAddUsdtSellAction(
       ],
     );
 
+    await adjustUsdtCapitalInTx(client, sell.branchId, -sell.usdtAmount);
+
     await client.query('COMMIT');
     return { success: true, data: mapUsdtSellRow(res.rows[0]) };
   } catch (error: unknown) {
@@ -185,6 +189,8 @@ export async function dbDeleteUsdtBuyAction(buyId: string): Promise<DbActionResu
     if (buy.customer_id) {
       await adjustCustomerBalanceInTx(client, buy.customer_id, -parseFloat(buy.aed_total));
     }
+
+    await adjustUsdtCapitalInTx(client, buy.branch_id, -parseFloat(buy.usdt_amount));
 
     await client.query('DELETE FROM usdt_buys WHERE id = $1', [buyId]);
     await client.query('COMMIT');
@@ -210,6 +216,8 @@ export async function dbDeleteUsdtSellAction(sellId: string): Promise<DbActionRe
       await adjustCustomerBalanceInTx(client, sell.customer_id, parseFloat(sell.aed_total));
     }
 
+    await adjustUsdtCapitalInTx(client, sell.branch_id, parseFloat(sell.usdt_amount));
+
     await client.query('DELETE FROM usdt_sells WHERE id = $1', [sellId]);
     await client.query('COMMIT');
     return { success: true, data: null };
@@ -220,4 +228,61 @@ export async function dbDeleteUsdtSellAction(sellId: string): Promise<DbActionRe
   } finally {
     client.release();
   }
+}
+
+export interface BranchUsdtBalance {
+  branchId: string;
+  initialCapital: number;
+  availableFund: number;
+}
+
+export async function getBranchUsdtBalanceAction(branchId: string): Promise<BranchUsdtBalance | null> {
+  try {
+    const res = await query('SELECT * FROM branch_usdt_balances WHERE branch_id = $1', [branchId]);
+    if (res.rows.length === 0) return null;
+    return {
+      branchId: res.rows[0].branch_id,
+      initialCapital: parseFloat(res.rows[0].initial_capital),
+      availableFund: parseFloat(res.rows[0].available_fund),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function setBranchUsdtCapitalAction(branchId: string, initialCapital: number): Promise<DbActionResult<BranchUsdtBalance>> {
+  try {
+    const res = await query(
+      `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund)
+       VALUES ($1, $2, $2)
+       ON CONFLICT (branch_id) DO UPDATE SET
+         initial_capital = EXCLUDED.initial_capital,
+         available_fund = EXCLUDED.available_fund,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [branchId, initialCapital],
+    );
+    return {
+      success: true,
+      data: {
+        branchId: res.rows[0].branch_id,
+        initialCapital: parseFloat(res.rows[0].initial_capital),
+        availableFund: parseFloat(res.rows[0].available_fund),
+      },
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  }
+}
+
+async function adjustUsdtCapitalInTx(client: any, branchId: string, delta: number) {
+  await client.query(
+    `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund)
+     VALUES ($1, 0, $2)
+     ON CONFLICT (branch_id) DO UPDATE SET
+       available_fund = branch_usdt_balances.available_fund + $2,
+       updated_at = CURRENT_TIMESTAMP`,
+    [branchId, delta],
+  );
 }

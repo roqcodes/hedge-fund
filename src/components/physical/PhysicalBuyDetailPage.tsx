@@ -19,6 +19,7 @@ import PhysicalSellDetailModal from './PhysicalSellDetailModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import CustomerLink from '@/components/customers/CustomerLink';
 import PhysicalAmountDisplay, { PhysicalAmountKpiValue } from './PhysicalAmountDisplay';
+import { formatPhysicalIdr, formatPhysicalAed } from '@/lib/physicalCurrencyDisplay';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 
 type SortField = 'date' | 'id' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'sellValue' | 'profit';
@@ -265,63 +266,98 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           />
         </div>
 
-        {/* Buy Info Summary */}
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-surface-xs">
-          <h3 className="mb-4 text-sm font-bold text-slate-800">Inventory Purchase Details</h3>
-          <div className="grid grid-cols-2 gap-y-4 gap-x-4 text-sm sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">TXN ID</p>
-              <p className="font-semibold text-slate-800">{buy.txnId || buy.id.split('-')[1]?.toUpperCase()}</p>
+        {/* Currency Breakdown + Trade Parameters */}
+        <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
+          {/* Currency Breakdown */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-surface-xs lg:col-span-3">
+            <h3 className="mb-4 text-sm font-bold text-slate-800">Currency Breakdown</h3>
+
+            {/* USDT — main */}
+            <div className="mb-5 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/60 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Total Value (USDT)</p>
+              <PhysicalAmountKpiValue aedAmount={buy.buyValue} valueClassName="text-slate-900" />
             </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Customer</p>
-              <p className="font-semibold text-slate-800">
-                <CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} />
-              </p>
+
+            {/* IDR + AED row */}
+            <div className="mb-5 grid grid-cols-2 gap-4">
+              <div className="rounded-lg border border-slate-100 bg-white p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">IDR Value</p>
+                <p className="font-mono text-base font-extrabold tracking-tight text-slate-900">
+                  {formatPhysicalIdr(buy.idrAmount ?? buy.idrGram * buy.pureGram)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-white p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">AED Value</p>
+                <p className="font-mono text-base font-extrabold tracking-tight text-slate-900">
+                  {formatPhysicalAed(buy.aedAmount ?? buy.buyValue)}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy ID</p>
-              <p className="font-semibold text-slate-800">{buy.id.split('-')[1].toUpperCase()}</p>
+
+            {/* Conversion rates */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">IDR / Gram</p>
+                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.idrGram.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">IDR / USDT</p>
+                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.idrToUsdt.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">USDT / Gram</p>
+                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Cost / Gram (USDT)</p>
+                <PhysicalAmountDisplay aedAmount={buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0} size="sm" align="left" showUnit={false} className="!items-start !text-left" />
+              </div>
             </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Date</p>
-              <p className="font-semibold text-slate-800">{new Date(buy.date).toLocaleDateString()}</p>
+          </div>
+
+          {/* Trade Parameters */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-surface-xs lg:col-span-2">
+            <h3 className="mb-4 text-sm font-bold text-slate-800">Trade Parameters</h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">TXN ID</p>
+                <p className="font-semibold text-slate-800">{buy.txnId || buy.id.split('-')[1]?.toUpperCase()}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Buy ID</p>
+                <p className="font-semibold text-slate-800">{buy.id.split('-')[1].toUpperCase()}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Date</p>
+                <p className="font-semibold text-slate-800">{new Date(buy.date).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Customer</p>
+                <p className="font-semibold text-slate-800">
+                  <CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} />
+                </p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Item</p>
+                <p className="font-semibold text-slate-800">{buy.item || buy.particulars || '-'}</p>
+              </div>
             </div>
-            <div className="col-span-2 sm:col-span-1 lg:col-span-2">
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Item</p>
-              <p className="font-semibold text-slate-800">{buy.item || buy.particulars || '-'}</p>
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Gross Wt</p>
-              <p className="font-semibold text-slate-800">{buy.grossWeight.toFixed(3)} g</p>
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Pure Conv</p>
-              <p className="font-semibold text-slate-800">{buy.pureConversion}</p>
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Pure Gram</p>
-              <p className="font-bold text-slate-900">{buy.pureGram.toFixed(3)} g</p>
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">IDR Gram</p>
-              <p className="font-semibold text-slate-800">{buy.idrGram.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">IDR / USDT</p>
-              <p className="font-semibold text-slate-800">{buy.idrToUsdt.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">USDT / Gram</p>
-              <p className="font-semibold text-slate-800">{buy.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Buy Value (USDT)</p>
-              <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="left" showUnit={false} className="!items-start !text-left" />
-            </div>
-            <div>
-              <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Cost / Gram (USDT)</p>
-              <PhysicalAmountDisplay aedAmount={buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0} size="md" align="left" showUnit={false} className="!items-start !text-left" />
+
+            <hr className="my-3 border-slate-100" />
+
+            <div className="grid grid-cols-3 gap-x-4 gap-y-3 text-sm">
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Gross Wt</p>
+                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.grossWeight.toFixed(3)} g</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Pure Conv</p>
+                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.pureConversion}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Pure Gram</p>
+                <p className="font-bold text-slate-900 font-mono tabular-nums">{buy.pureGram.toFixed(3)} g</p>
+              </div>
             </div>
           </div>
         </div>

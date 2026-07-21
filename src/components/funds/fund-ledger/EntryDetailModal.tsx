@@ -25,6 +25,9 @@ export default function EntryDetailModal({
 
   const customer = customers.find(c => c.id === entry.customerId);
   const isDebit = entry.debit > 0;
+  const amount = isDebit ? entry.debit : entry.credit;
+  const hasCurrency = entry.customerCurrency && entry.customerCurrencyRate && entry.customerCurrencyRate > 0;
+  const convertedAmount = hasCurrency ? amount * entry.customerCurrencyRate! : 0;
 
   const handleDelete = () => {
     if (confirm('Delete this ledger entry? This cannot be undone.')) {
@@ -52,56 +55,82 @@ export default function EntryDetailModal({
           </div>
         </div>
       }
-      maxWidth="max-w-lg w-[95vw]"
+      maxWidth="max-w-xl w-[95vw]"
     >
       <div className="space-y-5 pb-4">
-        {/* Entity + Direction */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-1">Entity</p>
-            <p className="text-lg font-black text-slate-900">{customer?.name ?? entry.customerId}</p>
+
+        {/* Entity + Direction section */}
+        <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Entity</p>
+            <p className="text-xl font-black text-slate-900 truncate">{customer?.name ?? entry.customerId}</p>
           </div>
-          <div className={`rounded-2xl border p-4 ${isDebit ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
-            <p className={`text-[10px] font-extrabold uppercase tracking-widest mb-1 ${isDebit ? 'text-emerald-600' : 'text-red-600'}`}>
+          <div className="shrink-0 text-right">
+            <p className={`text-[11px] font-extrabold uppercase tracking-widest mb-0.5 ${isDebit ? 'text-emerald-600' : 'text-red-600'}`}>
               {isDebit ? 'Receivable' : 'Payable'}
             </p>
-            <p className={`text-lg font-black font-mono ${isDebit ? 'text-emerald-700' : 'text-red-700'}`}>
-              {isDebit ? entry.debit.toFixed(2) : entry.credit.toFixed(2)}
+            <p className={`text-xl font-black font-mono ${isDebit ? 'text-emerald-700' : 'text-red-700'}`}>
+              {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="text-sm font-bold text-slate-500 ml-1">USDT</span>
             </p>
-            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+            <p className="text-[11px] text-slate-400 font-medium mt-0.5">
               {isDebit ? 'Entity owes branch' : 'Branch owes entity'}
             </p>
           </div>
         </div>
 
-        {/* Meta info grid */}
+        {/* Currency conversion section */}
+        {hasCurrency && (
+          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5">
+            <p className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-500 mb-3">
+              Conversion &mdash; {entry.customerCurrency}
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-indigo-100 bg-white/60 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Converted Amount</p>
+                <p className="text-xl font-black text-indigo-700 font-mono">
+                  {convertedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className="text-sm font-bold text-indigo-500 ml-1">{entry.customerCurrency}</span>
+                </p>
+              </div>
+              <div className="rounded-xl border border-indigo-100 bg-white/60 p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Conversion Rate</p>
+                <p className="text-xl font-black text-indigo-700 font-mono">
+                  1 USDT = {entry.customerCurrencyRate} {entry.customerCurrency}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Meta grid */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Date</p>
             <p className="text-sm font-bold text-slate-900">
               {new Date(entry.entryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Created By</p>
             <p className="text-sm font-bold text-slate-900">{entry.createdByName || entry.createdBy || '\u2014'}</p>
           </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Reference</p>
             <p className="text-sm font-bold text-slate-900">
-              {entry.referenceType !== 'manual' ? entry.referenceType.replace('_', ' ') : 'Manual'}
+              {entry.referenceType !== 'manual' ? entry.referenceType.replace(/_/g, ' ') : 'Manual'}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Reference ID</p>
-            <p className="text-sm font-bold text-slate-900 font-mono">{entry.referenceId || '\u2014'}</p>
+            <p className="text-sm font-bold text-slate-900 font-mono truncate" title={entry.referenceId || ''}>{entry.referenceId || '\u2014'}</p>
           </div>
         </div>
 
         {/* Description */}
         {entry.description && (
-          <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
-            <p className="text-[10px] font-extrabold uppercase tracking-widest text-amber-500 mb-0.5">Description</p>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Description</p>
             <p className="text-sm font-semibold text-slate-700">{entry.description}</p>
           </div>
         )}

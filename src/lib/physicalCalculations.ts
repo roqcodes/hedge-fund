@@ -1,5 +1,3 @@
-import { getLiveCurrencyRates } from './currency';
-
 export type PhysicalPaymentMode = 'CASH' | 'BANK_TRANSFER' | 'USDT' | 'MULTI_CURRENCY';
 
 export const PAYMENT_MODE_OPTIONS: { value: PhysicalPaymentMode; label: string }[] = [
@@ -30,6 +28,7 @@ export function computePhysicalTxn(values: {
   touchLoss?: number;
   idrGram: number;
   idrToUsdt: number;
+  usdtToAed?: number;
 }) {
   const touchLoss = values.touchLoss ?? 0;
   const rawPurity = Math.max(0, values.grossWeight * values.touch - touchLoss);
@@ -38,9 +37,8 @@ export function computePhysicalTxn(values: {
   const idrRate = values.idrToUsdt > 0 ? roundTo14(values.idrGram / values.idrToUsdt) : 0;
   const totalUsdt = roundTo14(actualPurity * idrRate);
   
-  const rates = getLiveCurrencyRates();
-  const usdToAedRate = rates['USD'] ? roundTo14(1 / rates['USD']) : 3.6725;
-  const tltAedValue = roundTo14(totalUsdt * usdToAedRate);
+  const usdtToAed = values.usdtToAed ?? 0;
+  const tltAedValue = usdtToAed > 0 ? roundTo14(totalUsdt * usdtToAed) : totalUsdt;
   const tltIdrValue = roundTo14(actualPurity * values.idrGram);
 
   return {
@@ -104,6 +102,7 @@ export function buildSellFormDefaultsFromBuy(buy: {
     paymentMode: buy.paymentMode ?? ('CASH' as PhysicalPaymentMode),
     narration: '',
     notes: '',
+    usdtToAedStr: '',
   };
 }
 
@@ -124,7 +123,7 @@ export type PhysicalSellFormFields = {
   paymentMode: PhysicalPaymentMode;
   idrGramStr: string;
   idrToUsdtStr: string;
-  usdAmountStr: string;
+  usdtToAedStr: string;
   aedAmountStr: string;
 };
 
@@ -146,7 +145,7 @@ export function createPhysicalSellFormBase(): PhysicalSellFormFields {
     paymentMode: 'CASH',
     idrGramStr: '',
     idrToUsdtStr: '17770',
-    usdAmountStr: '',
+    usdtToAedStr: '',
     aedAmountStr: '',
   };
 }
@@ -171,7 +170,7 @@ export function normalizePhysicalSellForm(form: Partial<PhysicalSellFormFields>)
     paymentMode: form.paymentMode ?? base.paymentMode,
     idrGramStr: form.idrGramStr ?? '',
     idrToUsdtStr: form.idrToUsdtStr ?? base.idrToUsdtStr,
-    usdAmountStr: form.usdAmountStr ?? '',
+    usdtToAedStr: form.usdtToAedStr ?? '',
     aedAmountStr: form.aedAmountStr ?? '',
   };
 }

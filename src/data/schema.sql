@@ -439,6 +439,7 @@ CREATE TABLE IF NOT EXISTS customers (
 
 CREATE INDEX IF NOT EXISTS idx_customers_branch_id ON customers(branch_id);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS cognito_user_id VARCHAR(128) UNIQUE;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'AED';
 CREATE INDEX IF NOT EXISTS idx_customers_cognito_user_id ON customers(cognito_user_id);
 
 -- Physical buy/sell extended fields
@@ -903,6 +904,8 @@ CREATE TABLE IF NOT EXISTS fund_entity_ledger (
     credit DECIMAL(15, 2) NOT NULL DEFAULT 0,
     reference_type VARCHAR(30),
     reference_id VARCHAR(50),
+    customer_currency VARCHAR(10),
+    customer_currency_rate DECIMAL(15, 6),
     created_by VARCHAR(255),
     created_by_name VARCHAR(255),
     created_by_user_id VARCHAR(255),
@@ -916,5 +919,16 @@ CREATE INDEX IF NOT EXISTS idx_fund_el_customer ON fund_entity_ledger(customer_i
 CREATE INDEX IF NOT EXISTS idx_fund_el_date ON fund_entity_ledger(branch_id, entry_date DESC);
 CREATE INDEX IF NOT EXISTS idx_fund_el_reference ON fund_entity_ledger(reference_type, reference_id);
 
+-- Branch USDT Capital (working capital in USDT)
+CREATE TABLE IF NOT EXISTS branch_usdt_balances (
+    branch_id VARCHAR(50) PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
+    initial_capital DECIMAL(18, 4) NOT NULL DEFAULT 0.0000,
+    available_fund DECIMAL(18, 4) NOT NULL DEFAULT 0.0000,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
 
 

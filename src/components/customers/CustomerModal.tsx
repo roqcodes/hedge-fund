@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import PasswordInput from '@/components/ui/PasswordInput';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
 import { saveCustomer } from '@/app/actions/customerActions';
 import { PasswordRequirements } from '@/components/users/UserModals';
 import { validatePassword } from '@/lib/passwordValidation';
+import { WORLD_CURRENCIES } from '@/lib/worldCurrencies';
 
 interface CustomerModalProps {
   slug: string;
@@ -17,6 +19,7 @@ interface CustomerModalProps {
     balance?: string | number;
     status?: string;
     cognitoUserId?: string | null;
+    currency?: string;
   } | null;
   onClose: () => void;
   onSave: () => void;
@@ -30,6 +33,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
     password: '',
     balance: '0',
     status: 'active',
+    currency: 'AED',
   });
   const [isSaving, setIsSaving] = useState(false);
   const isNew = !customer;
@@ -43,6 +47,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
         password: '',
         balance: String(customer.balance ?? '0'),
         status: customer.status || 'active',
+        currency: (customer as Record<string, unknown>).currency as string || 'AED',
       });
     } else {
       setFormData({
@@ -52,6 +57,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
         password: '',
         balance: '0',
         status: 'active',
+        currency: 'AED',
       });
     }
   }, [customer, open]);
@@ -60,6 +66,8 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
+
+  const currencyOptions = WORLD_CURRENCIES.map(c => ({ value: c.code, label: `${c.code} - ${c.name}` }));
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
@@ -83,6 +91,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
       password: isNew ? formData.password : undefined,
       balance: formData.balance,
       status: formData.status,
+      currency: formData.currency,
     });
     setIsSaving(false);
 
@@ -198,6 +207,19 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
             placeholder="0.00"
           />
           <p className="mt-1 text-xs text-slate-400">Leave as 0 if no opening balance</p>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+            Default Currency
+          </label>
+          <SearchableSelect
+            options={currencyOptions}
+            value={formData.currency}
+            onChange={value => setFormData(prev => ({ ...prev, currency: value }))}
+            placeholder="Select currency..."
+          />
+          <p className="mt-1 text-xs text-slate-400">Base currency for this customer. Defaults to AED.</p>
         </div>
 
         <div>

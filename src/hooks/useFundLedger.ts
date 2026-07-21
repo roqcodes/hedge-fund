@@ -38,6 +38,8 @@ export interface FundLedgerActions {
     amount: number;
     description: string;
     entryDate?: string;
+    customerCurrency?: string;
+    customerCurrencyRate?: number;
   }) => Promise<{ success: boolean; error?: string; entryId?: string }>;
   recordPayment: (params: {
     customerId: string;
@@ -45,6 +47,8 @@ export interface FundLedgerActions {
     amount: number;
     description: string;
     entryDate?: string;
+    customerCurrency?: string;
+    customerCurrencyRate?: number;
   }) => Promise<{ success: boolean; error?: string; entryId?: string }>;
   deleteEntry: (entryId: string) => Promise<{ success: boolean; error?: string }>;
   refresh: () => Promise<void>;
@@ -133,6 +137,8 @@ export function useFundLedger(): UseFundLedgerReturn {
       amount: number;
       description: string;
       entryDate?: string;
+      customerCurrency?: string;
+      customerCurrencyRate?: number;
     }) => {
       if (!branchId) return { success: false, error: 'No branch selected' };
 
@@ -173,6 +179,8 @@ export function useFundLedger(): UseFundLedgerReturn {
       amount: number;
       description: string;
       entryDate?: string;
+      customerCurrency?: string;
+      customerCurrencyRate?: number;
     }) => {
       if (!branchId) return { success: false, error: 'No branch selected' };
 
@@ -184,6 +192,8 @@ export function useFundLedger(): UseFundLedgerReturn {
         description: params.description || `Payment ${params.direction === 'credit' ? 'received from' : 'made to'} entity`,
         entryDate: params.entryDate,
         referenceType: 'settlement',
+        customerCurrency: params.customerCurrency,
+        customerCurrencyRate: params.customerCurrencyRate,
       });
 
       if (result.success) {
