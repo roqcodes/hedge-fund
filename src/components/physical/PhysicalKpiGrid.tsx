@@ -5,7 +5,7 @@ import type { PhysicalCurrencyTotals, PhysicalKpiMetrics } from '@/lib/physical/
 import { formatPhysicalUsdt } from '@/lib/physicalCurrencyDisplay';
 
 function fmtGram(n: number): string {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
 type MetricCellProps = {
@@ -81,14 +81,14 @@ export default function PhysicalKpiGrid({ metrics }: Props) {
             </div>
             <div className="flex gap-5 sm:gap-6 sm:text-right">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Sold</p>
-                <p className="mt-0.5 text-lg font-bold tabular-nums text-amber-600">{fmtGram(metrics.soldGram)}</p>
-              </div>
-              <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Purchased</p>
                 <p className="mt-0.5 text-lg font-bold tabular-nums text-emerald-600">
                   {fmtGram(metrics.totalPurchasedGram)}
                 </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Sold</p>
+                <p className="mt-0.5 text-lg font-bold tabular-nums text-amber-600">{fmtGram(metrics.soldGram)}</p>
               </div>
             </div>
           </div>

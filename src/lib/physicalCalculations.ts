@@ -19,6 +19,11 @@ export function generatePhysicalTxnId(slug: string, type: 'BUY' | 'SELL' = 'BUY'
   return `${type === 'BUY' ? 'B' : 'S'}${prefix}${dd}${mm}${yy}${rand}`;
 }
 
+export function roundTo14(num: number): number {
+  if (!Number.isFinite(num)) return 0;
+  return parseFloat(num.toFixed(14));
+}
+
 export function computePhysicalTxn(values: {
   grossWeight: number;
   touch: number;
@@ -27,15 +32,16 @@ export function computePhysicalTxn(values: {
   idrToUsdt: number;
 }) {
   const touchLoss = values.touchLoss ?? 0;
-  const actualPurity = Math.max(0, values.grossWeight * values.touch - touchLoss);
+  const rawPurity = Math.max(0, values.grossWeight * values.touch - touchLoss);
+  const actualPurity = roundTo14(Math.round(rawPurity * 1000) / 1000);
   const totalWeight = actualPurity;
-  const idrRate = values.idrToUsdt > 0 ? values.idrGram / values.idrToUsdt : 0;
-  const totalUsdt = actualPurity * idrRate;
+  const idrRate = values.idrToUsdt > 0 ? roundTo14(values.idrGram / values.idrToUsdt) : 0;
+  const totalUsdt = roundTo14(actualPurity * idrRate);
   
   const rates = getLiveCurrencyRates();
-  const usdToAedRate = rates['USD'] ? 1 / rates['USD'] : 3.6725;
-  const tltAedValue = totalUsdt * usdToAedRate;
-  const tltIdrValue = actualPurity * values.idrGram;
+  const usdToAedRate = rates['USD'] ? roundTo14(1 / rates['USD']) : 3.6725;
+  const tltAedValue = roundTo14(totalUsdt * usdToAedRate);
+  const tltIdrValue = roundTo14(actualPurity * values.idrGram);
 
   return {
     pureGram: actualPurity,
@@ -55,18 +61,18 @@ export function computeSellMetrics(
   costPerGram: number,
 ) {
   const sellValue = calc.total;
-  const costValue = calc.pureGram * costPerGram;
-  const profit = sellValue - costValue;
-  const margin = sellValue > 0 ? (profit / sellValue) * 100 : 0;
+  const costValue = roundTo14(calc.pureGram * costPerGram);
+  const profit = roundTo14(sellValue - costValue);
+  const margin = sellValue > 0 ? roundTo14((profit / sellValue) * 100) : 0;
   return { sellValue, costValue, profit, margin };
 }
 
-export function fmtNum(n: number, digits = 2) {
+export function fmtNum(n: number, digits = 3) {
   return n.toLocaleString('en-AE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 export function grossWeightFromRemaining(buy: { remainingWeight: number; pureConversion: number }) {
-  return buy.pureConversion > 0 ? buy.remainingWeight / buy.pureConversion : buy.remainingWeight;
+  return buy.pureConversion > 0 ? roundTo14(buy.remainingWeight / buy.pureConversion) : buy.remainingWeight;
 }
 
 export function buildSellFormDefaultsFromBuy(buy: {
@@ -168,4 +174,18 @@ export function normalizePhysicalSellForm(form: Partial<PhysicalSellFormFields>)
     usdAmountStr: form.usdAmountStr ?? '',
     aedAmountStr: form.aedAmountStr ?? '',
   };
+}
+
+export function formatNumberWithCommas(value: string): string {
+  const clean = value.replace(/[^\d.]/g, '');
+  const parts = clean.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (parts.length > 2) {
+    return parts[0] + '.' + parts.slice(1).join('');
+  }
+  return parts.join('.');
+}
+
+export function cleanCommaNumber(value: string): string {
+  return value.replace(/,/g, '');
 }

@@ -379,7 +379,40 @@ export interface PhysicalSell {
   totalUsdt?: number;
   costValue?: number;
   margin?: number;
+  bulkSellId?: string;
 }
+
+export interface PhysicalBulkSell {
+  id: string;
+  branchId: string;
+  date: string;
+  particulars?: string;
+  grossWeight: number;
+  pureConversion: number;
+  pureGram: number;
+  idrGram: number;
+  idrToUsdt: number;
+  idrRate: number;
+  total: number;
+  sellValue: number;
+  profit: number;
+  createdAt?: string;
+  txnId?: string;
+  customerId?: string;
+  customerName?: string;
+  openingBalance?: number;
+  narration?: string;
+  notes?: string;
+  paymentMode?: PhysicalPaymentMode;
+  idrAmount?: number;
+  usdAmount?: number;
+  aedAmount?: number;
+  totalWeight?: number;
+  tltIdrValue?: number;
+  tltAedValue?: number;
+  totalUsdt?: number;
+}
+
 
 export interface UsdtBranchSettings {
   branchId: string;
@@ -643,4 +676,49 @@ export interface ICWarehouseTransaction {
   referenceType?: string;
   referenceId?: string;
   createdAt?: string;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Funds Module — Entity Settlement Ledger (AR/AP)
+// ═══════════════════════════════════════════════════════════
+
+export type FundEntryDirection = 'debit' | 'credit';
+
+export type FundReferenceType =
+  | 'manual'
+  | 'settlement'
+  | 'physical_buy'
+  | 'physical_sell'
+  | 'usdt_buy'
+  | 'usdt_sell';
+
+/** Single row in the entity settlement ledger.
+ *  debit  = entity owes the branch (receivable)
+ *  credit = branch owes the entity (payable)
+ *  balance = SUM(debit) - SUM(credit) per entity
+ *    positive → entity owes us
+ *    negative → we owe entity
+ */
+export interface FundEntityLedgerEntry {
+  id: string;
+  branchId: string;
+  customerId: string;
+  entryDate: string;
+  description: string;
+  debit: number;
+  credit: number;
+  referenceType: FundReferenceType;
+  referenceId?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdByUserId?: string;
+  createdAt: string;
+}
+
+export interface FundEntityBalance {
+  customerId: string;
+  customerName: string;
+  totalDebit: number;   // entity owes branch
+  totalCredit: number;  // branch owes entity
+  net: number;          // totalDebit - totalCredit
 }

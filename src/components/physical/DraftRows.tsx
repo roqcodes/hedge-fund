@@ -64,9 +64,9 @@ export function DraftBuyRow({
       <td className={`${draftCellBase} text-xs text-slate-500 sm:text-sm`}>
         {buy.item || buy.particulars || '-'}
       </td>
-      <td className={`${draftCellBase} text-center text-sm`}>{buy.grossWeight.toFixed(2)}</td>
+      <td className={`${draftCellBase} text-center text-sm`}>{buy.grossWeight.toFixed(3)}</td>
       <td className={`${draftCellBase} text-center text-sm`}>{buy.pureConversion}</td>
-      <td className={`${draftCellBase} text-center text-sm font-bold`}>{buy.pureGram.toFixed(2)}</td>
+      <td className={`${draftCellBase} text-center text-sm font-bold`}>{buy.pureGram.toFixed(3)}</td>
       <td className={draftCellBase}>
         <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" showUnit={false} />
       </td>
@@ -102,11 +102,11 @@ export function DraftBuyCard({
       <div className="grid grid-cols-2 gap-y-3 gap-x-4">
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross Wt</span>
-          <span className="text-sm font-bold text-slate-700">{buy.grossWeight.toFixed(2)}</span>
+          <span className="text-sm font-bold text-slate-700">{buy.grossWeight.toFixed(3)}</span>
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pure Gram</span>
-          <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(2)}</span>
+          <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(3)}</span>
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
@@ -156,8 +156,8 @@ export function DraftSellRow({
         {sourceBuy?.item || sourceBuy?.particulars || '—'}
       </td>
       <td className={`${draftCellBase} text-sm text-slate-600`}>{sell.narration || sell.particulars || '—'}</td>
-      <td className={`${draftCellBase} text-center text-sm`}>{sell.grossWeight?.toFixed(2)}</td>
-      <td className={`${draftCellBase} text-center text-sm font-bold`}>{sell.pureGram.toFixed(2)}</td>
+      <td className={`${draftCellBase} text-center text-sm`}>{sell.grossWeight?.toFixed(3)}</td>
+      <td className={`${draftCellBase} text-center text-sm font-bold`}>{sell.pureGram.toFixed(3)}</td>
       <td className={`${draftCellBase} text-center text-xs`}>{paymentLabel(sell.paymentMode)}</td>
       <td className={draftCellBase}>
         <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" showUnit={false} />

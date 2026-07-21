@@ -14,6 +14,9 @@ import PhysicalExportModal from './PhysicalExportModal';
 import PhysicalDealModal from './PhysicalDealModal';
 import PhysicalBuyEditModal from './PhysicalBuyEditModal';
 import PhysicalSellDetailModal from './PhysicalSellDetailModal';
+import PhysicalBulkSellModal from './PhysicalBulkSellModal';
+import PhysicalBulkSellDetailModal from './PhysicalBulkSellDetailModal';
+
 import PhysicalKpiGrid from './PhysicalKpiGrid';
 import PhysicalAmountDisplay from './PhysicalAmountDisplay';
 import { DraftBuyRow, DraftBuyCard, DraftSellRow, DraftSellCard } from './DraftRows';
@@ -44,11 +47,12 @@ function isFixedDeal(buy: PhysicalBuy) {
 }
 
 export default function PhysicalPage() {
-  const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, refetchData, currencyRates } = useApp();
+  const { currentSlug, branches, physicalBalances, physicalBuys, physicalSells, physicalBulkSells, refetchData, currencyRates } = useApp();
   const { canWrite, buttonProps: wp } = useWriteAccess();
   const router = useRouter();
   const branchSlug = currentSlug;
   const branchId = branches.find(b => b.slug === currentSlug)?.id;
+
 
   const {
     draftBuys,
@@ -63,10 +67,13 @@ export default function PhysicalPage() {
   const buys = physicalBuys.filter(b => b.branchId === branchId);
 
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
+  const [isBulkSellModalOpen, setIsBulkSellModalOpen] = useState(false);
+  const [selectedBulkSell, setSelectedBulkSell] = useState<any>(null);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [editingBuy, setEditingBuy] = useState<PhysicalBuy | null>(null);
   const [selectedSell, setSelectedSell] = useState<PhysicalSell | null>(null);
+
 
   const [searchTerm, setSearchTerm] = useState('');
   const [sellSearchTerm, setSellSearchTerm] = useState('');
@@ -78,10 +85,15 @@ export default function PhysicalPage() {
   const branchBuyIds = useMemo(() => new Set(buys.map(b => b.id)), [buys]);
   const availableStock = useMemo(() => buys.filter(b => b.remainingWeight > 0.001), [buys]);
   const branchSells = useMemo(
-    () => physicalSells.filter(s => branchBuyIds.has(s.buyId)),
+    () => physicalSells.filter(s => branchBuyIds.has(s.buyId) && !s.bulkSellId),
     [physicalSells, branchBuyIds],
   );
+  const branchBulkSells = useMemo(
+    () => physicalBulkSells.filter(b => b.branchId === branchId),
+    [physicalBulkSells, branchId],
+  );
   const buyById = useMemo(() => new Map(buys.map(b => [b.id, b])), [buys]);
+
 
   const {
     dateFilter, setDateFilter,
@@ -95,6 +107,19 @@ export default function PhysicalPage() {
     if (!range.startDate && !range.endDate) return branchSells;
     return branchSells.filter(item => isDateInRange(item.date, range));
   }, [branchSells, dateFilter, customStartDate, customEndDate]);
+
+  const filteredBulkSells = useMemo(() => {
+    const range = resolveDateFilterRange(dateFilter, customStartDate, customEndDate);
+    if (!range.startDate && !range.endDate) return branchBulkSells;
+    return branchBulkSells.filter(item => isDateInRange(item.date, range));
+  }, [branchBulkSells, dateFilter, customStartDate, customEndDate]);
+
+  const mergedSells = useMemo(() => {
+    const normal = filteredSells.map(s => ({ ...s, isBulk: false }));
+    const bulk = filteredBulkSells.map(b => ({ ...b, isBulk: true }));
+    return [...normal, ...bulk];
+  }, [filteredSells, filteredBulkSells]);
+
 
   const kpiMetrics = useMemo(
     () => computePhysicalKpiMetrics(buys, filteredBuys, filteredSells, isFixedDeal, currencyRates),
@@ -177,26 +202,28 @@ export default function PhysicalPage() {
   }, [filteredBuys, searchTerm, sortField, sortDirection]);
 
   const filteredAndSortedSells = useMemo(() => {
-    let result = [...filteredSells];
+    let result = [...mergedSells];
 
     if (sellSearchTerm.trim()) {
       const q = sellSearchTerm.toLowerCase();
       result = result.filter(sell => {
-        const buy = buyById.get(sell.buyId);
+        const buy = !sell.isBulk ? buyById.get((sell as PhysicalSell).buyId) : null;
+
         return (
           (sell.customerName && sell.customerName.toLowerCase().includes(q)) ||
           (sell.narration && sell.narration.toLowerCase().includes(q)) ||
           (sell.particulars && sell.particulars.toLowerCase().includes(q)) ||
           (sell.txnId && sell.txnId.toLowerCase().includes(q)) ||
-          (buy?.item && buy.item.toLowerCase().includes(q)) ||
+          (!sell.isBulk && buy?.item && buy.item.toLowerCase().includes(q)) ||
+          (sell.isBulk && 'bulk sell'.includes(q)) ||
           sell.date.toLowerCase().includes(q)
         );
       });
     }
 
     result.sort((a, b) => {
-      let valA: unknown = a[sellSortField as keyof PhysicalSell];
-      let valB: unknown = b[sellSortField as keyof PhysicalSell];
+      let valA: unknown = a[sellSortField as keyof typeof a];
+      let valB: unknown = b[sellSortField as keyof typeof b];
       if (sellSortField === 'narration') {
         valA = a.narration || a.particulars || '';
         valB = b.narration || b.particulars || '';
@@ -211,7 +238,8 @@ export default function PhysicalPage() {
     });
 
     return result;
-  }, [filteredSells, sellSearchTerm, sellSortField, sellSortDirection, buyById]);
+  }, [mergedSells, sellSearchTerm, sellSortField, sellSortDirection, buyById]);
+
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
@@ -283,6 +311,20 @@ export default function PhysicalPage() {
             </button>
             <button
               type="button"
+              onClick={() => canWrite && setIsBulkSellModalOpen(true)}
+              {...wp()}
+              className={`${btnSecondary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="3" width="7" height="9" />
+                <rect x="14" y="3" width="7" height="5" />
+                <rect x="14" y="12" width="7" height="9" />
+                <rect x="3" y="16" width="7" height="5" />
+              </svg>
+              Bulk Sell
+            </button>
+            <button
+              type="button"
               onClick={() => canWrite && setIsDealModalOpen(true)}
               {...wp()}
               className={`${btnPrimary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
@@ -292,6 +334,7 @@ export default function PhysicalPage() {
               </svg>
               New Deal
             </button>
+
           </div>
         </div>
 
@@ -400,19 +443,19 @@ export default function PhysicalPage() {
                         {buy.item || buy.particulars || '-'}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        {buy.grossWeight.toFixed(2)}
+                        {buy.grossWeight.toFixed(3)}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         {buy.pureConversion}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        {buy.pureGram.toFixed(2)}
+                        {buy.pureGram.toFixed(3)}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" showUnit={false} />
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent text-amber-600' : 'bg-white text-slate-900'}`}>
-                        {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
+                        {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(3)} g` : '0 g'}
                       </td>
                       <td className={`border-y border-r border-black/5 px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
                         <div className="flex items-center justify-center gap-1">
@@ -483,16 +526,16 @@ export default function PhysicalPage() {
                     <div className="grid grid-cols-2 gap-y-3 gap-x-4">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross Wt</span>
-                        <span className="text-sm font-bold text-slate-700">{buy.grossWeight.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-slate-700">{buy.grossWeight.toFixed(3)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pure Gram</span>
-                        <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(3)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Remaining Vol</span>
                         <span className={`text-sm font-bold ${buy.remainingWeight > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-                          {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(2)} g` : '0 g'}
+                          {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(3)} g` : '0 g'}
                         </span>
                       </div>
                     </div>
@@ -593,7 +636,8 @@ export default function PhysicalPage() {
                     />
                   ))}
                   {filteredAndSortedSells.map(sell => {
-                    const buy = buyById.get(sell.buyId);
+                    const buy = !sell.isBulk ? buyById.get((sell as PhysicalSell).buyId) : null;
+
                     const isProfit = sell.profit > 0;
                     const isLoss = sell.profit < 0;
                     const rowGradient = isProfit
@@ -602,14 +646,16 @@ export default function PhysicalPage() {
                         ? 'bg-gradient-to-l from-red-50/90 to-transparent'
                         : '';
                     const cellBg = isProfit || isLoss ? 'bg-transparent' : 'bg-white';
+                    const childCount = sell.isBulk ? physicalSells.filter((s: any) => s.bulkSellId === sell.id).length : 0;
                     return (
                       <tr
                         key={sell.id}
                         className={`cursor-pointer hover:bg-slate-50/80 transition-colors ${rowGradient}`}
-                        onClick={() => openSellDetails(sell)}
+                        onClick={() => sell.isBulk ? setSelectedBulkSell(sell) : openSellDetails(sell as PhysicalSell)}
+
                       >
                         <td className={`whitespace-nowrap border-y border-l border-black/5 px-3 py-3.5 text-xs font-semibold text-slate-500 first:rounded-l-2xl sm:px-5 sm:py-4 ${cellBg}`}>
-                          {new Date(sell.date).toLocaleDateString()}
+                           {new Date(sell.date).toLocaleDateString()}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-xs font-mono text-slate-500 sm:px-5 sm:py-4 ${cellBg}`}>
                           {sell.txnId || '—'}
@@ -618,16 +664,16 @@ export default function PhysicalPage() {
                           <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName} />
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-5 sm:py-4 ${cellBg}`}>
-                          {buy?.item || buy?.particulars || '—'}
+                          {sell.isBulk ? `Bulk Sell (${childCount} Buys)` : (buy?.item || buy?.particulars || '—')}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-sm text-slate-600 sm:px-5 sm:py-4 ${cellBg}`}>
                           {sell.narration || sell.particulars || '—'}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4 ${cellBg}`}>
-                          {sell.grossWeight?.toFixed(2)}
+                          {sell.grossWeight?.toFixed(3)}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${cellBg}`}>
-                          {sell.pureGram.toFixed(2)}
+                          {sell.pureGram.toFixed(3)}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 text-center text-xs sm:px-5 sm:py-4 ${cellBg}`}>
                           {paymentLabel(sell.paymentMode)}
@@ -646,7 +692,8 @@ export default function PhysicalPage() {
                               className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
                               onClick={e => {
                                 e.stopPropagation();
-                                openSellDetails(sell);
+                                sell.isBulk ? setSelectedBulkSell(sell) : openSellDetails(sell as PhysicalSell);
+
                               }}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -654,24 +701,30 @@ export default function PhysicalPage() {
                                 <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                               </svg>
                             </button>
-                            <button
-                              type="button"
-                              title="Source buy"
-                              className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-                              onClick={e => {
-                                e.stopPropagation();
-                                router.push(`/${branchSlug}/physical-deals/${sell.buyId}`);
-                              }}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
+                            {!sell.isBulk ? (
+                              <button
+                                type="button"
+                                title="Source buy"
+                                className="inline-flex items-center justify-center rounded-lg bg-slate-100 p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  router.push(`/${branchSlug}/physical-deals/${(sell as PhysicalSell).buyId}`);
+
+                                }}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            ) : (
+                              <div className="w-[32px] h-[32px]"></div>
+                            )}
                           </div>
                         </td>
                       </tr>
                     );
                   })}
+
                   {filteredAndSortedSells.length === 0 && draftSells.length === 0 && (
                     <tr>
                       <td colSpan={11} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
@@ -691,37 +744,42 @@ export default function PhysicalPage() {
                     onDiscard={discardDraftSell}
                   />
                 ))}
-                {filteredAndSortedSells.map(sell => {
-                  const buy = buyById.get(sell.buyId);
-                  const cardGradient = sell.profit > 0
-                    ? 'bg-gradient-to-br from-emerald-50 to-white'
-                    : sell.profit < 0
-                      ? 'bg-gradient-to-br from-red-50 to-white'
-                      : 'bg-white';
-                  return (
-                    <div
-                      key={sell.id}
-                      onClick={() => openSellDetails(sell)}
-                      className={`flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] ${cardGradient}`}
-                    >
-                      <div className="flex items-start justify-between border-b border-slate-50 pb-3">
-                        <div>
-                          <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName || 'Sale'} className="text-sm" />
-                          <p className="text-[10px] text-slate-400">{new Date(sell.date).toLocaleDateString()} · {sell.txnId || sell.id.slice(0, 8)}</p>
-                        </div>
-                        <div className="flex flex-col items-end">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Profit (USDT)</span>
-                          <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="right" showUnit={false} />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Item</span><p>{buy?.item || '—'}</p></div>
-                        <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value (USDT)</span><PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} /></div>
-                        <div className="col-span-2"><span className="text-[10px] font-bold uppercase text-slate-400">Narration</span><p>{sell.narration || '—'}</p></div>
-                      </div>
-                    </div>
-                  );
-                })}
+                 {filteredAndSortedSells.map(sell => {
+                   const buy = !sell.isBulk ? buyById.get((sell as PhysicalSell).buyId) : null;
+                   const cardGradient = sell.profit > 0
+                     ? 'bg-gradient-to-br from-emerald-50 to-white'
+                     : sell.profit < 0
+                       ? 'bg-gradient-to-br from-red-50 to-white'
+                       : 'bg-white';
+                   const childCount = sell.isBulk ? physicalSells.filter((s: any) => s.bulkSellId === sell.id).length : 0;
+                   return (
+                     <div
+                       key={sell.id}
+                       onClick={() => sell.isBulk ? setSelectedBulkSell(sell) : openSellDetails(sell as PhysicalSell)}
+                       className={`flex cursor-pointer flex-col gap-3 rounded-2xl border border-slate-100 p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] ${cardGradient}`}
+                     >
+                       <div className="flex items-start justify-between border-b border-slate-50 pb-3">
+                         <div>
+                           <CustomerLink slug={branchSlug} customerId={sell.customerId} customerName={sell.customerName || 'Sale'} className="text-sm" />
+                           <p className="text-[10px] text-slate-400">{new Date(sell.date).toLocaleDateString()} · {sell.txnId || sell.id.slice(0, 8)}</p>
+                         </div>
+                         <div className="flex flex-col items-end">
+                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Profit (USDT)</span>
+                           <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" align="right" showUnit={false} />
+                         </div>
+                       </div>
+                       <div className="grid grid-cols-2 gap-3 text-sm">
+                         <div>
+                           <span className="text-[10px] font-bold uppercase text-slate-400">Item</span>
+                           <p>{sell.isBulk ? `Bulk Sell (${childCount} Buys)` : (buy?.item || '—')}</p>
+                         </div>
+                         <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value (USDT)</span><PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} /></div>
+                         <div className="col-span-2"><span className="text-[10px] font-bold uppercase text-slate-400">Narration</span><p>{sell.narration || '—'}</p></div>
+                       </div>
+                     </div>
+                   );
+                 })}
+
                 {filteredAndSortedSells.length === 0 && draftSells.length === 0 && (
                   <div className="p-8 text-center text-sm text-slate-500">No gold sales recorded yet.</div>
                 )}
@@ -813,6 +871,29 @@ export default function PhysicalPage() {
           initialVolume={balance?.initialVolume || 0}
         />
       )}
+
+      {isBulkSellModalOpen && branchSlug && branchId && (
+        <PhysicalBulkSellModal
+          open={isBulkSellModalOpen}
+          slug={branchSlug}
+          branchId={branchId}
+          availableBuys={availableStock}
+          onClose={() => setIsBulkSellModalOpen(false)}
+          onSuccess={refetchData}
+        />
+      )}
+
+      {selectedBulkSell && branchSlug && (
+        <PhysicalBulkSellDetailModal
+          open={!!selectedBulkSell}
+          slug={branchSlug}
+          bulkSell={selectedBulkSell}
+          childSells={physicalSells.filter(s => s.bulkSellId === selectedBulkSell.id)}
+          onClose={() => setSelectedBulkSell(null)}
+          onSuccess={refetchData}
+        />
+      )}
     </>
   );
 }
+

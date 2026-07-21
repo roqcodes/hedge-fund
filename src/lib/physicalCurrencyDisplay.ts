@@ -17,7 +17,7 @@ export function formatPhysicalUsdt(
   usdtAmount: number,
   options?: { showPlus?: boolean; digits?: number },
 ): string {
-  const digits = options?.digits ?? 2;
+  const digits = options?.digits ?? 3;
   const abs = Math.abs(usdtAmount);
   const numStr = abs.toLocaleString('en-US', {
     minimumFractionDigits: digits,
@@ -31,7 +31,7 @@ export function formatPhysicalAed(
   aedAmount: number,
   options?: { showPlus?: boolean; digits?: number },
 ): string {
-  const digits = options?.digits ?? 2;
+  const digits = options?.digits ?? 3;
   const abs = Math.abs(aedAmount);
   const numStr = abs.toLocaleString('en-US', {
     minimumFractionDigits: digits,

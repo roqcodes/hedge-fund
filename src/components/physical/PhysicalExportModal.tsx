@@ -180,12 +180,12 @@ export default function PhysicalExportModal({
       
       // Formatting numbers
       row.getCell(4).numFmt = '#,##0.000'; // GRAM
-      row.getCell(5).numFmt = '#,##0'; // IDR GRAM
-      row.getCell(6).numFmt = '#,##0.00'; // IDR RATE
-      row.getCell(7).numFmt = '#,##0'; // TOTAL
-      row.getCell(8).numFmt = '#,##0'; // SELL VALUE
-      row.getCell(9).numFmt = '#,##0'; // BUY VALUE
-      row.getCell(10).numFmt = '#,##0'; // BALANCE
+      row.getCell(5).numFmt = '#,##0.000'; // IDR GRAM
+      row.getCell(6).numFmt = '#,##0.000'; // IDR RATE
+      row.getCell(7).numFmt = '#,##0.000'; // TOTAL
+      row.getCell(8).numFmt = '#,##0.000'; // SELL VALUE
+      row.getCell(9).numFmt = '#,##0.000'; // BUY VALUE
+      row.getCell(10).numFmt = '#,##0.000'; // BALANCE
       row.getCell(11).numFmt = '#,##0.000'; // RECEIVED
       row.getCell(12).numFmt = '#,##0.000'; // PAID
       row.getCell(13).numFmt = '#,##0.000'; // BALANCE
@@ -279,12 +279,12 @@ export default function PhysicalExportModal({
                     <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-600 font-medium">{row.txnId}</td>
                     <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900">{row.particulars}</td>
                     <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-medium text-right">{row.gram.toFixed(3)}</td>
-                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-600 text-right">{row.idrGram.toLocaleString()}</td>
-                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-600 text-right">{row.idrToUsdt.toFixed(2)}</td>
-                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-600 bg-slate-50 text-right">{row.total.toFixed(0)}</td>
-                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-medium text-right">{row.sellValue > 0 ? row.sellValue.toFixed(0) : ''}</td>
-                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-medium text-right">{row.buyValue > 0 ? row.buyValue.toFixed(0) : ''}</td>
-                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-bold text-right">{row.capitalBalance.toFixed(0)}</td>
+                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-600 text-right">{row.idrGram.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
+                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-600 text-right">{row.idrToUsdt.toFixed(3)}</td>
+                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-600 bg-slate-50 text-right">{row.total.toFixed(3)}</td>
+                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-medium text-right">{row.sellValue > 0 ? row.sellValue.toFixed(3) : ''}</td>
+                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-medium text-right">{row.buyValue > 0 ? row.buyValue.toFixed(3) : ''}</td>
+                    <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-bold text-right">{row.capitalBalance.toFixed(3)}</td>
                     <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-medium text-right">{row.received > 0 ? row.received.toFixed(3) : ''}</td>
                     <td className="border-b border-r border-slate-100 px-3 py-2 text-slate-900 font-medium text-right">{row.paid > 0 ? row.paid.toFixed(3) : ''}</td>
                     <td className="border-b border-slate-100 px-3 py-2 text-slate-900 font-bold text-right bg-slate-50">{row.volumeBalance.toFixed(3)}</td>

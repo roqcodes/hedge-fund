@@ -9,6 +9,7 @@ import { dbAddUsdtBuyAction } from '@/app/actions/usdtActions';
 import { computeUsdtBuy, generateUsdtTxnId } from '@/lib/usdtCalculations';
 import { useApp } from '@/context/AppContext';
 import { formatMoneyValue } from '@/data/mockData';
+import { formatNumberWithCommas, cleanCommaNumber } from '@/lib/physicalCalculations';
 
 const InputField = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1.5">
@@ -68,9 +69,9 @@ export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess,
   const set = (patch: Partial<typeof form>) => setForm(prev => ({ ...prev, ...patch }));
 
   const calc = useMemo(() => {
-    const usdtAmount = parseFloat(form.usdtAmountStr) || 0;
-    const aedRate = parseFloat(form.aedRateStr) || 0;
-    const serviceCharge = parseFloat(form.serviceChargeStr) || 0;
+    const usdtAmount = parseFloat(cleanCommaNumber(form.usdtAmountStr)) || 0;
+    const aedRate = parseFloat(cleanCommaNumber(form.aedRateStr)) || 0;
+    const serviceCharge = parseFloat(cleanCommaNumber(form.serviceChargeStr)) || 0;
     return computeUsdtBuy({ usdtAmount, aedRate, serviceCharge });
   }, [form.usdtAmountStr, form.aedRateStr, form.serviceChargeStr]);
 
@@ -81,8 +82,8 @@ export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess,
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const usdtAmount = parseFloat(form.usdtAmountStr) || 0;
-    const aedRate = parseFloat(form.aedRateStr) || 0;
+    const usdtAmount = parseFloat(cleanCommaNumber(form.usdtAmountStr)) || 0;
+    const aedRate = parseFloat(cleanCommaNumber(form.aedRateStr)) || 0;
     if (usdtAmount <= 0 || aedRate <= 0) {
       alert('USDT amount and AED rate are required');
       return;
@@ -96,10 +97,10 @@ export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess,
       customerId: form.customerId || undefined,
       customerName: form.customerName.trim() || undefined,
       walletId: form.walletId.trim() || undefined,
-      openingBalance: form.openingBalance ? parseFloat(form.openingBalance) : undefined,
+      openingBalance: form.openingBalance ? parseFloat(cleanCommaNumber(form.openingBalance)) : undefined,
       usdtAmount,
       aedRate,
-      serviceCharge: parseFloat(form.serviceChargeStr) || 0,
+      serviceCharge: parseFloat(cleanCommaNumber(form.serviceChargeStr)) || 0,
       aedTotal: calc.aedTotal,
       notes: form.notes.trim() || undefined,
     }, slug);
@@ -167,13 +168,13 @@ export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess,
             <input type="text" className={formInput} value={form.openingBalance} readOnly placeholder="—" />
           </InputField>
           <InputField label="Received USDT Amount">
-            <input type="number" step="any" className={formInput} value={form.usdtAmountStr} onChange={e => set({ usdtAmountStr: e.target.value })} placeholder="100000" />
+            <input type="text" className={formInput} value={form.usdtAmountStr} onChange={e => set({ usdtAmountStr: formatNumberWithCommas(e.target.value) })} placeholder="100,000" />
           </InputField>
           <InputField label="AED Rate">
-            <input type="number" step="any" className={formInput} value={form.aedRateStr} onChange={e => set({ aedRateStr: e.target.value })} placeholder="3.6789" />
+            <input type="text" className={formInput} value={form.aedRateStr} onChange={e => set({ aedRateStr: formatNumberWithCommas(e.target.value) })} placeholder="3.6789" />
           </InputField>
           <InputField label="Ser Charge">
-            <input type="number" step="any" className={formInput} value={form.serviceChargeStr} onChange={e => set({ serviceChargeStr: e.target.value })} placeholder="0" />
+            <input type="text" className={formInput} value={form.serviceChargeStr} onChange={e => set({ serviceChargeStr: formatNumberWithCommas(e.target.value) })} placeholder="0" />
           </InputField>
         </div>
 

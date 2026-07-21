@@ -2,10 +2,15 @@
 
 import { query, pool } from '@/lib/db';
 import { DbActionResult } from './dbActions';
-import { PhysicalBalance, PhysicalBuy, PhysicalSell } from '@/types';
-import { mapPhysicalBuyRow, mapPhysicalSellRow } from '@/lib/physicalMappers';
+import { PhysicalBalance, PhysicalBuy, PhysicalSell, PhysicalBulkSell, PhysicalPaymentMode } from '@/types';
+
+import { mapPhysicalBuyRow, mapPhysicalSellRow, mapPhysicalBulkSellRow } from '@/lib/physicalMappers';
 import { adjustCustomerBalanceInTx } from './customerActions';
+import { createAutoLedgerEntry } from './fundActions';
+import { logger } from '@/lib/logger';
 import type { PhysicalDraftBuy, PhysicalDraftSell } from '@/lib/physical/drafts';
+import { roundTo14 } from '@/lib/physicalCalculations';
+
 
 export async function dbGetPhysicalBalanceAction(branchId: string): Promise<DbActionResult<PhysicalBalance>> {
   try {
@@ -122,7 +127,7 @@ export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbA
     await client.query('BEGIN');
 
     const id = `pbuy-${crypto.randomUUID().slice(0, 8)}`;
-    const remainingWeight = buy.pureGram;
+    const remainingWeight = buy.grossWeight; // track gross weight, not pure
     const status = 'active';
     let openingBalance = buy.openingBalance;
 
@@ -185,10 +190,33 @@ export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbA
       `UPDATE physical_balances
        SET available_fund = available_fund - $1, available_volume = available_volume + $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [buy.buyValue, buy.pureGram, buy.branchId],
+      [buy.buyValue, buy.grossWeight, buy.branchId],
     );
 
     await client.query('COMMIT');
+
+    if (buy.customerId) {
+      try {
+        const aedVal = buy.buyValue;
+        const usdtVal = buy.totalUsdt;
+        const idrVal = buy.tltIdrValue;
+        const parts = [`Physical buy - ${buy.item || buy.particulars || ''}`];
+        if (aedVal) parts.push(`AED ${aedVal.toFixed(2)}`);
+        if (usdtVal) parts.push(`USDT ${usdtVal.toFixed(2)}`);
+        if (idrVal) parts.push(`IDR ${idrVal.toFixed(2)}`);
+        await createAutoLedgerEntry({
+          branchId: buy.branchId,
+          customerId: buy.customerId,
+          direction: 'credit',
+          amount: aedVal,
+          referenceType: 'physical_buy',
+          referenceId: id,
+          description: parts.join(' | '),
+        });
+      } catch (autoErr) {
+        logger.error({ err: autoErr, buyId: id }, 'Auto ledger entry failed for buy');
+      }
+    }
 
     return {
       success: true,
@@ -232,17 +260,17 @@ export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<
     if (buyRes.rows.length === 0) throw new Error('Buy deal not found');
     const buy = buyRes.rows[0];
 
-    const remainingWeight = parseFloat(buy.remaining_weight);
-    if (sell.pureGram > remainingWeight) {
-      throw new Error(`Cannot sell more than remaining weight (${remainingWeight}g)`);
+    const remainingWeight = parseFloat(buy.remaining_weight); // gross grams remaining
+    if (sell.grossWeight > remainingWeight) {
+      throw new Error(`Cannot sell more than remaining gross weight (${remainingWeight}g)`);
     }
 
-    const pureGram = parseFloat(buy.pure_gram);
+    const buyGrossWeight = parseFloat(buy.gross_weight);
     const buyValue = parseFloat(buy.buy_value);
-    const costPerGram = buyValue / pureGram;
-    const costValue = sell.costValue ?? costPerGram * sell.pureGram;
-    const profit = sell.sellValue - costValue;
-    const margin = sell.margin ?? (sell.sellValue > 0 ? (profit / sell.sellValue) * 100 : 0);
+    const costPerGram = roundTo14(buyValue / buyGrossWeight); // cost per gross gram
+    const costValue = sell.costValue ?? roundTo14(costPerGram * sell.grossWeight);
+    const profit = roundTo14(sell.sellValue - costValue);
+    const margin = sell.margin ?? (sell.sellValue > 0 ? roundTo14((profit / sell.sellValue) * 100) : 0);
 
     let openingBalance = sell.openingBalance;
     if (sell.customerId) {
@@ -301,7 +329,7 @@ export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<
       ],
     );
 
-    const newRemainingWeight = remainingWeight - sell.pureGram;
+    const newRemainingWeight = remainingWeight - sell.grossWeight; // decrement gross
     const status = newRemainingWeight <= 0.001 ? 'closed' : 'active';
     await client.query(`UPDATE physical_buys SET remaining_weight = $1, status = $2 WHERE id = $3`, [
       newRemainingWeight,
@@ -314,10 +342,33 @@ export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<
       `UPDATE physical_balances
        SET available_fund = available_fund + $1, available_volume = available_volume - $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [sell.sellValue, sell.pureGram, branchId],
+      [sell.sellValue, sell.grossWeight, branchId],
     );
 
     await client.query('COMMIT');
+
+    if (sell.customerId) {
+      try {
+        const aedVal = sell.sellValue;
+        const usdtVal = sell.totalUsdt;
+        const idrVal = sell.tltIdrValue;
+        const parts = [`Physical sell - ${sell.narration || sell.particulars || ''}`];
+        if (aedVal) parts.push(`AED ${aedVal.toFixed(2)}`);
+        if (usdtVal) parts.push(`USDT ${usdtVal.toFixed(2)}`);
+        if (idrVal) parts.push(`IDR ${idrVal.toFixed(2)}`);
+        await createAutoLedgerEntry({
+          branchId,
+          customerId: sell.customerId,
+          direction: 'debit',
+          amount: aedVal,
+          referenceType: 'physical_sell',
+          referenceId: id,
+          description: parts.join(' | '),
+        });
+      } catch (autoErr) {
+        logger.error({ err: autoErr, sellId: id }, 'Auto ledger entry failed for sell');
+      }
+    }
 
     return {
       success: true,
@@ -497,12 +548,17 @@ export async function dbDeletePhysicalSellAction(sellId: string): Promise<DbActi
     if (sellRes.rows.length === 0) throw new Error('Sell deal not found');
     const sell = sellRes.rows[0];
 
+    if (sell.bulk_sell_id) {
+      throw new Error('This sell is part of a Bulk Sell. Please delete the entire Bulk Sell from the main page instead.');
+    }
+
+
     const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [sell.buy_id]);
     if (buyRes.rows.length === 0) throw new Error('Buy deal not found');
     const buy = buyRes.rows[0];
 
-    const pureGram = parseFloat(sell.pure_gram);
-    const newRemainingWeight = parseFloat(buy.remaining_weight) + pureGram;
+    const grossWeight = parseFloat(sell.gross_weight); // restore gross grams
+    const newRemainingWeight = parseFloat(buy.remaining_weight) + grossWeight;
     await client.query(`UPDATE physical_buys SET remaining_weight = $1, status = 'active' WHERE id = $2`, [
       newRemainingWeight,
       sell.buy_id,
@@ -514,7 +570,7 @@ export async function dbDeletePhysicalSellAction(sellId: string): Promise<DbActi
       `UPDATE physical_balances
        SET available_fund = available_fund - $1, available_volume = available_volume + $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [sellValue, pureGram, branchId],
+      [sellValue, grossWeight, branchId],
     );
 
     if (sell.customer_id) {
@@ -554,13 +610,13 @@ export async function dbDeletePhysicalBuyAction(buyId: string): Promise<DbAction
     const buy = buyRes.rows[0];
 
     const buyValue = parseFloat(buy.buy_value);
-    const pureGram = parseFloat(buy.pure_gram);
+    const grossWeight = parseFloat(buy.gross_weight); // restore gross grams
     const branchId = buy.branch_id;
     await client.query(
       `UPDATE physical_balances
        SET available_fund = available_fund + $1, available_volume = available_volume - $2, updated_at = CURRENT_TIMESTAMP
        WHERE branch_id = $3`,
-      [buyValue, pureGram, branchId],
+      [buyValue, grossWeight, branchId],
     );
 
     if (buy.customer_id) {
@@ -667,3 +723,258 @@ export async function dbDeletePhysicalDraftSellAction(draftId: string): Promise<
     return { success: false, error: message };
   }
 }
+
+export async function dbAddPhysicalBulkSellAction(bulk: {
+  branchId: string;
+  date: string;
+  particulars: string;
+  notes?: string;
+  customerName: string;
+  customerId?: string;
+  paymentMode: PhysicalPaymentMode;
+  grossWeight: number;
+  pureConversion: number;
+  pureGram: number;
+  idrGram: number;
+  idrToUsdt: number;
+  idrRate: number;
+  total: number;
+  sellValue: number;
+  profit: number;
+  txnId: string;
+  usdAmount?: number;
+  aedAmount?: number;
+  totalWeight?: number;
+  tltIdrValue?: number;
+  tltAedValue?: number;
+  totalUsdt?: number;
+  items: Array<{
+    buyId: string;
+    pureGram: number;
+    grossWeight: number;
+    pureConversion: number;
+    idrGram: number;
+    idrToUsdt: number;
+    idrRate: number;
+    total: number;
+    sellValue: number;
+    profit: number;
+    costValue: number;
+    margin: number;
+  }>;
+}): Promise<DbActionResult<{ bulkSellId: string }>> {
+  const client = await pool.connect();
+  try {
+    const customerName = requireCustomerName(bulk.customerName);
+    await client.query('BEGIN');
+
+    const bulkSellId = `bsell-${crypto.randomUUID().slice(0, 8)}`;
+    let openingBalance: number | null = null;
+
+    if (bulk.customerId) {
+      openingBalance = await adjustCustomerBalanceInTx(client, bulk.customerId, -bulk.sellValue);
+    }
+
+    await client.query(
+      `INSERT INTO physical_bulk_sells (
+        id, branch_id, date, particulars, gross_weight, pure_conversion, pure_gram,
+        idr_gram, idr_to_usdt, idr_rate, total, sell_value, profit,
+        txn_id, customer_id, customer_name, opening_balance, narration, notes,
+        payment_mode, idr_amount, usd_amount, aed_amount, total_weight, tlt_idr_value, tlt_aed_value, total_usdt
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+        $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+      )`,
+      [
+        bulkSellId,
+        bulk.branchId,
+        bulk.date,
+        bulk.particulars,
+        bulk.grossWeight,
+        bulk.pureConversion,
+        bulk.pureGram,
+        bulk.idrGram,
+        bulk.idrToUsdt,
+        bulk.idrRate,
+        bulk.total,
+        bulk.sellValue,
+        bulk.profit,
+        bulk.txnId,
+        bulk.customerId ?? null,
+        customerName,
+        openingBalance ?? null,
+        bulk.particulars,
+        bulk.notes ?? null,
+        bulk.paymentMode,
+        bulk.idrGram,
+        bulk.usdAmount ?? null,
+        bulk.aedAmount ?? null,
+        bulk.totalWeight ?? bulk.pureGram,
+        bulk.tltIdrValue ?? null,
+        bulk.tltAedValue ?? null,
+        bulk.totalUsdt ?? null,
+      ]
+    );
+
+    for (const item of bulk.items) {
+      const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [item.buyId]);
+      if (buyRes.rows.length === 0) throw new Error(`Buy deal ${item.buyId} not found`);
+      const buy = buyRes.rows[0];
+
+      const remainingWeight = parseFloat(buy.remaining_weight); // gross grams
+      if (item.grossWeight > remainingWeight) {
+        throw new Error(`Cannot sell more than remaining gross weight (${remainingWeight}g) for Buy ${buy.item || buy.particulars}`);
+      }
+
+      const childSellId = `psell-${crypto.randomUUID().slice(0, 8)}`;
+      const childTxnId = `${bulk.txnId}-${item.buyId.slice(-4)}`;
+
+      await client.query(
+        `INSERT INTO physical_sells (
+          id, buy_id, date, particulars, gross_weight, pure_conversion, pure_gram,
+          idr_gram, idr_to_usdt, idr_rate, total, sell_value, profit,
+          txn_id, customer_id, customer_name, opening_balance, narration, notes,
+          payment_mode, idr_amount, usd_amount, aed_amount, total_weight, tlt_idr_value, tlt_aed_value, total_usdt,
+          cost_value, margin, bulk_sell_id
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+          $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
+        )`,
+        [
+          childSellId,
+          item.buyId,
+          bulk.date,
+          bulk.particulars,
+          item.grossWeight,
+          item.pureConversion,
+          item.pureGram,
+          item.idrGram,
+          item.idrToUsdt,
+          item.idrRate,
+          item.total,
+          item.sellValue,
+          item.profit,
+          childTxnId,
+          bulk.customerId ?? null,
+          customerName,
+          openingBalance ?? null,
+          bulk.particulars,
+          bulk.notes ?? null,
+          bulk.paymentMode,
+          item.idrGram,
+          item.sellValue / 3.6725,
+          item.sellValue,
+          item.grossWeight,
+          item.pureGram * item.idrGram,
+          item.total,
+          item.total / 3.6725,
+          item.costValue,
+          item.margin,
+          bulkSellId,
+        ]
+      );
+
+      const newRemainingWeight = remainingWeight - item.grossWeight; // decrement gross
+      const status = newRemainingWeight <= 0.001 ? 'closed' : 'active';
+      await client.query(`UPDATE physical_buys SET remaining_weight = $1, status = $2 WHERE id = $3`, [
+        newRemainingWeight,
+        status,
+        item.buyId,
+      ]);
+    }
+
+    await client.query(
+      `UPDATE physical_balances
+       SET available_fund = available_fund + $1, available_volume = available_volume - $2, updated_at = CURRENT_TIMESTAMP
+       WHERE branch_id = $3`,
+      [bulk.sellValue, bulk.grossWeight, bulk.branchId] // deduct gross
+    );
+
+    await client.query('COMMIT');
+
+    if (bulk.customerId) {
+      try {
+        const aedVal = bulk.sellValue;
+        const usdtVal = bulk.totalUsdt;
+        const idrVal = bulk.tltIdrValue;
+        const parts = [`Physical bulk sell - ${bulk.particulars || ''}`];
+        if (aedVal) parts.push(`AED ${aedVal.toFixed(2)}`);
+        if (usdtVal) parts.push(`USDT ${usdtVal.toFixed(2)}`);
+        if (idrVal) parts.push(`IDR ${idrVal.toFixed(2)}`);
+        await createAutoLedgerEntry({
+          branchId: bulk.branchId,
+          customerId: bulk.customerId,
+          direction: 'debit',
+          amount: aedVal,
+          referenceType: 'physical_sell',
+          referenceId: bulkSellId,
+          description: parts.join(' | '),
+        });
+      } catch (autoErr) {
+        logger.error({ err: autoErr, bulkSellId }, 'Auto ledger entry failed for bulk sell');
+      }
+    }
+
+    return { success: true, data: { bulkSellId } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+export async function dbDeletePhysicalBulkSellAction(bulkSellId: string): Promise<DbActionResult<null>> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const bulkRes = await client.query('SELECT * FROM physical_bulk_sells WHERE id = $1 FOR UPDATE', [bulkSellId]);
+    if (bulkRes.rows.length === 0) throw new Error('Bulk sell not found');
+    const bulk = bulkRes.rows[0];
+
+    const sellsRes = await client.query('SELECT * FROM physical_sells WHERE bulk_sell_id = $1 FOR UPDATE', [bulkSellId]);
+    const childSells = sellsRes.rows;
+
+    for (const sell of childSells) {
+      const buyRes = await client.query('SELECT * FROM physical_buys WHERE id = $1 FOR UPDATE', [sell.buy_id]);
+      if (buyRes.rows.length > 0) {
+        const buy = buyRes.rows[0];
+        const grossWeight = parseFloat(sell.gross_weight); // restore gross grams
+        const newRemainingWeight = parseFloat(buy.remaining_weight) + grossWeight;
+        await client.query(`UPDATE physical_buys SET remaining_weight = $1, status = 'active' WHERE id = $2`, [
+          newRemainingWeight,
+          sell.buy_id,
+        ]);
+      }
+    }
+
+    const bulkSellValue = parseFloat(bulk.sell_value);
+    const bulkGrossWeight = parseFloat(bulk.gross_weight); // restore gross
+    const branchId = bulk.branch_id;
+    await client.query(
+      `UPDATE physical_balances
+       SET available_fund = available_fund - $1, available_volume = available_volume + $2, updated_at = CURRENT_TIMESTAMP
+       WHERE branch_id = $3`,
+      [bulkSellValue, bulkGrossWeight, branchId]
+    );
+
+    if (bulk.customer_id) {
+      await adjustCustomerBalanceInTx(client, bulk.customer_id, bulkSellValue);
+    }
+
+    await client.query('DELETE FROM physical_sells WHERE bulk_sell_id = $1', [bulkSellId]);
+    await client.query('DELETE FROM physical_bulk_sells WHERE id = $1', [bulkSellId]);
+
+    await client.query('COMMIT');
+    return { success: true, data: null };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'Database error';
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+

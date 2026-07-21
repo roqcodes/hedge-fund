@@ -19,7 +19,8 @@ import {
 } from '@/lib/sql/businessDateSql';
 import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
-import { mapPhysicalBuyRow, mapPhysicalSellRow } from '@/lib/physicalMappers';
+import { mapPhysicalBuyRow, mapPhysicalSellRow, mapPhysicalBulkSellRow } from '@/lib/physicalMappers';
+
 import { mapUsdtBuyRow, mapUsdtSellRow, mapUsdtSettingsRow } from '@/lib/usdtMappers';
 import {
   mapICRegionRow,
@@ -54,7 +55,9 @@ import {
   PhysicalBalance,
   PhysicalBuy,
   PhysicalSell,
+  PhysicalBulkSell,
   UsdtBranchSettings,
+
   UsdtBuy,
   UsdtSell,
   ICRegion,
@@ -172,7 +175,9 @@ export interface InitialDataPayload {
   physicalBalances: PhysicalBalance[];
   physicalBuys: PhysicalBuy[];
   physicalSells: PhysicalSell[];
+  physicalBulkSells: PhysicalBulkSell[];
   usdtBuys: UsdtBuy[];
+
   usdtSells: UsdtSell[];
   usdtSettings: UsdtBranchSettings[];
   icRegions: ICRegion[];
@@ -251,6 +256,47 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);`);
     // Auto-backfill is removed because it was overwriting manually corrected data on every reload.
     await query(SQL_ENSURE_USDT_SCHEMA);
+
+    // Ensure Bulk Sells Schema exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS physical_bulk_sells (
+        id VARCHAR(50) PRIMARY KEY,
+        branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        particulars TEXT DEFAULT '',
+        gross_weight DECIMAL(28, 14) NOT NULL DEFAULT 0,
+        pure_conversion DECIMAL(15, 4) NOT NULL DEFAULT 1,
+        pure_gram DECIMAL(28, 14) NOT NULL DEFAULT 0,
+        idr_gram DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        idr_to_usdt DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        idr_rate DECIMAL(28, 14) NOT NULL DEFAULT 0,
+        total DECIMAL(28, 14) NOT NULL DEFAULT 0,
+        sell_value DECIMAL(28, 14) NOT NULL,
+        profit DECIMAL(28, 14) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        txn_id VARCHAR(50),
+        customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL,
+        customer_name VARCHAR(255),
+        opening_balance DECIMAL(15, 2),
+        narration TEXT,
+        notes TEXT,
+        payment_mode VARCHAR(30),
+        idr_amount DECIMAL(28, 14),
+        usd_amount DECIMAL(28, 14),
+        aed_amount DECIMAL(28, 14),
+        total_weight DECIMAL(28, 14),
+        tlt_idr_value DECIMAL(28, 14),
+        tlt_aed_value DECIMAL(28, 14),
+        total_usdt DECIMAL(28, 14)
+      );
+    `);
+    await query(`
+      ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS bulk_sell_id VARCHAR(50) REFERENCES physical_bulk_sells(id) ON DELETE CASCADE;
+    `);
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_physical_sells_bulk_sell ON physical_sells(bulk_sell_id);
+    `);
+
 
     // 1. Fetch HQ Balance
     const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
@@ -597,6 +643,10 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const physicalSellsRes = await query('SELECT * FROM physical_sells ORDER BY date DESC');
     const physicalSells = physicalSellsRes.rows.map(r => mapPhysicalSellRow(r));
 
+    const physicalBulkSellsRes = await query('SELECT * FROM physical_bulk_sells ORDER BY date DESC');
+    const physicalBulkSells = physicalBulkSellsRes.rows.map(r => mapPhysicalBulkSellRow(r));
+
+
     const usdtBuysRes = await query('SELECT * FROM usdt_buys ORDER BY date DESC');
     const usdtBuys = usdtBuysRes.rows.map(r => mapUsdtBuyRow(r));
     const usdtSellsRes = await query('SELECT * FROM usdt_sells ORDER BY date DESC');
@@ -678,7 +728,9 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     let finalPhysicalBalances = physicalBalances;
     let finalPhysicalBuys = physicalBuys;
     let finalPhysicalSells = physicalSells;
+    let finalPhysicalBulkSells = physicalBulkSells;
     let finalUsdtBuys = usdtBuys;
+
     let finalUsdtSells = usdtSells;
     let finalUsdtSettings = usdtSettings;
 
@@ -702,10 +754,12 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       finalPhysicalBuys = physicalBuys.filter(b => b.branchId === bId);
       const buyIds = new Set(finalPhysicalBuys.map(b => b.id));
       finalPhysicalSells = physicalSells.filter(s => buyIds.has(s.buyId));
+      finalPhysicalBulkSells = physicalBulkSells.filter(b => b.branchId === bId);
       finalUsdtBuys = usdtBuys.filter(b => b.branchId === bId);
       finalUsdtSells = usdtSells.filter(s => s.branchId === bId);
       finalUsdtSettings = usdtSettings.filter(s => s.branchId === bId);
     }
+
 
     return {
       success: true,
@@ -727,7 +781,9 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         physicalBalances: finalPhysicalBalances,
         physicalBuys: finalPhysicalBuys,
         physicalSells: finalPhysicalSells,
+        physicalBulkSells: finalPhysicalBulkSells,
         usdtBuys: finalUsdtBuys,
+
         usdtSells: finalUsdtSells,
         usdtSettings: finalUsdtSettings,
         icRegions,

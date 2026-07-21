@@ -15,6 +15,8 @@ import {
   type PhysicalSellFormFields,
   PAYMENT_MODE_OPTIONS,
   type PhysicalPaymentMode,
+  formatNumberWithCommas,
+  cleanCommaNumber,
 } from '@/lib/physicalCalculations';
 import { convertFromAed } from '@/lib/currency';
 import { convertAedToUsdt } from '@/lib/physicalCurrencyDisplay';
@@ -82,11 +84,11 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
     setForm(prev => normalizePhysicalSellForm({ ...prev, ...patch }));
 
   const calc = useMemo(() => {
-    const grossWeight = parseFloat(form.grossWeightStr) || 0;
-    const touch = parseFloat(form.touchStr) || 1;
-    const touchLoss = parseFloat(form.touchLossStr) || 0;
-    const idrGram = parseFloat(form.idrGramStr) || 0;
-    const idrToUsdt = parseFloat(form.idrToUsdtStr) || 17770;
+    const grossWeight = parseFloat(cleanCommaNumber(form.grossWeightStr)) || 0;
+    const touch = parseFloat(cleanCommaNumber(form.touchStr)) || 1;
+    const touchLoss = parseFloat(cleanCommaNumber(form.touchLossStr)) || 0;
+    const idrGram = parseFloat(cleanCommaNumber(form.idrGramStr)) || 0;
+    const idrToUsdt = parseFloat(cleanCommaNumber(form.idrToUsdtStr)) || 17770;
     const base = computePhysicalTxn({ grossWeight, touch, touchLoss, idrGram, idrToUsdt });
     const metrics = computeSellMetrics(base, costPerGram);
     const costValueUsdt = convertAedToUsdt(metrics.costValue, currencyRates);
@@ -121,8 +123,8 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
       );
       return;
     }
-    const aedStr = sellValue.toFixed(2);
-    const usdStr = convertFromAed(sellValue, 'USD').toFixed(2);
+    const aedStr = formatNumberWithCommas(sellValue.toFixed(3));
+    const usdStr = formatNumberWithCommas(convertFromAed(sellValue, 'USD').toFixed(3));
     setForm(prev =>
       normalizePhysicalSellForm({
         ...prev,
@@ -292,33 +294,30 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
               <div className="grid grid-cols-2 gap-x-6 gap-y-6 md:grid-cols-5">
                 <InputField label="Gram">
                   <input
-                    type="number"
-                    step="0.001"
+                    type="text"
                     className={cleanInput}
                     value={form.grossWeightStr}
-                    onChange={e => set({ grossWeightStr: e.target.value })}
+                    onChange={e => set({ grossWeightStr: formatNumberWithCommas(e.target.value) })}
                     required
                   />
                 </InputField>
 
                 <InputField label="Touch">
                   <input
-                    type="number"
-                    step="0.0001"
+                    type="text"
                     className={cleanInput}
                     value={form.touchStr}
-                    onChange={e => set({ touchStr: e.target.value })}
+                    onChange={e => set({ touchStr: formatNumberWithCommas(e.target.value) })}
                     required
                   />
                 </InputField>
 
                 <InputField label="Loss">
                   <input
-                    type="number"
-                    step="0.001"
+                    type="text"
                     className={cleanInput}
                     value={form.touchLossStr}
-                    onChange={e => set({ touchLossStr: e.target.value })}
+                    onChange={e => set({ touchLossStr: formatNumberWithCommas(e.target.value) })}
                   />
                 </InputField>
 
@@ -332,45 +331,41 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
 
                 <InputField label="IDR per Gram">
                   <input
-                    type="number"
-                    step="1"
+                    type="text"
                     className={cleanInput}
                     value={form.idrGramStr}
-                    onChange={e => set({ idrGramStr: e.target.value })}
+                    onChange={e => set({ idrGramStr: formatNumberWithCommas(e.target.value) })}
                     required
                   />
                 </InputField>
 
                 <InputField label="USDT Rate">
                   <input
-                    type="number"
-                    step="1"
+                    type="text"
                     className={cleanInput}
                     value={form.idrToUsdtStr}
-                    onChange={e => set({ idrToUsdtStr: e.target.value })}
+                    onChange={e => set({ idrToUsdtStr: formatNumberWithCommas(e.target.value) })}
                     required
                   />
                 </InputField>
 
                 <InputField label="USD">
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     className={cleanInput}
                     value={form.usdAmountStr}
-                    onChange={e => set({ usdAmountStr: e.target.value })}
-                    placeholder="0.00"
+                    onChange={e => set({ usdAmountStr: formatNumberWithCommas(e.target.value) })}
+                    placeholder="0.000"
                   />
                 </InputField>
 
                 <InputField label="AED">
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     className={cleanInput}
                     value={form.aedAmountStr}
-                    onChange={e => set({ aedAmountStr: e.target.value })}
-                    placeholder="0.00"
+                    onChange={e => set({ aedAmountStr: formatNumberWithCommas(e.target.value) })}
+                    placeholder="0.000"
                   />
                 </InputField>
 
@@ -390,11 +385,10 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
 
                 <InputField label="Deal">
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     className={cleanInput}
                     value={form.dealStr}
-                    onChange={e => set({ dealStr: e.target.value })}
+                    onChange={e => set({ dealStr: formatNumberWithCommas(e.target.value) })}
                   />
                 </InputField>
               </div>
@@ -421,13 +415,13 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
                     {calc.actualPurity.toFixed(3)}
                     <span className="text-xs font-bold text-slate-400 ml-1">g</span>
                   </span>
-                </div>
+                                </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
                   <span className="text-lg md:text-xl font-black text-slate-600 font-mono tracking-tight">
                     {calc.costValueUsdt.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 4,
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 3,
                     })}
                   </span>
                 </div>
@@ -438,8 +432,8 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
                   >
                     {calc.profitUsdt >= 0 ? '+' : ''}
                     {calc.profitUsdt.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 4,
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 3,
                     })}
                   </span>
                 </div>
@@ -448,15 +442,15 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total IDR</span>
                   <span className="text-xl md:text-2xl font-black text-slate-800 font-mono tracking-tight">
-                    {calc.tltIdrValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {calc.tltIdrValue.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                   </span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total USDT</span>
                   <span className="text-xl md:text-2xl font-black text-emerald-600 font-mono tracking-tight">
                     {calc.totalUsdt.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 4,
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 3,
                     })}
                   </span>
                 </div>

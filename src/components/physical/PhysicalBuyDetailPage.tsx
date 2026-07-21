@@ -241,7 +241,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           />
           <KPICard
             label="Stock Remaining"
-            value={buy.remainingWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
+            value={buy.remainingWeight.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
             subValue="Current inventory"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -253,7 +253,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           />
           <KPICard
             label="Initial Stock"
-            value={buy.pureGram.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
+            value={buy.pureGram.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
             subValue="Total purchased"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -293,7 +293,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Gross Wt</p>
-              <p className="font-semibold text-slate-800">{buy.grossWeight.toFixed(2)} g</p>
+              <p className="font-semibold text-slate-800">{buy.grossWeight.toFixed(3)} g</p>
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Pure Conv</p>
@@ -301,7 +301,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">Pure Gram</p>
-              <p className="font-bold text-slate-900">{buy.pureGram.toFixed(2)} g</p>
+              <p className="font-bold text-slate-900">{buy.pureGram.toFixed(3)} g</p>
             </div>
             <div>
               <p className="text-slate-500 text-[11px] uppercase tracking-wider font-bold mb-1">IDR Gram</p>
@@ -434,13 +434,13 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         {sell.narration || sell.particulars || '-'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
-                        {sell.grossWeight?.toFixed(2) || '0.00'}
+                        {sell.grossWeight?.toFixed(3) || '0.000'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
                         {sell.pureConversion || '1'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4">
-                        {sell.pureGram.toFixed(2)}
+                        {sell.pureGram.toFixed(3)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
                         {sell.idrGram?.toLocaleString() || '0'}
@@ -509,11 +509,11 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                     <div className="grid grid-cols-2 gap-y-3 gap-x-4 border-b border-slate-50 pb-3">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross Wt</span>
-                        <span className="text-sm font-bold text-slate-700">{sell.grossWeight?.toFixed(2) || '0.00'}</span>
+                        <span className="text-sm font-bold text-slate-700">{sell.grossWeight?.toFixed(3) || '0.000'}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pure Gram</span>
-                        <span className="text-sm font-bold text-slate-700">{sell.pureGram.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-slate-700">{sell.pureGram.toFixed(3)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">P&L (USDT)</span>

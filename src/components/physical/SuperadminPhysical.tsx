@@ -129,7 +129,7 @@ export default function SuperadminPhysical() {
       <div className={kpiGrid}>
         <KPICard
           label="Total Sales Volume"
-          value={globalMetrics.globalInventory.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
+          value={globalMetrics.globalInventory.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
           subValue="Gross weight bought globally"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -141,7 +141,7 @@ export default function SuperadminPhysical() {
         />
         <KPICard
           label="Remaining Global Stock"
-          value={globalMetrics.globalRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
+          value={globalMetrics.globalRemaining.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
           subValue="Currently held in vaults"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -251,7 +251,7 @@ export default function SuperadminPhysical() {
               <div className="mt-2 grid grid-cols-2 gap-4 border-t border-slate-50 pt-4">
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Inventory</span>
-                  <span className="font-mono text-[15px] font-bold text-accent">{b.totalInventory.toFixed(2)} g</span>
+                  <span className="font-mono text-[15px] font-bold text-accent">{b.totalInventory.toFixed(3)} g</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Initial Capital</span>
@@ -259,7 +259,7 @@ export default function SuperadminPhysical() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Remaining Stock</span>
-                  <span className="font-mono text-sm font-bold text-warning">{b.totalRemaining.toFixed(2)} g</span>
+                  <span className="font-mono text-sm font-bold text-warning">{b.totalRemaining.toFixed(3)} g</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Spent</span>

@@ -9,6 +9,7 @@ import { dbAddUsdtSellAction } from '@/app/actions/usdtActions';
 import { computeUsdtSell, generateUsdtTxnId, computeAverageUsdtBuyAedRate, formatUsdtRateInput } from '@/lib/usdtCalculations';
 import { useApp } from '@/context/AppContext';
 import { formatMoneyValue } from '@/data/mockData';
+import { formatNumberWithCommas, cleanCommaNumber } from '@/lib/physicalCalculations';
 
 const InputField = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1.5">
@@ -90,10 +91,10 @@ export default function USDTSellModal({
   const set = (patch: Partial<ReturnType<typeof defaultForm>>) => setForm(prev => ({ ...prev, ...patch }));
 
   const calc = useMemo(() => {
-    const usdtAmount = parseFloat(form.usdtAmountStr) || 0;
-    const cost = parseFloat(form.costStr) || 0;
-    const margin = parseFloat(form.marginStr) || 0;
-    const serviceCharge = parseFloat(form.serviceChargeStr) || 0;
+    const usdtAmount = parseFloat(cleanCommaNumber(form.usdtAmountStr)) || 0;
+    const cost = parseFloat(cleanCommaNumber(form.costStr)) || 0;
+    const margin = parseFloat(cleanCommaNumber(form.marginStr)) || 0;
+    const serviceCharge = parseFloat(cleanCommaNumber(form.serviceChargeStr)) || 0;
     return computeUsdtSell({ usdtAmount, cost, margin, serviceCharge });
   }, [form.usdtAmountStr, form.costStr, form.marginStr, form.serviceChargeStr]);
 
@@ -104,9 +105,9 @@ export default function USDTSellModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const usdtAmount = parseFloat(form.usdtAmountStr) || 0;
-    const cost = parseFloat(form.costStr) || 0;
-    const margin = parseFloat(form.marginStr) || 0;
+    const usdtAmount = parseFloat(cleanCommaNumber(form.usdtAmountStr)) || 0;
+    const cost = parseFloat(cleanCommaNumber(form.costStr)) || 0;
+    const margin = parseFloat(cleanCommaNumber(form.marginStr)) || 0;
     if (usdtAmount <= 0 || cost <= 0) {
       alert('USDT amount and cost are required');
       return;
@@ -120,12 +121,12 @@ export default function USDTSellModal({
       customerId: form.customerId || undefined,
       customerName: form.customerName.trim() || undefined,
       walletId: form.walletId.trim() || undefined,
-      openingBalance: form.openingBalance ? parseFloat(form.openingBalance) : undefined,
+      openingBalance: form.openingBalance ? parseFloat(cleanCommaNumber(form.openingBalance)) : undefined,
       usdtAmount,
       cost,
       margin,
       aedRate: calc.aedRate,
-      serviceCharge: parseFloat(form.serviceChargeStr) || 0,
+      serviceCharge: parseFloat(cleanCommaNumber(form.serviceChargeStr)) || 0,
       aedTotal: calc.aedTotal,
       profit: calc.profit,
       notes: form.notes.trim() || undefined,
@@ -194,10 +195,10 @@ export default function USDTSellModal({
             <input type="text" className={formInput} value={form.openingBalance} readOnly placeholder="—" />
           </InputField>
           <InputField label="Sell USDT Amount">
-            <input type="number" step="any" className={formInput} value={form.usdtAmountStr} onChange={e => set({ usdtAmountStr: e.target.value })} placeholder="100000" />
+            <input type="text" className={formInput} value={form.usdtAmountStr} onChange={e => set({ usdtAmountStr: formatNumberWithCommas(e.target.value) })} placeholder="100,000" />
           </InputField>
           <InputField label="Cost">
-            <input type="number" step="any" className={formInput} value={form.costStr} onChange={e => set({ costStr: e.target.value })} placeholder="3.6789" />
+            <input type="text" className={formInput} value={form.costStr} onChange={e => set({ costStr: formatNumberWithCommas(e.target.value) })} placeholder="3.6789" />
             {averageBuyRate != null && (
               <p className="text-[10px] text-slate-400">
                 Avg AED rate from {branchBuys.length} purchase{branchBuys.length === 1 ? '' : 's'} — editable
@@ -205,13 +206,13 @@ export default function USDTSellModal({
             )}
           </InputField>
           <InputField label="Margin">
-            <input type="number" step="any" className={formInput} value={form.marginStr} onChange={e => set({ marginStr: e.target.value })} placeholder="0.002" />
+            <input type="text" className={formInput} value={form.marginStr} onChange={e => set({ marginStr: formatNumberWithCommas(e.target.value) })} placeholder="0.002" />
           </InputField>
           <InputField label="AED Rate">
             <input type="text" className={formInput} value={calc.aedRate > 0 ? calc.aedRate.toFixed(4) : ''} readOnly placeholder="—" />
           </InputField>
           <InputField label="Ser Charge">
-            <input type="number" step="any" className={formInput} value={form.serviceChargeStr} onChange={e => set({ serviceChargeStr: e.target.value })} placeholder="0" />
+            <input type="text" className={formInput} value={form.serviceChargeStr} onChange={e => set({ serviceChargeStr: formatNumberWithCommas(e.target.value) })} placeholder="0" />
           </InputField>
         </div>
 

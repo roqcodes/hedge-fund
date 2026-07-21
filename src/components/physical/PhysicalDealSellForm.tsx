@@ -15,6 +15,8 @@ import {
   type PhysicalSellFormFields,
   PAYMENT_MODE_OPTIONS,
   type PhysicalPaymentMode,
+  formatNumberWithCommas,
+  cleanCommaNumber,
 } from '@/lib/physicalCalculations';
 import { convertFromAed } from '@/lib/currency';
 import { convertAedToUsdt } from '@/lib/physicalCurrencyDisplay';
@@ -120,11 +122,11 @@ export default function PhysicalDealSellForm({
     setForm(prev => normalizePhysicalSellForm({ ...prev, ...patch }));
 
   const calc = useMemo(() => {
-    const grossWeight = parseFloat(form.grossWeightStr) || 0;
-    const touch = parseFloat(form.touchStr) || 1;
-    const touchLoss = parseFloat(form.touchLossStr) || 0;
-    const idrGram = parseFloat(form.idrGramStr) || 0;
-    const idrToUsdt = parseFloat(form.idrToUsdtStr) || 17770;
+    const grossWeight = parseFloat(cleanCommaNumber(form.grossWeightStr)) || 0;
+    const touch = parseFloat(cleanCommaNumber(form.touchStr)) || 1;
+    const touchLoss = parseFloat(cleanCommaNumber(form.touchLossStr)) || 0;
+    const idrGram = parseFloat(cleanCommaNumber(form.idrGramStr)) || 0;
+    const idrToUsdt = parseFloat(cleanCommaNumber(form.idrToUsdtStr)) || 17770;
     const base = computePhysicalTxn({ grossWeight, touch, touchLoss, idrGram, idrToUsdt });
     const metrics = computeSellMetrics(base, costPerGram);
     // Sell value in USDT equals the deal's totalUsdt; derive cost & profit in USDT
@@ -161,8 +163,8 @@ export default function PhysicalDealSellForm({
       );
       return;
     }
-    const aedStr = sellValue.toFixed(2);
-    const usdStr = convertFromAed(sellValue, 'USD').toFixed(2);
+    const aedStr = formatNumberWithCommas(sellValue.toFixed(3));
+    const usdStr = formatNumberWithCommas(convertFromAed(sellValue, 'USD').toFixed(3));
     setForm(prev =>
       normalizePhysicalSellForm({
         ...prev,
@@ -349,15 +351,15 @@ export default function PhysicalDealSellForm({
           
           <div className="grid grid-cols-2 gap-x-6 gap-y-6 md:grid-cols-5">
             <InputField label="Gram">
-              <input type="number" step="0.001" className={cleanInput} value={form.grossWeightStr} onChange={e => set({ grossWeightStr: e.target.value })} disabled={!selectedBuy} required />
+              <input type="text" className={cleanInput} value={form.grossWeightStr} onChange={e => set({ grossWeightStr: formatNumberWithCommas(e.target.value) })} disabled={!selectedBuy} required />
             </InputField>
             
             <InputField label="Touch">
-              <input type="number" step="0.0001" className={cleanInput} value={form.touchStr} onChange={e => set({ touchStr: e.target.value })} disabled={!selectedBuy} required />
+              <input type="text" className={cleanInput} value={form.touchStr} onChange={e => set({ touchStr: formatNumberWithCommas(e.target.value) })} disabled={!selectedBuy} required />
             </InputField>
             
             <InputField label="Loss">
-              <input type="number" step="0.001" className={cleanInput} value={form.touchLossStr} onChange={e => set({ touchLossStr: e.target.value })} disabled={!selectedBuy} />
+              <input type="text" className={cleanInput} value={form.touchLossStr} onChange={e => set({ touchLossStr: formatNumberWithCommas(e.target.value) })} disabled={!selectedBuy} />
             </InputField>
             
             <InputField label="Purity">
@@ -367,19 +369,19 @@ export default function PhysicalDealSellForm({
             </InputField>
             
             <InputField label="IDR per Gram">
-              <input type="number" step="1" className={cleanInput} value={form.idrGramStr} onChange={e => set({ idrGramStr: e.target.value })} disabled={!selectedBuy} required />
+              <input type="text" className={cleanInput} value={form.idrGramStr} onChange={e => set({ idrGramStr: formatNumberWithCommas(e.target.value) })} disabled={!selectedBuy} required />
             </InputField>
             
             <InputField label="USDT Rate">
-              <input type="number" step="1" className={cleanInput} value={form.idrToUsdtStr} onChange={e => set({ idrToUsdtStr: e.target.value })} disabled={!selectedBuy} required />
+              <input type="text" className={cleanInput} value={form.idrToUsdtStr} onChange={e => set({ idrToUsdtStr: formatNumberWithCommas(e.target.value) })} disabled={!selectedBuy} required />
             </InputField>
             
             <InputField label="USD">
-              <input type="number" step="0.01" className={cleanInput} value={form.usdAmountStr} onChange={(e) => set({ usdAmountStr: e.target.value })} placeholder="0.00" disabled={!selectedBuy} />
+              <input type="text" className={cleanInput} value={form.usdAmountStr} onChange={(e) => set({ usdAmountStr: formatNumberWithCommas(e.target.value) })} placeholder="0.000" disabled={!selectedBuy} />
             </InputField>
             
             <InputField label="AED">
-              <input type="number" step="0.01" className={cleanInput} value={form.aedAmountStr} onChange={(e) => set({ aedAmountStr: e.target.value })} placeholder="0.00" disabled={!selectedBuy} />
+              <input type="text" className={cleanInput} value={form.aedAmountStr} onChange={(e) => set({ aedAmountStr: formatNumberWithCommas(e.target.value) })} placeholder="0.000" disabled={!selectedBuy} />
             </InputField>
             
             <InputField label="Payment Mode">
@@ -391,7 +393,7 @@ export default function PhysicalDealSellForm({
             </InputField>
 
             <InputField label="Deal">
-              <input type="number" step="0.01" className={cleanInput} value={form.dealStr} onChange={e => set({ dealStr: e.target.value })} disabled={!selectedBuy} />
+              <input type="text" className={cleanInput} value={form.dealStr} onChange={e => set({ dealStr: formatNumberWithCommas(e.target.value) })} disabled={!selectedBuy} />
             </InputField>
           </div>
         </div>
@@ -417,23 +419,23 @@ export default function PhysicalDealSellForm({
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
-              <span className="text-lg md:text-xl font-black text-slate-600 font-mono tracking-tight">{calc.costValueUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+              <span className="text-lg md:text-xl font-black text-slate-600 font-mono tracking-tight">{calc.costValueUsdt.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Profit (USDT)</span>
               <span className={`text-lg md:text-xl font-black font-mono tracking-tight ${calc.profitUsdt >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                {calc.profitUsdt >= 0 ? '+' : ''}{calc.profitUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                {calc.profitUsdt >= 0 ? '+' : ''}{calc.profitUsdt.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
               </span>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-4 pt-3 border-t border-slate-200/60">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total IDR</span>
-              <span className="text-xl md:text-2xl font-black text-slate-800 font-mono tracking-tight">{calc.tltIdrValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span className="text-xl md:text-2xl font-black text-slate-800 font-mono tracking-tight">{calc.tltIdrValue.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total USDT</span>
-              <span className="text-xl md:text-2xl font-black text-emerald-600 font-mono tracking-tight">{calc.totalUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+              <span className="text-xl md:text-2xl font-black text-emerald-600 font-mono tracking-tight">{calc.totalUsdt.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
             </div>
           </div>
         </div>

@@ -196,7 +196,7 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
           />
           <KPICard
             label="Total Inventory"
-            value={totalInventory.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
+            value={totalInventory.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
             subValue="Gross weight bought"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -208,7 +208,7 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
           />
           <KPICard
             label="Total Remaining"
-            value={totalRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' g'}
+            value={totalRemaining.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
             subValue="Current stock"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -220,7 +220,7 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
           />
           <KPICard
             label="Total Value"
-            value={totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            value={totalValue.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
             subValue="Total amount spent"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -320,13 +320,13 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
                         {buy.particulars || '-'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
-                        {buy.grossWeight.toFixed(2)}
+                        {buy.grossWeight.toFixed(3)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
                         {buy.pureConversion}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4">
-                        {buy.pureGram.toFixed(2)}
+                        {buy.pureGram.toFixed(3)}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 text-center text-sm sm:px-5 sm:py-4">
                         {buy.idrGram.toLocaleString()}
@@ -384,11 +384,11 @@ export default function SuperadminBranchPhysical({ branchSlug }: { branchSlug: s
                     <div className="grid grid-cols-2 gap-y-3 gap-x-4">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross Wt</span>
-                        <span className="text-sm font-bold text-slate-700">{buy.grossWeight.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-slate-700">{buy.grossWeight.toFixed(3)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pure Gram</span>
-                        <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-slate-700">{buy.pureGram.toFixed(3)}</span>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">IDR/USDT</span>

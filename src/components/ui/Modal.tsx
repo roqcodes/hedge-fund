@@ -10,6 +10,7 @@ type ModalProps = {
   children: React.ReactNode;
   footer?: React.ReactNode;
   maxWidth?: string;
+  maxHeight?: string;
   zIndexClass?: string;
 };
 
@@ -22,6 +23,7 @@ export default function Modal({
   children,
   footer,
   maxWidth = 'max-w-lg',
+  maxHeight = 'sm:max-h-[min(88dvh,720px)]',
   zIndexClass = 'z-[400]',
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
@@ -67,7 +69,7 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className={`flex max-h-[min(92dvh,100%)] w-full ${maxWidth} flex-col overflow-hidden rounded-t-2xl border border-slate-200/90 bg-white shadow-[0_24px_64px_-12px_rgba(15,23,42,0.35)] transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] sm:max-h-[min(88dvh,720px)] sm:rounded-2xl ${open ? 'translate-y-0 scale-100 sm:translate-y-0' : 'translate-y-full scale-100 sm:translate-y-4 sm:scale-[0.98]'
+        className={`flex max-h-[min(92dvh,100%)] w-full ${maxWidth} flex-col overflow-hidden rounded-t-2xl border border-slate-200/90 bg-white shadow-[0_24px_64px_-12px_rgba(15,23,42,0.35)] transition-[transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${maxHeight} sm:rounded-2xl ${open ? 'translate-y-0 scale-100 sm:translate-y-0' : 'translate-y-full scale-100 sm:translate-y-4 sm:scale-[0.98]'
           }`}
         onClick={e => e.stopPropagation()}
       >

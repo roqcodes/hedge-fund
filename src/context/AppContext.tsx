@@ -29,6 +29,7 @@ import {
   ICPurchase,
   ICSale,
   ICWarehouseTransaction,
+  PhysicalBulkSell,
 } from '@/types';
 import * as mock from '@/data/mockData';
 import { DEFAULT_BRANCH_TIMEZONE } from '@/lib/businessTime';
@@ -143,7 +144,9 @@ interface AppState {
   physicalBalances: PhysicalBalance[];
   physicalBuys: PhysicalBuy[];
   physicalSells: PhysicalSell[];
+  physicalBulkSells: PhysicalBulkSell[];
   usdtBuys: UsdtBuy[];
+
   usdtSells: UsdtSell[];
   usdtSettings: UsdtBranchSettings[];
   icRegions: ICRegion[];
@@ -340,7 +343,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     physicalBalances: [],
     physicalBuys: [],
     physicalSells: [],
+    physicalBulkSells: [],
     usdtBuys: [],
+
     usdtSells: [],
     usdtSettings: [],
     icRegions: [],
@@ -388,7 +393,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             physicalBalances: data.physicalBalances || [],
             physicalBuys: data.physicalBuys || [],
             physicalSells: data.physicalSells || [],
+            physicalBulkSells: data.physicalBulkSells || [],
             usdtBuys: data.usdtBuys || [],
+
             usdtSells: data.usdtSells || [],
             usdtSettings: data.usdtSettings || [],
             icRegions: data.icRegions || [],
@@ -463,7 +470,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             physicalBalances: data.physicalBalances || [],
             physicalBuys: data.physicalBuys || [],
             physicalSells: data.physicalSells || [],
+            physicalBulkSells: data.physicalBulkSells || [],
             usdtBuys: data.usdtBuys || [],
+
             usdtSells: data.usdtSells || [],
             usdtSettings: data.usdtSettings || [],
             icRegions: data.icRegions || [],
@@ -1964,7 +1973,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           entities: state.entities.filter(e => !e.branchId || e.branchId === filterBranchId),
           deals,
           dealTransactions: state.dealTransactions.filter(dt => dealIds.has(dt.dealId || '')),
+          physicalBulkSells: state.physicalBulkSells.filter(b => b.branchId === filterBranchId),
         };
+
       }
     }
 

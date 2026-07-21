@@ -1,5 +1,6 @@
 import { convertAedToUsdt } from '@/lib/physicalCurrencyDisplay';
 import type { PhysicalBuy, PhysicalSell } from '@/types';
+import { roundTo14 } from '@/lib/physicalCalculations';
 
 export type PhysicalCurrencyTotals = {
   aed: number;
@@ -33,9 +34,9 @@ function sumMonetary(rows: MonetaryRow[], rates?: Record<string, number>): Physi
   let idr = 0;
 
   for (const row of rows) {
-    aed += row.aed;
-    usdt += row.usdt != null && row.usdt > 0 ? row.usdt : convertAedToUsdt(row.aed, rates);
-    idr += row.idr ?? 0;
+    aed = roundTo14(aed + row.aed);
+    usdt = roundTo14(usdt + (row.usdt != null && row.usdt > 0 ? row.usdt : convertAedToUsdt(row.aed, rates)));
+    idr = roundTo14(idr + (row.idr ?? 0));
   }
 
   return { aed, usdt, idr };
@@ -55,7 +56,7 @@ function plIdrEstimate(plAed: number, buyTotals: PhysicalCurrencyTotals, sellTot
     return plAed * (sellTotals.idr / sellTotals.aed);
   }
   if (buyTotals.aed > 0 && buyTotals.idr > 0) {
-    return plAed * (buyTotals.idr / buyTotals.aed);
+    return buyTotals.aed > 0 ? plAed * (buyTotals.idr / buyTotals.aed) : 0;
   }
   return 0;
 }
@@ -67,9 +68,9 @@ export function computePhysicalKpiMetrics(
   isFixedDeal: (buy: PhysicalBuy) => boolean,
   rates?: Record<string, number>,
 ): PhysicalKpiMetrics {
-  const totalPurchasedGram = allBuys.reduce((sum, b) => sum + b.pureGram, 0);
-  const remainingGram = allBuys.reduce((sum, b) => sum + b.remainingWeight, 0);
-  const soldGram = Math.max(0, totalPurchasedGram - remainingGram);
+  const totalPurchasedGram = roundTo14(allBuys.reduce((sum, b) => sum + b.pureGram, 0));
+  const remainingGram = roundTo14(allBuys.reduce((sum, b) => sum + b.remainingWeight, 0));
+  const soldGram = roundTo14(Math.max(0, totalPurchasedGram - remainingGram));
   const soldPct =
     totalPurchasedGram > 0 ? Math.min(100, Math.round((soldGram / totalPurchasedGram) * 100)) : 0;
 
@@ -91,11 +92,11 @@ export function computePhysicalKpiMetrics(
     rates,
   );
 
-  const plAed = filteredSells.reduce((sum, s) => sum + s.profit, 0);
+  const plAed = roundTo14(filteredSells.reduce((sum, s) => sum + s.profit, 0));
   const pl: PhysicalCurrencyTotals = {
     aed: plAed,
-    usdt: convertAedToUsdt(plAed, rates),
-    idr: plIdrEstimate(plAed, buyValue, sellValue),
+    usdt: roundTo14(convertAedToUsdt(plAed, rates)),
+    idr: roundTo14(plIdrEstimate(plAed, buyValue, sellValue)),
   };
 
   return {
