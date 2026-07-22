@@ -65,12 +65,46 @@ export function computeSellMetrics(
   return { sellValue, costValue, profit, margin };
 }
 
+/** USDT cost per pure gram from buy lot — IDR/USDT path only, no AED. */
+export function buyCostPerGramUsdt(buy: {
+  pureGram: number;
+  totalUsdt?: number;
+  idrGram?: number;
+  idrToUsdt?: number;
+  idrRate?: number;
+}): number {
+  if (buy.pureGram <= 0) return 0;
+  if (buy.totalUsdt != null && buy.totalUsdt > 0) {
+    return roundTo14(buy.totalUsdt / buy.pureGram);
+  }
+  const idrToUsdt = buy.idrToUsdt ?? 0;
+  if (buy.idrGram && idrToUsdt > 0) {
+    return roundTo14(buy.idrGram / idrToUsdt);
+  }
+  if (buy.idrRate != null && buy.idrRate > 0) {
+    return roundTo14(buy.idrRate);
+  }
+  return 0;
+}
+
+/** Sell P&L in USDT from IDR/gram and USDT rate only. */
+export function computeSellMetricsUsdt(
+  calc: ReturnType<typeof computePhysicalTxn>,
+  costPerGramUsdt: number,
+) {
+  const sellValueUsdt = calc.totalUsdt;
+  const costValueUsdt = roundTo14(calc.pureGram * costPerGramUsdt);
+  const profitUsdt = roundTo14(sellValueUsdt - costValueUsdt);
+  const margin = sellValueUsdt > 0 ? roundTo14((profitUsdt / sellValueUsdt) * 100) : 0;
+  return { sellValueUsdt, costValueUsdt, profitUsdt, margin };
+}
+
 export function fmtNum(n: number, digits = 3) {
   return n.toLocaleString('en-AE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export function grossWeightFromRemaining(buy: { remainingWeight: number; pureConversion: number }) {
-  return buy.pureConversion > 0 ? roundTo14(buy.remainingWeight / buy.pureConversion) : buy.remainingWeight;
+export function grossWeightFromRemaining(buy: { remainingWeight: number }) {
+  return buy.remainingWeight;
 }
 
 export function buildSellFormDefaultsFromBuy(buy: {

@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFundLedger } from '@/hooks/useFundLedger';
 import { getBranchUsdtBalanceAction } from '@/app/actions/usdtActions';
-import { btnPrimary, btnSecondary, pageHeader, pageTitle, pageSubtitle } from '@/lib/ui';
+import DateFilterBar from '@/components/ui/DateFilterBar';
+import { btnPrimary, btnSecondary, pageHeader, pageTitle } from '@/lib/ui';
 import FundLedgerKpiSection from './FundLedgerKpiSection';
 import FundLedgerTable from './FundLedgerTable';
 import NewEntryModal from './NewEntryModal';
@@ -45,6 +46,9 @@ export default function FundLedgerPage() {
   const [paymentKey, setPaymentKey] = useState(0);
   const [viewingEntry, setViewingEntry] = useState<FundEntityLedgerEntry | null>(null);
   const [branchBalances, setBranchBalances] = useState<{ usdt: number; aed: number; idr: number } | null>(null);
+  const [dateFilter, setDateFilter] = useState('all-time');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   const fetchCapital = useCallback(async () => {
     if (!branchId) return;
@@ -120,9 +124,6 @@ export default function FundLedgerPage() {
               </span>
             )}
           </div>
-          <p className={pageSubtitle}>
-            Entity settlements, branch expenses, and cash balances in one ledger
-          </p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
@@ -169,6 +170,15 @@ export default function FundLedgerPage() {
         </div>
       </header>
 
+      <DateFilterBar
+        dateFilter={dateFilter}
+        setDateFilter={setDateFilter}
+        customStartDate={customStartDate}
+        setCustomStartDate={setCustomStartDate}
+        customEndDate={customEndDate}
+        setCustomEndDate={setCustomEndDate}
+      />
+
       <FundLedgerKpiSection
         branchBalances={branchBalances}
         totalReceivable={totalReceivable}
@@ -185,6 +195,9 @@ export default function FundLedgerPage() {
         customers={customers}
         selectedCustomerId={selectedCustomerId}
         loading={loading || isInitialLoading}
+        dateFilter={dateFilter}
+        customStartDate={customStartDate}
+        customEndDate={customEndDate}
         onSelectCustomer={selectCustomer}
         onViewEntry={entry => setViewingEntry(entry)}
         onDeleteEntry={handleDeleteEntry}

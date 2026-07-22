@@ -83,8 +83,6 @@ export default function FundLedgerKpiSection({
     <section className="mb-8" aria-label="Fund summary">
       <div className="mb-3">
         <p className={sectionEyebrow}>Branch summary</p>
-        <h2 className="text-base font-bold text-slate-900 sm:text-lg">Cash & entity position</h2>
-        <p className="mt-1 text-xs text-slate-500">Live branch balances and open entity settlements</p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 [&>*]:motion-safe:animate-fade-in-up">

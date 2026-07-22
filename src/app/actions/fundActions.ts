@@ -3,6 +3,7 @@
 import { getSessionUser } from '@/lib/auth';
 import { query, pool } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { parseCalendarDate } from '@/lib/businessTime';
 import { addExpenseSchema } from '@/lib/validations';
 import type {
   FundEntityLedgerEntry,
@@ -18,7 +19,7 @@ function mapRow(row: Record<string, unknown>): FundEntityLedgerEntry {
     id: row.id as string,
     branchId: row.branch_id as string,
     customerId: row.customer_id as string,
-    entryDate: (row.entry_date as string) ?? new Date().toISOString(),
+    entryDate: parseCalendarDate(row.entry_date) || new Date().toISOString(),
     description: (row.description as string) ?? '',
     debit: Number(row.debit) || 0,
     credit: Number(row.credit) || 0,
@@ -30,7 +31,7 @@ function mapRow(row: Record<string, unknown>): FundEntityLedgerEntry {
     createdBy: (row.created_by as string) ?? undefined,
     createdByName: (row.created_by_name as string) ?? undefined,
     createdByUserId: (row.created_by_user_id as string) ?? undefined,
-    createdAt: (row.created_at as string) ?? new Date().toISOString(),
+    createdAt: parseCalendarDate(row.created_at) || new Date().toISOString(),
   };
 }
 

@@ -8,8 +8,10 @@ import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbAddPhysicalSellAction } from '@/app/actions/physicalActions';
 import {
   buildSellFormDefaultsFromBuy,
+  buyCostPerGramUsdt,
   computePhysicalTxn,
   computeSellMetrics,
+  computeSellMetricsUsdt,
   generatePhysicalTxnId,
   normalizePhysicalSellForm,
   type PhysicalSellFormFields,
@@ -50,7 +52,13 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
   const [customers, setCustomers] = useState<{ id: string; name: string; balance: string | number }[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  const costPerGram = buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0;
+  const costPerGramUsdt = buyCostPerGramUsdt(buy);
+  const costPerGramAed =
+    buy.pureGram > 0 && buy.tltAedValue && buy.tltAedValue > 0
+      ? buy.tltAedValue / buy.pureGram
+      : buy.pureGram > 0
+        ? buy.buyValue / buy.pureGram
+        : 0;
   const maxRemaining = buy.remainingWeight;
   const stockName = buy.item || buy.particulars || 'Stock';
 
@@ -87,9 +95,8 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
     const idrToUsdt = parseFloat(cleanCommaNumber(form.idrToUsdtStr)) || 17770;
     const usdtToAed = parseFloat(cleanCommaNumber(form.usdtToAedStr)) || 0;
     const base = computePhysicalTxn({ grossWeight, touch, touchLoss, idrGram, idrToUsdt, usdtToAed: usdtToAed || undefined });
-    const metrics = computeSellMetrics(base, costPerGram);
-    const costValueUsdt = base.totalUsdt > 0 ? (metrics.costValue / base.total) * base.totalUsdt : 0;
-    const profitUsdt = base.totalUsdt - costValueUsdt;
+    const usdtMetrics = computeSellMetricsUsdt(base, costPerGramUsdt);
+    const aedMetrics = usdtToAed > 0 ? computeSellMetrics(base, costPerGramAed) : null;
     return {
       grossWeight,
       touch,
@@ -103,11 +110,14 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
       pureGram: base.pureGram,
       idrRate: base.idrRate,
       total: base.total,
-      ...metrics,
-      costValueUsdt,
-      profitUsdt,
+      sellValue: aedMetrics?.sellValue ?? usdtMetrics.sellValueUsdt,
+      costValue: usdtMetrics.costValueUsdt,
+      profit: usdtMetrics.profitUsdt,
+      margin: usdtMetrics.margin,
+      costValueUsdt: usdtMetrics.costValueUsdt,
+      profitUsdt: usdtMetrics.profitUsdt,
     };
-  }, [form, costPerGram]);
+  }, [form, costPerGramUsdt, costPerGramAed]);
 
   useEffect(() => {
     const usdtVal = calc.totalUsdt;
@@ -142,7 +152,7 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
       idrGram: calc.idrGram,
       idrToUsdt: calc.idrToUsdt,
       idrRate: calc.idrRate,
-      total: calc.total,
+      total: calc.usdtToAed > 0 ? calc.total : calc.totalUsdt,
       sellValue: calc.sellValue,
       txnId: form.txnId,
       customerId: form.customerId || undefined,

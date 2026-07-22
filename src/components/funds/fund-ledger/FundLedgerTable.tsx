@@ -2,7 +2,9 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import type { Expense, FundEntityBalance, FundEntityLedgerEntry, Customer } from '@/types';
+import { parseCalendarDate } from '@/lib/businessTime';
 import { badgeClass } from '@/lib/badgeClass';
+import { isDateInRange, resolveDateFilterRange } from '@/lib/dateFilterRange';
 import { btnPrimary, dataTable, formInput, tableWrap } from '@/lib/ui';
 import { txnTd, txnTdFromTo, txnTh, txnThSortable } from '@/lib/transactionTableStyles';
 
@@ -33,6 +35,9 @@ interface FundLedgerTableProps {
   customers: Customer[];
   selectedCustomerId: string | null;
   loading: boolean;
+  dateFilter: string;
+  customStartDate: string;
+  customEndDate: string;
   onSelectCustomer: (customerId: string | null) => void;
   onViewEntry: (entry: FundEntityLedgerEntry) => void;
   onDeleteEntry: (entry: FundEntityLedgerEntry) => void;
@@ -63,7 +68,7 @@ function entryToRow(entry: FundEntityLedgerEntry, getCustomerName: (id: string) 
   const isDebit = entry.debit > 0;
   return {
     id: entry.id,
-    date: entry.entryDate.slice(0, 10),
+    date: parseCalendarDate(entry.entryDate),
     kind: 'entry',
     typeLabel: isDebit ? 'Receivable' : 'Payable',
     badgeKind: isDebit ? 'profit' : 'loss',
@@ -80,7 +85,7 @@ function entryToRow(entry: FundEntityLedgerEntry, getCustomerName: (id: string) 
 function expenseToRow(expense: Expense): JournalRow {
   return {
     id: expense.id,
-    date: expense.date,
+    date: parseCalendarDate(expense.date),
     kind: 'expense',
     typeLabel: expense.type.toUpperCase(),
     badgeKind: expense.type,
@@ -107,6 +112,9 @@ export default function FundLedgerTable({
   customers,
   selectedCustomerId,
   loading,
+  dateFilter,
+  customStartDate,
+  customEndDate,
   onSelectCustomer,
   onViewEntry,
   onDeleteEntry,
@@ -115,8 +123,6 @@ export default function FundLedgerTable({
 }: FundLedgerTableProps) {
   const [activeTab, setActiveTab] = useState<FundLedgerTab>('all');
   const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [refFilter, setRefFilter] = useState('all');
   const [entitySearch, setEntitySearch] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
@@ -126,12 +132,21 @@ export default function FundLedgerTable({
   const getCustomerName = (cid: string) =>
     customers.find(c => c.id === cid)?.name ?? cid.slice(0, 8);
 
-  const tabCounts = useMemo(() => ({
-    all: entries.length + expenses.length,
-    entries: entries.length,
-    expenses: expenses.length,
-    entities: balances.length,
-  }), [entries.length, expenses.length, balances.length]);
+  const dateRange = useMemo(
+    () => resolveDateFilterRange(dateFilter, customStartDate, customEndDate),
+    [dateFilter, customStartDate, customEndDate],
+  );
+
+  const tabCounts = useMemo(() => {
+    const datedEntries = entries.filter(e => isDateInRange(parseCalendarDate(e.entryDate), dateRange));
+    const datedExpenses = expenses.filter(e => isDateInRange(parseCalendarDate(e.date), dateRange));
+    return {
+      all: datedEntries.length + datedExpenses.length,
+      entries: datedEntries.length,
+      expenses: datedExpenses.length,
+      entities: balances.length,
+    };
+  }, [entries, expenses, balances.length, dateRange]);
 
   const journalRows = useMemo(() => {
     const getName = (id: string) => customers.find(c => c.id === id)?.name ?? id.slice(0, 8);
@@ -148,8 +163,7 @@ export default function FundLedgerTable({
     }
 
     rows = rows.filter(row => {
-      if (dateFrom && row.date < dateFrom) return false;
-      if (dateTo && row.date > dateTo) return false;
+      if (!isDateInRange(row.date, dateRange)) return false;
       if (refFilter !== 'all' && row.ref !== refFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -170,7 +184,7 @@ export default function FundLedgerTable({
     });
 
     return rows;
-  }, [activeTab, entries, expenses, selectedCustomerId, customers, dateFrom, dateTo, refFilter, search, sortField, sortDir]);
+  }, [activeTab, entries, expenses, selectedCustomerId, customers, dateRange, refFilter, search, sortField, sortDir]);
 
   const totals = useMemo(() => {
     const debit = journalRows.reduce((s, r) => s + r.debit, 0);
@@ -194,12 +208,10 @@ export default function FundLedgerTable({
       <span className="ml-1 inline-block text-[9px]">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span>
     ) : null;
 
-  const hasFilters = search || dateFrom || dateTo || refFilter !== 'all' || selectedCustomerId;
+  const hasFilters = search || dateFilter !== 'all-time' || refFilter !== 'all' || selectedCustomerId;
 
   const clearFilters = () => {
     setSearch('');
-    setDateFrom('');
-    setDateTo('');
     setRefFilter('all');
     onSelectCustomer(null);
   };
@@ -259,8 +271,6 @@ export default function FundLedgerTable({
             </div>
             {activeTab !== 'entities' && (
               <>
-                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" title="From" />
-                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700" title="To" />
                 <select
                   value={refFilter}
                   onChange={e => setRefFilter(e.target.value)}
@@ -271,7 +281,7 @@ export default function FundLedgerTable({
                   <option value="settlement">Settlement</option>
                   <option value="expense">Expense</option>
                 </select>
-                {hasFilters && (
+                {(search || refFilter !== 'all' || selectedCustomerId) && (
                   <button type="button" onClick={clearFilters} className="text-xs font-semibold text-slate-400 hover:text-slate-600">
                     Clear
                   </button>

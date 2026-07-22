@@ -253,7 +253,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             bgColor="var(--warning-light)"
           />
           <KPICard
-            label="Initial Stock"
+            label="Pure Gram"
             value={buy.pureGram.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
             subValue="Total purchased"
             icon={
