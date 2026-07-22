@@ -212,7 +212,7 @@ export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbA
           referenceId: id,
           description: parts.join(' | '),
           ...currencyInfo,
-          settlementCurrency: currencyInfo.customerCurrency,
+          settlementCurrency: currencyInfo.settlementCurrency,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, buyId: id }, 'Auto ledger entry failed for buy');
@@ -365,7 +365,7 @@ export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<
           referenceId: id,
           description: parts.join(' | '),
           ...currencyInfo,
-          settlementCurrency: currencyInfo.customerCurrency,
+          settlementCurrency: currencyInfo.settlementCurrency,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, sellId: id }, 'Auto ledger entry failed for sell');
@@ -911,7 +911,7 @@ export async function dbAddPhysicalBulkSellAction(bulk: {
           referenceId: bulkSellId,
           description: parts.join(' | '),
           ...currencyInfo,
-          settlementCurrency: currencyInfo.customerCurrency,
+          settlementCurrency: currencyInfo.settlementCurrency,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, bulkSellId }, 'Auto ledger entry failed for bulk sell');
@@ -981,17 +981,36 @@ export async function dbDeletePhysicalBulkSellAction(bulkSellId: string): Promis
   }
 }
 
-async function getCustomerCurrencyInfo(customerId: string, usdtVal: number, aedVal: number | undefined, idrVal: number | undefined): Promise<{ customerCurrency?: string; customerCurrencyRate?: number }> {
+async function getCustomerCurrencyInfo(
+  customerId: string,
+  usdtVal: number,
+  aedVal: number | undefined,
+  idrVal: number | undefined,
+): Promise<{ customerCurrency: string; customerCurrencyRate?: number; settlementCurrency: string }> {
   try {
     const result = await query('SELECT currency FROM customers WHERE id = $1', [customerId]);
-    if (!result?.rows?.length || !usdtVal) return {};
-    const currency: string | null = result.rows[0]?.currency;
-    if (!currency) return {};
-    if (currency === 'AED' && aedVal) return { customerCurrency: 'AED', customerCurrencyRate: aedVal / usdtVal };
-    if (currency === 'IDR' && idrVal) return { customerCurrency: 'IDR', customerCurrencyRate: idrVal / usdtVal };
-    return {};
+    const profileCurrency: string = result.rows[0]?.currency || 'USDT';
+    if (!usdtVal) {
+      return { customerCurrency: profileCurrency, settlementCurrency: 'USDT' };
+    }
+    if (profileCurrency === 'AED' && aedVal) {
+      return {
+        customerCurrency: 'AED',
+        customerCurrencyRate: aedVal / usdtVal,
+        settlementCurrency: 'USDT',
+      };
+    }
+    if (profileCurrency === 'IDR' && idrVal) {
+      return {
+        customerCurrency: 'IDR',
+        customerCurrencyRate: idrVal / usdtVal,
+        settlementCurrency: 'USDT',
+      };
+    }
+    // No fiat rate on deal — ledger stays in USDT even for AED/IDR profile customers
+    return { customerCurrency: 'USDT', settlementCurrency: 'USDT' };
   } catch {
-    return {};
+    return { customerCurrency: 'USDT', settlementCurrency: 'USDT' };
   }
 }
 

@@ -1,8 +1,14 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
-import type { Customer, FundEntryDirection } from '@/types';
+import {
+  ledgerAmountFromSettlement,
+  resolveEntityLedgerCurrency,
+  toServerRate,
+  usesUsdtAnchoredRate,
+} from '@/lib/fundLedgerCurrency';
+import type { Customer, FundEntityLedgerEntry, FundEntryDirection } from '@/types';
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-all';
@@ -15,8 +21,10 @@ interface RecordPaymentModalProps {
   open: boolean;
   onClose: () => void;
   customers: Customer[];
+  entries: FundEntityLedgerEntry[];
   preselectedCustomerId?: string;
   preselectedAmount?: number;
+  preselectedLedgerCurrency?: string;
   onSubmit: (params: {
     customerId: string;
     direction: FundEntryDirection;
@@ -33,8 +41,10 @@ export default function RecordPaymentModal({
   open,
   onClose,
   customers,
+  entries,
   preselectedCustomerId,
   preselectedAmount,
+  preselectedLedgerCurrency,
   onSubmit,
 }: RecordPaymentModalProps) {
   const [customerId, setCustomerId] = useState(preselectedCustomerId ?? '');
@@ -43,7 +53,7 @@ export default function RecordPaymentModal({
   const blurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [direction, setDirection] = useState<FundEntryDirection>('credit');
   const [amount, setAmount] = useState('');
-  const [settlementCurrency, setSettlementCurrency] = useState('AED');
+  const [settlementCurrency, setSettlementCurrency] = useState('USDT');
   const [rate, setRate] = useState('');
   const [description, setDescription] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
@@ -55,10 +65,51 @@ export default function RecordPaymentModal({
   );
 
   const selectedCustomer = customers.find(c => c.id === customerId);
-  const customerCurrency = selectedCustomer?.currency || 'AED';
-  const needsRate = settlementCurrency !== customerCurrency;
+  const profileCurrency = selectedCustomer?.currency || 'AED';
+
+  const ledgerCurrency = useMemo(() => {
+    if (preselectedLedgerCurrency && customerId === preselectedCustomerId) {
+      return preselectedLedgerCurrency;
+    }
+    if (!customerId) return 'USDT';
+    return resolveEntityLedgerCurrency(entries, customerId, profileCurrency);
+  }, [customerId, entries, preselectedCustomerId, preselectedLedgerCurrency, profileCurrency]);
+
+  const needsRate = settlementCurrency !== ledgerCurrency;
+  const usdtAnchored = needsRate && usesUsdtAnchoredRate(ledgerCurrency, settlementCurrency);
+  const profileDiffersFromLedger = profileCurrency !== ledgerCurrency;
 
   const showDropdown = focused && !customerId;
+
+  useEffect(() => {
+    if (!open) return;
+    setCustomerId(preselectedCustomerId ?? '');
+    setSearch('');
+    setFocused(false);
+    setDirection('credit');
+    setRate('');
+    setDescription('');
+    setEntryDate(new Date().toISOString().slice(0, 10));
+    setError(null);
+
+    const ledger = preselectedLedgerCurrency
+      ?? (preselectedCustomerId
+        ? resolveEntityLedgerCurrency(
+          entries,
+          preselectedCustomerId,
+          customers.find(c => c.id === preselectedCustomerId)?.currency,
+        )
+        : 'USDT');
+
+    const profile = customers.find(c => c.id === preselectedCustomerId)?.currency || 'AED';
+    const defaultSettlement = profile === 'AED' || profile === 'IDR' ? profile : ledger;
+    setSettlementCurrency(defaultSettlement);
+    setAmount(
+      preselectedAmount && defaultSettlement === ledger
+        ? String(preselectedAmount)
+        : '',
+    );
+  }, [open, preselectedCustomerId, preselectedAmount, preselectedLedgerCurrency, entries, customers]);
 
   const handleFocus = () => {
     if (blurTimer.current) clearTimeout(blurTimer.current);
@@ -75,7 +126,7 @@ export default function RecordPaymentModal({
     setFocused(false);
     setDirection('credit');
     setAmount('');
-    setSettlementCurrency('AED');
+    setSettlementCurrency('USDT');
     setRate('');
     setDescription('');
     setEntryDate(new Date().toISOString().slice(0, 10));
@@ -92,14 +143,19 @@ export default function RecordPaymentModal({
   const rateValid = !needsRate || numRate > 0;
   const canSubmit = customerId && numAmount > 0 && rateValid && !submitting;
 
-  // Sync settlement currency when customer changes
+  const ledgerCleared = needsRate && numRate > 0
+    ? ledgerAmountFromSettlement(numAmount, ledgerCurrency, settlementCurrency, numRate)
+    : numAmount;
+
   const selectCustomer = (c: Customer) => {
     setCustomerId(c.id);
     setSearch('');
     setFocused(false);
-    const curr = c.currency || 'AED';
-    setSettlementCurrency(curr);
+    const ledger = resolveEntityLedgerCurrency(entries, c.id, c.currency);
+    const profile = c.currency || 'AED';
+    setSettlementCurrency(profile === 'AED' || profile === 'IDR' ? profile : ledger);
     setRate('');
+    setAmount('');
   };
 
   const handleSubmit = async () => {
@@ -122,12 +178,12 @@ export default function RecordPaymentModal({
       amount: numAmount,
       description: description.trim() || `Payment ${direction === 'credit' ? 'received from' : 'made to'} ${selectedCustomer?.name ?? 'entity'}`,
       entryDate: entryDate || undefined,
-      customerCurrency,
+      customerCurrency: ledgerCurrency,
       settlementCurrency,
     };
 
     if (needsRate && numRate > 0) {
-      params.customerCurrencyRate = numRate;
+      params.customerCurrencyRate = toServerRate(ledgerCurrency, settlementCurrency, numRate);
     }
 
     const result = await onSubmit(params);
@@ -180,6 +236,26 @@ export default function RecordPaymentModal({
           )}
         </div>
 
+        {customerId && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs">
+            <p className="font-semibold text-slate-600">
+              Open balance currency: <span className="font-bold text-slate-900">{ledgerCurrency}</span>
+            </p>
+            {profileDiffersFromLedger && (
+              <p className="mt-1 text-slate-500">
+                Entity profile: <span className="font-bold text-slate-700">{profileCurrency}</span>
+                {' · '}
+                Settle in {profileCurrency} by entering the conversion rate below.
+              </p>
+            )}
+            {preselectedAmount != null && preselectedAmount > 0 && (
+              <p className="mt-1 font-mono font-bold text-emerald-700">
+                Outstanding: {preselectedAmount.toFixed(2)} {ledgerCurrency}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Direction toggle */}
         <div>
           <label className={labelClass}>Payment Direction</label>
@@ -229,7 +305,7 @@ export default function RecordPaymentModal({
                 type="button"
                 onClick={() => {
                   setSettlementCurrency(curr);
-                  if (curr === customerCurrency) setRate('');
+                  if (curr === ledgerCurrency) setRate('');
                 }}
                 className={`rounded-xl border px-3 py-2.5 text-center transition-all ${
                   settlementCurrency === curr
@@ -243,9 +319,6 @@ export default function RecordPaymentModal({
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-[10px] font-semibold text-slate-400">
-            Customer currency: <span className="font-bold text-slate-600">{customerCurrency}</span>
-          </p>
         </div>
 
         {/* Amount + Date */}
@@ -273,11 +346,16 @@ export default function RecordPaymentModal({
           </div>
         </div>
 
-        {/* Rate (only when currencies differ) */}
+        {/* Rate (when settlement currency differs from ledger currency) */}
         {needsRate && (
           <div>
             <label className={labelClass}>
-              Rate <span className="text-slate-400 font-normal normal-case tracking-normal">(1 {settlementCurrency} = ? {customerCurrency})</span>
+              Rate{' '}
+              <span className="text-slate-400 font-normal normal-case tracking-normal">
+                {usdtAnchored
+                  ? `(1 USDT = ? ${settlementCurrency})`
+                  : `(1 ${settlementCurrency} = ? ${ledgerCurrency})`}
+              </span>
             </label>
             <input
               type="number"
@@ -286,7 +364,7 @@ export default function RecordPaymentModal({
               className={inputClass}
               value={rate}
               onChange={e => setRate(e.target.value)}
-              placeholder={`e.g. 3.67 for USDT → AED`}
+              placeholder={usdtAnchored ? 'e.g. 3.67 for USDT → AED' : `Rate to ${ledgerCurrency}`}
             />
           </div>
         )}
@@ -328,7 +406,12 @@ export default function RecordPaymentModal({
             </p>
             {needsRate && numRate > 0 && (
               <p className="text-xs text-slate-500 mt-0.5 font-mono">
-                = {(numAmount * numRate).toFixed(2)} {customerCurrency} @ {numRate}
+                Clears {ledgerCleared.toFixed(2)} {ledgerCurrency} from open balance
+              </p>
+            )}
+            {!needsRate && (
+              <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                Ledger: {numAmount.toFixed(2)} {ledgerCurrency}
               </p>
             )}
           </div>

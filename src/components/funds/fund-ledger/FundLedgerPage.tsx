@@ -13,8 +13,9 @@ import ExpenseEntryModal from './ExpenseEntryModal';
 import EntryDetailModal from './EntryDetailModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import { useApp } from '@/context/AppContext';
-import { createBranchExpenseAction } from '@/app/actions/fundActions';
-import type { FundEntityLedgerEntry, ExpensePaymentMethod, ExpenseType } from '@/types';
+import { createBranchExpenseAction, deleteBranchExpenseAction } from '@/app/actions/fundActions';
+import { resolveEntityLedgerCurrency, sumPendingUsdt } from '@/lib/fundLedgerCurrency';
+import type { Expense, FundEntityLedgerEntry, ExpensePaymentMethod, ExpenseType } from '@/types';
 
 export default function FundLedgerPage() {
   const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
@@ -35,6 +36,7 @@ export default function FundLedgerPage() {
     createEntry,
     recordPayment,
     deleteEntry,
+    convertEntry,
     refresh,
   } = useFundLedger();
 
@@ -43,6 +45,7 @@ export default function FundLedgerPage() {
   const [showExpenseEntry, setShowExpenseEntry] = useState(false);
   const [preselectedEntity, setPreselectedEntity] = useState<string | undefined>(undefined);
   const [preselectedAmount, setPreselectedAmount] = useState<number>(0);
+  const [preselectedLedgerCurrency, setPreselectedLedgerCurrency] = useState<string | undefined>(undefined);
   const [paymentKey, setPaymentKey] = useState(0);
   const [viewingEntry, setViewingEntry] = useState<FundEntityLedgerEntry | null>(null);
   const [branchBalances, setBranchBalances] = useState<{ usdt: number; aed: number; idr: number } | null>(null);
@@ -62,9 +65,15 @@ export default function FundLedgerPage() {
 
   useEffect(() => { fetchCapital(); }, [fetchCapital]);
 
-  const openRecordPayment = (customerId?: string, amount?: number) => {
+  const openRecordPayment = (customerId?: string, amount?: number, ledgerCurrency?: string) => {
+    const profileCurrency = customerId
+      ? customers.find(c => c.id === customerId)?.currency
+      : undefined;
+    const resolvedLedger = ledgerCurrency
+      ?? (customerId ? resolveEntityLedgerCurrency(entries, customerId, profileCurrency) : undefined);
     setPreselectedEntity(customerId);
     setPreselectedAmount(amount ?? 0);
+    setPreselectedLedgerCurrency(resolvedLedger);
     setPaymentKey(k => k + 1);
     setShowRecordPayment(true);
   };
@@ -85,6 +94,17 @@ export default function FundLedgerPage() {
     await deleteEntry(entry.id);
     setViewingEntry(null);
     await fetchCapital();
+  };
+
+  const handleDeleteExpense = async (expense: Expense) => {
+    const result = await deleteBranchExpenseAction(expense.id);
+    if (result.success) {
+      await fetchCapital();
+      await refetchData();
+      showToast('Expense deleted', 'success');
+    } else {
+      showToast(result.error ?? 'Failed to delete expense', 'error');
+    }
   };
 
   const handleCreateExpense = async (params: {
@@ -108,6 +128,17 @@ export default function FundLedgerPage() {
   const branchExpenses = branchId
     ? expenses.filter(e => e.branchId === branchId)
     : expenses;
+
+  const handleConvertEntry = async (entryId: string, rate: number) => {
+    const result = await convertEntry(entryId, rate);
+    if (result.success) {
+      setViewingEntry(null);
+      await fetchCapital();
+    }
+    return result;
+  };
+
+  const pendingUsdt = sumPendingUsdt(entries, customers);
 
   const writeBlocked = !canWrite;
 
@@ -185,6 +216,7 @@ export default function FundLedgerPage() {
         totalPayable={totalPayable}
         netPosition={netPosition}
         entityCount={balances.length}
+        pendingUsdt={pendingUsdt}
         loading={loading || isInitialLoading}
       />
 
@@ -201,6 +233,7 @@ export default function FundLedgerPage() {
         onSelectCustomer={selectCustomer}
         onViewEntry={entry => setViewingEntry(entry)}
         onDeleteEntry={handleDeleteEntry}
+        onDeleteExpense={handleDeleteExpense}
         onRecordPayment={openRecordPayment}
         canWrite={canWrite}
       />
@@ -215,10 +248,17 @@ export default function FundLedgerPage() {
       <RecordPaymentModal
         key={paymentKey}
         open={showRecordPayment}
-        onClose={() => { setShowRecordPayment(false); setPreselectedEntity(undefined); setPreselectedAmount(0); }}
+        onClose={() => {
+          setShowRecordPayment(false);
+          setPreselectedEntity(undefined);
+          setPreselectedAmount(0);
+          setPreselectedLedgerCurrency(undefined);
+        }}
         customers={customers}
+        entries={entries}
         preselectedCustomerId={preselectedEntity}
         preselectedAmount={preselectedAmount}
+        preselectedLedgerCurrency={preselectedLedgerCurrency}
         onSubmit={handleRecordPayment}
       />
 
@@ -235,6 +275,7 @@ export default function FundLedgerPage() {
         customers={customers}
         onClose={() => setViewingEntry(null)}
         onDelete={handleDeleteEntry}
+        onConvert={handleConvertEntry}
         canWrite={canWrite}
       />
 

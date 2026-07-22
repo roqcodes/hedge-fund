@@ -8,6 +8,7 @@ import {
   getEntityBalanceAction,
   createFundLedgerEntryAction,
   deleteFundLedgerEntryAction,
+  convertFundLedgerEntryAction,
 } from '@/app/actions/fundActions';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { getKpiTotals } from '@/lib/funds/calculations';
@@ -53,6 +54,7 @@ export interface FundLedgerActions {
     settlementCurrency?: string;
   }) => Promise<{ success: boolean; error?: string; entryId?: string }>;
   deleteEntry: (entryId: string) => Promise<{ success: boolean; error?: string }>;
+  convertEntry: (entryId: string, rate: number) => Promise<{ success: boolean; error?: string }>;
   refresh: () => Promise<void>;
 }
 
@@ -182,6 +184,19 @@ export function useFundLedger(): UseFundLedgerReturn {
     [refreshLedger, showToast],
   );
 
+  const convertEntry = useCallback(
+    async (entryId: string, rate: number) => {
+      const result = await convertFundLedgerEntryAction({ entryId, rate });
+      if (result.success) {
+        await refreshLedger();
+        showToast('Entry converted to customer currency', 'success');
+        return { success: true };
+      }
+      return { success: false, error: result.error };
+    },
+    [refreshLedger, showToast],
+  );
+
   const recordPayment = useCallback(
     async (params: {
       customerId: string;
@@ -234,6 +249,7 @@ export function useFundLedger(): UseFundLedgerReturn {
     createEntry,
     recordPayment,
     deleteEntry,
+    convertEntry,
     refresh: useCallback(async () => {
       await Promise.all([refreshLedger(), fetchCustomers()]);
     }, [refreshLedger, fetchCustomers]),

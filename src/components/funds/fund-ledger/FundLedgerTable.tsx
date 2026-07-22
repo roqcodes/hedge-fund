@@ -3,6 +3,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import type { Expense, FundEntityBalance, FundEntityLedgerEntry, Customer } from '@/types';
 import { parseCalendarDate } from '@/lib/businessTime';
+import { resolveEntityLedgerCurrency, resolveEntryLedgerCurrency, isPendingLedgerEntry } from '@/lib/fundLedgerCurrency';
 import { badgeClass } from '@/lib/badgeClass';
 import { isDateInRange, resolveDateFilterRange } from '@/lib/dateFilterRange';
 import { btnPrimary, dataTable, formInput, tableWrap } from '@/lib/ui';
@@ -26,6 +27,7 @@ interface JournalRow {
   credit: number;
   ref: string;
   entry?: FundEntityLedgerEntry;
+  expense?: Expense;
 }
 
 interface FundLedgerTableProps {
@@ -41,7 +43,8 @@ interface FundLedgerTableProps {
   onSelectCustomer: (customerId: string | null) => void;
   onViewEntry: (entry: FundEntityLedgerEntry) => void;
   onDeleteEntry: (entry: FundEntityLedgerEntry) => void;
-  onRecordPayment: (customerId?: string, amount?: number) => void;
+  onDeleteExpense: (expense: Expense) => void;
+  onRecordPayment: (customerId?: string, amount?: number, ledgerCurrency?: string) => void;
   canWrite: boolean;
 }
 
@@ -64,17 +67,23 @@ function fmtAmount(n: number, currency: string) {
   return `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
-function entryToRow(entry: FundEntityLedgerEntry, getCustomerName: (id: string) => string): JournalRow {
+function entryToRow(
+  entry: FundEntityLedgerEntry,
+  getCustomerName: (id: string) => string,
+  getProfileCurrency: (id: string) => string | undefined,
+): JournalRow {
   const isDebit = entry.debit > 0;
+  const profileCurrency = getProfileCurrency(entry.customerId);
+  const pending = isPendingLedgerEntry(entry, profileCurrency);
   return {
     id: entry.id,
     date: parseCalendarDate(entry.entryDate),
     kind: 'entry',
-    typeLabel: isDebit ? 'Receivable' : 'Payable',
-    badgeKind: isDebit ? 'profit' : 'loss',
+    typeLabel: pending ? 'Pending' : isDebit ? 'Receivable' : 'Payable',
+    badgeKind: pending ? 'pending' : isDebit ? 'profit' : 'loss',
     counterparty: getCustomerName(entry.customerId),
     description: entry.description,
-    currency: entry.settlementCurrency || entry.customerCurrency || 'AED',
+    currency: resolveEntryLedgerCurrency(entry),
     debit: entry.debit,
     credit: entry.credit,
     ref: entry.referenceType,
@@ -95,6 +104,7 @@ function expenseToRow(expense: Expense): JournalRow {
     debit: expense.amount,
     credit: 0,
     ref: 'expense',
+    expense,
   };
 }
 
@@ -118,6 +128,7 @@ export default function FundLedgerTable({
   onSelectCustomer,
   onViewEntry,
   onDeleteEntry,
+  onDeleteExpense,
   onRecordPayment,
   canWrite,
 }: FundLedgerTableProps) {
@@ -150,13 +161,14 @@ export default function FundLedgerTable({
 
   const journalRows = useMemo(() => {
     const getName = (id: string) => customers.find(c => c.id === id)?.name ?? id.slice(0, 8);
+    const getProfileCurrency = (id: string) => customers.find(c => c.id === id)?.currency;
     let rows: JournalRow[] = [];
 
     if (activeTab === 'all' || activeTab === 'entries') {
       const filteredEntries = selectedCustomerId
         ? entries.filter(e => e.customerId === selectedCustomerId)
         : entries;
-      rows = rows.concat(filteredEntries.map(e => entryToRow(e, getName)));
+      rows = rows.concat(filteredEntries.map(e => entryToRow(e, getName, getProfileCurrency)));
     }
     if (activeTab === 'all' || activeTab === 'expenses') {
       rows = rows.concat(expenses.map(expenseToRow));
@@ -219,6 +231,13 @@ export default function FundLedgerTable({
   const selectedBalance = selectedCustomerId
     ? balances.find(b => b.customerId === selectedCustomerId)
     : null;
+  const selectedLedgerCurrency = selectedBalance
+    ? resolveEntityLedgerCurrency(
+      entries,
+      selectedBalance.customerId,
+      customers.find(c => c.id === selectedBalance.customerId)?.currency,
+    )
+    : 'USDT';
 
   return (
     <>
@@ -301,7 +320,8 @@ export default function FundLedgerTable({
               <div>
                 <p className="text-sm font-bold text-slate-900">{selectedBalance.customerName}</p>
                 <p className={`text-xs font-bold font-mono ${selectedBalance.net > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {selectedBalance.net > 0 ? 'Owes ' : 'Owe '}{Math.abs(selectedBalance.net).toFixed(2)}
+                  {selectedBalance.net > 0 ? 'Owes ' : 'Owe '}
+                  {Math.abs(selectedBalance.net).toFixed(2)} {selectedLedgerCurrency}
                 </p>
               </div>
             </div>
@@ -309,7 +329,7 @@ export default function FundLedgerTable({
               {canWrite && (
                 <button
                   type="button"
-                  onClick={() => onRecordPayment(selectedBalance.customerId, Math.abs(selectedBalance.net))}
+                  onClick={() => onRecordPayment(selectedBalance.customerId, Math.abs(selectedBalance.net), selectedLedgerCurrency)}
                   className={`${btnPrimary} !py-1.5 !px-3 !text-xs`}
                 >
                   Settle
@@ -343,6 +363,11 @@ export default function FundLedgerTable({
                   ) : (
                     filteredEntities.map(b => {
                       const isReceivable = b.net > 0;
+                      const ledgerCurrency = resolveEntityLedgerCurrency(
+                        entries,
+                        b.customerId,
+                        customers.find(c => c.id === b.customerId)?.currency,
+                      );
                       return (
                         <tr key={b.customerId} className="group">
                           <td className={`${txnTdFromTo} first:rounded-l-2xl`}>
@@ -360,20 +385,20 @@ export default function FundLedgerTable({
                             </div>
                           </td>
                           <td className={`${txnTd} text-right font-mono text-xs font-bold text-emerald-700`}>
-                            {b.totalDebit > 0 ? b.totalDebit.toFixed(2) : <span className="text-slate-300">—</span>}
+                            {b.totalDebit > 0 ? `${b.totalDebit.toFixed(2)} ${ledgerCurrency}` : <span className="text-slate-300">—</span>}
                           </td>
                           <td className={`${txnTd} text-right font-mono text-xs font-bold text-red-600`}>
-                            {b.totalCredit > 0 ? b.totalCredit.toFixed(2) : <span className="text-slate-300">—</span>}
+                            {b.totalCredit > 0 ? `${b.totalCredit.toFixed(2)} ${ledgerCurrency}` : <span className="text-slate-300">—</span>}
                           </td>
                           <td className={`${txnTd} text-right font-mono text-xs font-bold ${isReceivable ? 'text-emerald-700' : 'text-red-600'}`}>
-                            {isReceivable ? '' : '−'}{Math.abs(b.net).toFixed(2)}
+                            {isReceivable ? '' : '−'}{Math.abs(b.net).toFixed(2)} {ledgerCurrency}
                           </td>
                           {canWrite && (
                             <td className={`${txnTd} last:rounded-r-2xl text-right`}>
                               {b.net !== 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => onRecordPayment(b.customerId, Math.abs(b.net))}
+                                  onClick={() => onRecordPayment(b.customerId, Math.abs(b.net), ledgerCurrency)}
                                   className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 shadow-sm hover:border-accent hover:text-accent transition-all"
                                 >
                                   Settle
@@ -462,20 +487,27 @@ export default function FundLedgerTable({
                         </td>
                         {canWrite && (
                           <td className={`${txnTd} last:rounded-r-2xl text-right`}>
-                            {row.entry && (
+                            {(row.entry || row.expense) && (
                               <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  type="button"
-                                  title="View"
-                                  onClick={e => { e.stopPropagation(); onViewEntry(row.entry!); }}
-                                  className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm hover:border-accent hover:text-accent"
-                                >
-                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                                </button>
+                                {row.entry && (
+                                  <button
+                                    type="button"
+                                    title="View"
+                                    onClick={e => { e.stopPropagation(); onViewEntry(row.entry!); }}
+                                    className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm hover:border-accent hover:text-accent"
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   title="Delete"
-                                  onClick={e => { e.stopPropagation(); onDeleteEntry(row.entry!); }}
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    if (!confirm(`Delete this ${row.kind === 'expense' ? 'expense' : 'entry'}? This cannot be undone.`)) return;
+                                    if (row.entry) onDeleteEntry(row.entry);
+                                    else if (row.expense) onDeleteExpense(row.expense);
+                                  }}
                                   className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm hover:border-red-400 hover:bg-red-50 hover:text-red-600"
                                 >
                                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>

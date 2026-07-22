@@ -15,6 +15,7 @@ interface FundLedgerKpiSectionProps {
   totalPayable: number;
   netPosition: number;
   entityCount: number;
+  pendingUsdt?: number;
   loading: boolean;
 }
 
@@ -62,6 +63,7 @@ export default function FundLedgerKpiSection({
   totalPayable,
   netPosition,
   entityCount,
+  pendingUsdt = 0,
   loading,
 }: FundLedgerKpiSectionProps) {
   if (loading) {
@@ -126,7 +128,7 @@ export default function FundLedgerKpiSection({
         <StatCard
           label="Receivables"
           value={fmt(totalReceivable)}
-          sub="Entities owe branch"
+          sub={pendingUsdt > 0 ? `Active only · ${fmt(pendingUsdt)} USDT pending` : 'Entities owe branch'}
           color="#059669"
           bgColor="#d1fae5"
           valueClass="text-emerald-600"

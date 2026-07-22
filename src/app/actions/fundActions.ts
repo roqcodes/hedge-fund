@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth';
 import { query, pool } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { parseCalendarDate } from '@/lib/businessTime';
+import { EXCLUDE_PENDING_LEDGER_SQL } from '@/lib/fundLedgerCurrency';
 import { addExpenseSchema } from '@/lib/validations';
 import type {
   FundEntityLedgerEntry,
@@ -77,6 +78,7 @@ export async function getEntityBalancesAction(
        FROM fund_entity_ledger l
        JOIN customers c ON c.id = l.customer_id
        WHERE l.branch_id = $1
+       ${EXCLUDE_PENDING_LEDGER_SQL}
        GROUP BY l.customer_id, c.name
        ORDER BY c.name ASC`,
       [branchId],
@@ -109,6 +111,7 @@ export async function getEntityBalanceAction(
        FROM fund_entity_ledger l
        JOIN customers c ON c.id = l.customer_id
        WHERE l.branch_id = $1 AND l.customer_id = $2
+       ${EXCLUDE_PENDING_LEDGER_SQL}
        GROUP BY l.customer_id, c.name`,
       [branchId, customerId],
     );
@@ -288,6 +291,73 @@ export async function updateFundLedgerEntryAction(params: {
   }
 }
 
+export async function convertFundLedgerEntryAction(params: {
+  entryId: string;
+  rate: number;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const { entryId, rate } = params;
+    if (!rate || rate <= 0) return { success: false, error: 'Rate must be greater than zero' };
+
+    const entryRes = await query(
+      `SELECT e.*, c.currency AS profile_currency, b.slug
+       FROM fund_entity_ledger e
+       JOIN customers c ON c.id = e.customer_id
+       JOIN branches b ON b.id = e.branch_id
+       WHERE e.id = $1`,
+      [entryId],
+    );
+    if (entryRes.rows.length === 0) return { success: false, error: 'Entry not found' };
+
+    const row = entryRes.rows[0];
+    const branchSlug = String(row.slug);
+    const user = await getSessionUser(branchSlug);
+    if (!user) return { success: false, error: 'Not authenticated' };
+
+    const profileCurrency = String(row.profile_currency || '');
+    if (!['AED', 'IDR'].includes(profileCurrency)) {
+      return { success: false, error: 'Only AED/IDR profile entities can convert pending USDT entries' };
+    }
+
+    const ledgerCurrency = String(row.customer_currency || row.settlement_currency || 'USDT');
+    if (ledgerCurrency !== 'USDT') {
+      return { success: false, error: 'Entry is already in customer currency' };
+    }
+
+    const usdtAmount = (Number(row.debit) || 0) > 0 ? Number(row.debit) : Number(row.credit);
+    if (!usdtAmount || usdtAmount <= 0) return { success: false, error: 'Invalid entry amount' };
+
+    const convertedAmount = usdtAmount * rate;
+    const isDebit = Number(row.debit) > 0;
+    const descriptionSuffix = ` | Converted ${usdtAmount.toFixed(2)} USDT @ ${rate} ${profileCurrency}/USDT`;
+    const description = String(row.description || '').includes('Converted ')
+      ? String(row.description)
+      : `${String(row.description || '').trim()}${descriptionSuffix}`.trim();
+
+    await query(
+      `UPDATE fund_entity_ledger
+       SET debit = $1, credit = $2,
+           customer_currency = $3, customer_currency_rate = $4, settlement_currency = 'USDT',
+           description = $5
+       WHERE id = $6`,
+      [
+        isDebit ? convertedAmount : 0,
+        isDebit ? 0 : convertedAmount,
+        profileCurrency,
+        rate,
+        description,
+        entryId,
+      ],
+    );
+
+    logger.info({ entryId, rate, profileCurrency, usdtAmount, convertedAmount }, 'Fund ledger entry converted');
+    return { success: true };
+  } catch (err) {
+    logger.error({ err, entryId: params.entryId }, 'Failed to convert fund ledger entry');
+    return { success: false, error: 'Failed to convert entry' };
+  }
+}
+
 /**
  * Auto-create a ledger entry from another module (physical, usdt, etc.)
  * Returns the entry ID.
@@ -456,6 +526,84 @@ export async function createBranchExpenseAction(params: {
     await client.query('ROLLBACK');
     logger.error({ err, params }, 'Failed to create branch expense');
     return { success: false, error: 'Failed to record expense' };
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteBranchExpenseAction(
+  expenseId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const expenseRes = await query(
+    `SELECT e.*, b.slug AS branch_slug
+     FROM expenses e
+     JOIN branches b ON b.id = e.branch_id
+     WHERE e.id = $1`,
+    [expenseId],
+  );
+  if (expenseRes.rows.length === 0) return { success: false, error: 'Expense not found' };
+
+  const row = expenseRes.rows[0];
+  const branchId = String(row.branch_id);
+  const branchSlug = String(row.branch_slug);
+  const amount = parseFloat(String(row.amount)) || 0;
+  const paymentMethod = (row.payment_method as ExpensePaymentMethod) ?? 'AED';
+  const category = String(row.category);
+  const description = String(row.description);
+  const notes = `${category}: ${description} (${paymentMethod})`;
+
+  const user = await getSessionUser(branchSlug);
+  if (!user) return { success: false, error: 'Not authenticated' };
+
+  const balanceCol = balanceColumnForCurrency(paymentMethod);
+  const timestamp = new Date().toISOString();
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const delRes = await client.query('DELETE FROM expenses WHERE id = $1 RETURNING id', [expenseId]);
+    if (delRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Expense not found' };
+    }
+
+    await client.query(
+      `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund, aed_balance, idr_balance)
+       VALUES ($1, 0, 0, 0, 0) ON CONFLICT (branch_id) DO NOTHING`,
+      [branchId],
+    );
+
+    await client.query(
+      `UPDATE branch_usdt_balances SET ${balanceCol} = ${balanceCol} + $1, updated_at = CURRENT_TIMESTAMP WHERE branch_id = $2`,
+      [amount, branchId],
+    );
+
+    if (paymentMethod === 'AED') {
+      await client.query(
+        `UPDATE branches SET current_balance = current_balance + $1, last_activity = $2 WHERE id = $3`,
+        [amount, timestamp, branchId],
+      );
+    } else {
+      await client.query(
+        `UPDATE branches SET last_activity = $1 WHERE id = $2`,
+        [timestamp, branchId],
+      );
+    }
+
+    await client.query(
+      `DELETE FROM transactions
+       WHERE branch_id = $1 AND type = 'expense' AND to_entity = 'External (Expense)' AND amount = $2 AND notes = $3`,
+      [branchId, amount, notes],
+    );
+
+    await client.query('COMMIT');
+    logger.info({ expenseId, branchId, amount, paymentMethod }, 'Branch expense deleted');
+    return { success: true };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error({ err, expenseId }, 'Failed to delete branch expense');
+    return { success: false, error: 'Failed to delete expense' };
   } finally {
     client.release();
   }
