@@ -108,6 +108,10 @@ export default function USDTSellModal({
     const usdtAmount = parseFloat(cleanCommaNumber(form.usdtAmountStr)) || 0;
     const cost = parseFloat(cleanCommaNumber(form.costStr)) || 0;
     const margin = parseFloat(cleanCommaNumber(form.marginStr)) || 0;
+    if (!form.customerName.trim()) {
+      alert('Customer is required');
+      return;
+    }
     if (usdtAmount <= 0 || cost <= 0) {
       alert('USDT amount and cost are required');
       return;

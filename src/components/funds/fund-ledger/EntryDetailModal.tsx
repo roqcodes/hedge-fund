@@ -27,7 +27,9 @@ export default function EntryDetailModal({
   const isDebit = entry.debit > 0;
   const amount = isDebit ? entry.debit : entry.credit;
   const hasCurrency = entry.customerCurrency && entry.customerCurrencyRate && entry.customerCurrencyRate > 0;
+  const settlementCurr = entry.settlementCurrency || 'USDT';
   const convertedAmount = hasCurrency ? amount * entry.customerCurrencyRate! : 0;
+  const settlementAmount = hasCurrency ? amount / entry.customerCurrencyRate! : amount;
 
   const handleDelete = () => {
     if (confirm('Delete this ledger entry? This cannot be undone.')) {
@@ -71,7 +73,7 @@ export default function EntryDetailModal({
             </p>
             <p className={`text-xl font-black font-mono ${isDebit ? 'text-emerald-700' : 'text-red-700'}`}>
               {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              <span className="text-sm font-bold text-slate-500 ml-1">USDT</span>
+              <span className="text-sm font-bold text-slate-500 ml-1">{entry.customerCurrency || 'USDT'}</span>
             </p>
             <p className="text-[11px] text-slate-400 font-medium mt-0.5">
               {isDebit ? 'Entity owes branch' : 'Branch owes entity'}
@@ -83,20 +85,22 @@ export default function EntryDetailModal({
         {hasCurrency && (
           <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5">
             <p className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-500 mb-3">
-              Conversion &mdash; {entry.customerCurrency}
+              {entry.settlementCurrency && entry.settlementCurrency !== entry.customerCurrency
+                ? `Settlement Conversion &mdash; ${entry.settlementCurrency} &rarr; ${entry.customerCurrency}`
+                : `Conversion &mdash; {entry.customerCurrency}`}
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-indigo-100 bg-white/60 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Converted Amount</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Settlement Amount</p>
                 <p className="text-xl font-black text-indigo-700 font-mono">
-                  {convertedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  <span className="text-sm font-bold text-indigo-500 ml-1">{entry.customerCurrency}</span>
+                  {settlementAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className="text-sm font-bold text-indigo-500 ml-1">{entry.settlementCurrency || 'USDT'}</span>
                 </p>
               </div>
               <div className="rounded-xl border border-indigo-100 bg-white/60 p-4">
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Conversion Rate</p>
                 <p className="text-xl font-black text-indigo-700 font-mono">
-                  1 USDT = {entry.customerCurrencyRate} {entry.customerCurrency}
+                  1 {entry.settlementCurrency || 'USDT'} = {entry.customerCurrencyRate} {entry.customerCurrency}
                 </p>
               </div>
             </div>

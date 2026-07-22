@@ -214,7 +214,7 @@ export default function PhysicalBulkSellDetailModal({
             <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50 p-4">
               <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-1">Sell Value (USDT)</p>
               <div className="text-2xl font-black text-indigo-700">
-                <PhysicalAmountDisplay aedAmount={bulkSell.sellValue} size="lg" showUnit={false} align="left" />
+                <PhysicalAmountDisplay usdtAmount={bulkSell.totalUsdt} aedAmount={bulkSell.sellValue} size="lg" showUnit={false} align="left" />
               </div>
             </div>
             <div className={`rounded-2xl border p-4 ${profitIsPositive ? 'bg-emerald-50 border-emerald-200/70' : 'bg-red-50 border-red-200/70'}`}>
@@ -283,7 +283,7 @@ export default function PhysicalBulkSellDetailModal({
                         {toUsdt(sell.costValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-3 py-3 text-right font-mono font-semibold text-slate-700">
-                        {toUsdt(sell.sellValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {(sell.totalUsdt ?? toUsdt(sell.sellValue)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className={`px-3 py-3 text-right font-mono font-black ${rowProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                         {rowProfit >= 0 ? '+' : ''}{toUsdt(rowProfit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

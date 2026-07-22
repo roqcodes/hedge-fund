@@ -31,7 +31,7 @@ import { normalizeOrderStatus } from '@/lib/icTransfer/orderStatus';
 import { isByHandSale } from '@/lib/icTransfer/byHand';
 import { isBranchHandledSale } from '@/lib/icTransfer/fulfillmentHandler';
 import { isBranchPortalRole } from '@/lib/rbac';
-import { normalizeHiddenPages, isBranchPageEnabled } from '@/lib/branchPages';
+import { normalizeHiddenPages } from '@/lib/branchPages';
 import {
   customerOwnsSale,
   isBranchSubmittedSale,
@@ -176,32 +176,16 @@ async function assertBranchRateGroupCurrencyMatchesAdmin(
 }
 
 /** Assert the current user may perform IC Transfer admin actions. */
-async function assertAdminRole(branchSlug?: string): Promise<{ error: string } | { enteredBy: string; user: User }> {
+async function assertAdminRole(branchSlug?: string): Promise<{ error: string } | { enteredBy: string }> {
   const user = await resolveICTransferAdminUser(branchSlug);
   if (!user || !canPerformICTransferAdminActions(user)) {
     return { error: 'Unauthorized: admin role required' };
   }
-  if (user.role === 'branch_manager' && user.branchId) {
-    const branchRes = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
-    if (branchRes.rows.length > 0) {
-      const hiddenPages = Array.isArray(branchRes.rows[0].hidden_pages)
-        ? branchRes.rows[0].hidden_pages.map(String)
-        : [];
-      if (!isBranchPageEnabled('ic-transfer-admin', hiddenPages)) {
-        return { error: 'Unauthorized: admin page disabled for this branch' };
-      }
-    } else {
-      return { error: 'Unauthorized: branch not found' };
-    }
-  }
-  return { enteredBy: user.email || user.name || 'system', user };
+  return { enteredBy: user.email || user.name || 'system' };
 }
 
-export async function dbAddICRegionAction(name: string, country: string, branchSlug?: string): Promise<DbActionResult<ICRegion>> {
+export async function dbAddICRegionAction(name: string, country: string): Promise<DbActionResult<ICRegion>> {
   try {
-    const auth = await assertAdminRole(branchSlug);
-    if ('error' in auth) return { success: false, error: auth.error };
-
     const parsed = addRegionSchema.parse({ name, country });
     const id = crypto.randomUUID();
     const res = await query(`INSERT INTO ic_regions (id, name, country) VALUES ($1, $2, $3) RETURNING *`, [id, parsed.name, parsed.country]);
@@ -212,11 +196,8 @@ export async function dbAddICRegionAction(name: string, country: string, branchS
   }
 }
 
-export async function dbUpdateICRegionAction(id: string, name: string, country: string, branchSlug?: string): Promise<DbActionResult<ICRegion>> {
+export async function dbUpdateICRegionAction(id: string, name: string, country: string): Promise<DbActionResult<ICRegion>> {
   try {
-    const auth = await assertAdminRole(branchSlug);
-    if ('error' in auth) return { success: false, error: auth.error };
-
     const parsed = updateRegionSchema.parse({ id, name, country });
     const res = await query(`UPDATE ic_regions SET name=$1, country=$2 WHERE id=$3 RETURNING *`, [parsed.name, parsed.country, parsed.id]);
     if (res.rowCount === 0) return { success: false, error: 'Region not found' };
@@ -227,11 +208,8 @@ export async function dbUpdateICRegionAction(id: string, name: string, country: 
   }
 }
 
-export async function dbDeleteICRegionAction(id: string, branchSlug?: string): Promise<DbActionResult<void>> {
+export async function dbDeleteICRegionAction(id: string): Promise<DbActionResult<void>> {
   try {
-    const auth = await assertAdminRole(branchSlug);
-    if ('error' in auth) return { success: false, error: auth.error };
-
     const parsedId = z.string().min(1).parse(id);
     const res = await query(`DELETE FROM ic_regions WHERE id=$1`, [parsedId]);
     if (res.rowCount === 0) return { success: false, error: 'Region not found' };
@@ -255,13 +233,16 @@ export async function dbAddICSupplierAction(
   try {
     const parsed = addSupplierSchema.parse({ name, phone, commission, regionId, email, address, branchId });
 
-    const user = await resolveICTransferAdminUser(branchSlug);
-    if (!user || !canPerformICTransferAdminActions(user)) {
-      return { success: false, error: 'Unauthorized: admin role required' };
-    }
-
-    if (parsed.branchId && user.role === 'branch_manager' && user.branchId !== parsed.branchId) {
-      return { success: false, error: 'You can only create suppliers for your own branch' };
+    if (parsed.branchId) {
+      const user = await resolveICTransferAdminUser(branchSlug);
+      if (!user || user.role !== 'branch_manager' || user.branchId !== parsed.branchId) {
+        return { success: false, error: 'Unauthorized' };
+      }
+    } else if (branchSlug) {
+      const user = await resolveICTransferAdminUser(branchSlug);
+      if (user?.role === 'branch_manager') {
+        return { success: false, error: 'Branch managers must create branch-scoped suppliers' };
+      }
     }
 
     const id = crypto.randomUUID();
@@ -337,7 +318,6 @@ export async function dbAddICWarehouseAction(
   address?: string,
   sendDeliveryProofToCustomer: boolean = true,
   branchId?: string | null,
-  branchSlug?: string,
 ): Promise<DbActionResult<ICWarehouse>> {
   try {
     const parsed = addWarehouseSchema.parse({
@@ -350,18 +330,6 @@ export async function dbAddICWarehouseAction(
       sendDeliveryProofToCustomer,
       branchId,
     });
-
-    const user = await resolveICTransferAdminUser(branchSlug);
-    if (!user || !canPerformICTransferAdminActions(user)) {
-      return { success: false, error: 'Unauthorized: admin role required' };
-    }
-
-    if (user.role === 'branch_manager') {
-      if (!parsed.branchId || user.branchId !== parsed.branchId) {
-        return { success: false, error: 'You can only create warehouses for your own branch' };
-      }
-    }
-
     const id = crypto.randomUUID();
     const res = await query(
       `INSERT INTO ic_warehouses (
@@ -395,7 +363,6 @@ export async function dbUpdateICWarehouseAction(
   email?: string,
   address?: string,
   sendDeliveryProofToCustomer: boolean = true,
-  branchSlug?: string,
 ): Promise<DbActionResult<ICWarehouse>> {
   try {
     const parsed = updateWarehouseSchema.parse({
@@ -408,10 +375,6 @@ export async function dbUpdateICWarehouseAction(
       address,
       sendDeliveryProofToCustomer,
     });
-
-    const check = await assertWarehouseMutationAllowed(parsed.id, branchSlug);
-    if (check) return { success: false, error: check.error };
-
     const res = await query(
       `UPDATE ic_warehouses
        SET name=$1, phone=$2, commission=$3, region_id=$4, email=$5, address=$6,
@@ -436,12 +399,9 @@ export async function dbUpdateICWarehouseAction(
   }
 }
 
-export async function dbDeleteICWarehouseAction(id: string, branchSlug?: string): Promise<DbActionResult<void>> {
+export async function dbDeleteICWarehouseAction(id: string): Promise<DbActionResult<void>> {
   try {
     const parsedId = z.string().min(1).parse(id);
-    const check = await assertWarehouseMutationAllowed(parsedId, branchSlug);
-    if (check) return { success: false, error: check.error };
-
     const res = await query(`DELETE FROM ic_warehouses WHERE id=$1`, [parsedId]);
     if (res.rowCount === 0) return { success: false, error: 'Warehouse not found' };
     return { success: true };
@@ -480,9 +440,6 @@ export async function dbAddICRateGroupAction(
         parsed.currency,
       );
       if (currencyError) return { success: false, error: currencyError };
-    } else {
-      const auth = await assertAdminRole(branchSlug);
-      if ('error' in auth) return { success: false, error: auth.error };
     }
 
     const id = crypto.randomUUID();
@@ -507,13 +464,10 @@ export async function dbAddICRateGroupAction(
 }
 
 export async function dbUpdateICRateGroupAction(
-  id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number, branchSlug?: string
+  id: string, name: string, country: string, currency: string, saleRate: number, conversionRate: number
 ): Promise<DbActionResult<import('@/types').ICRateGroup>> {
   try {
     const parsed = updateRateGroupSchema.parse({ id, name, country, currency, saleRate, conversionRate });
-
-    const check = await assertRateGroupMutationAllowed(parsed.id, branchSlug);
-    if (check) return { success: false, error: check.error };
 
     const existing = await query(
       `SELECT created_by_branch_id FROM ic_rate_groups WHERE id = $1 LIMIT 1`,
@@ -535,15 +489,7 @@ export async function dbUpdateICRateGroupAction(
       [parsed.name, parsed.country, parsed.currency, parsed.saleRate, parsed.conversionRate, parsed.id]
     );
     if (res.rowCount === 0) return { success: false, error: 'Group not found' };
-    const fullRes = await query(
-      `SELECT g.*, 
-              COALESCE((SELECT array_agg(customer_id) FROM ic_rate_group_customers WHERE group_id = g.id), ARRAY[]::varchar[]) as customer_ids,
-              COALESCE((SELECT array_agg(branch_id) FROM ic_rate_group_branches WHERE group_id = g.id), ARRAY[]::varchar[]) as branch_ids
-       FROM ic_rate_groups g
-       WHERE g.id = $1`,
-      [parsed.id]
-    );
-    return { success: true, data: mapICRateGroupRow(fullRes.rows[0]) };
+    return { success: true, data: mapICRateGroupRow(res.rows[0]) };
   } catch (error: unknown) {
     logger.error({ error, id, name }, 'Error in dbUpdateICRateGroupAction');
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
@@ -555,7 +501,6 @@ export async function dbBulkUpdateICRateGroupRatesAction(
   saleRate: number,
   conversionRate: number,
   pricingConfig?: import('@/types').ICRateGroupPricingConfig | null,
-  branchSlug?: string,
 ): Promise<DbActionResult<import('@/types').ICRateGroup[]>> {
   try {
     const parsed = bulkUpdateRateGroupPricingSchema.parse({
@@ -564,14 +509,6 @@ export async function dbBulkUpdateICRateGroupRatesAction(
       conversionRate,
       pricingConfig: pricingConfig ?? null,
     });
-
-    const auth = await assertAdminRole(branchSlug);
-    if ('error' in auth) return { success: false, error: auth.error };
-
-    for (const gid of parsed.groupIds) {
-      const check = await assertRateGroupMutationAllowed(gid, branchSlug);
-      if (check) return { success: false, error: check.error };
-    }
 
     const flat = { saleRate: parsed.saleRate, conversionRate: parsed.conversionRate };
     if (parsed.pricingConfig) {
@@ -596,15 +533,7 @@ export async function dbBulkUpdateICRateGroupRatesAction(
       [parsed.saleRate, parsed.conversionRate, configPayload, parsed.groupIds],
     );
     if (res.rowCount === 0) return { success: false, error: 'No groups were updated' };
-    const fullRes = await query(
-      `SELECT g.*, 
-              COALESCE((SELECT array_agg(customer_id) FROM ic_rate_group_customers WHERE group_id = g.id), ARRAY[]::varchar[]) as customer_ids,
-              COALESCE((SELECT array_agg(branch_id) FROM ic_rate_group_branches WHERE group_id = g.id), ARRAY[]::varchar[]) as branch_ids
-       FROM ic_rate_groups g
-       WHERE g.id = ANY($1::text[])`,
-      [parsed.groupIds]
-    );
-    return { success: true, data: fullRes.rows.map(mapICRateGroupRow) };
+    return { success: true, data: res.rows.map(mapICRateGroupRow) };
   } catch (error: unknown) {
     logger.error({ error, groupIds }, 'Error in dbBulkUpdateICRateGroupRatesAction');
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
@@ -616,7 +545,6 @@ export async function dbUpdateICRateGroupPricingAction(
   saleRate: number,
   conversionRate: number,
   pricingConfig: import('@/types').ICRateGroupPricingConfig | null,
-  branchSlug?: string,
 ): Promise<DbActionResult<import('@/types').ICRateGroup>> {
   try {
     const parsed = updateRateGroupPricingSchema.parse({
@@ -625,9 +553,6 @@ export async function dbUpdateICRateGroupPricingAction(
       conversionRate,
       pricingConfig,
     });
-
-    const check = await assertRateGroupMutationAllowed(parsed.groupId, branchSlug);
-    if (check) return { success: false, error: check.error };
 
     const flat = { saleRate: parsed.saleRate, conversionRate: parsed.conversionRate };
     if (parsed.pricingConfig) {
@@ -652,27 +577,16 @@ export async function dbUpdateICRateGroupPricingAction(
       [parsed.saleRate, parsed.conversionRate, configPayload, parsed.groupId],
     );
     if (res.rowCount === 0) return { success: false, error: 'Group not found' };
-    const fullRes = await query(
-      `SELECT g.*, 
-              COALESCE((SELECT array_agg(customer_id) FROM ic_rate_group_customers WHERE group_id = g.id), ARRAY[]::varchar[]) as customer_ids,
-              COALESCE((SELECT array_agg(branch_id) FROM ic_rate_group_branches WHERE group_id = g.id), ARRAY[]::varchar[]) as branch_ids
-       FROM ic_rate_groups g
-       WHERE g.id = $1`,
-      [parsed.groupId]
-    );
-    return { success: true, data: mapICRateGroupRow(fullRes.rows[0]) };
+    return { success: true, data: mapICRateGroupRow(res.rows[0]) };
   } catch (error: unknown) {
     logger.error({ error, groupId }, 'Error in dbUpdateICRateGroupPricingAction');
     return { success: false, error: error instanceof Error ? error.message : 'Database error' };
   }
 }
 
-export async function dbDeleteICRateGroupAction(id: string, branchSlug?: string): Promise<DbActionResult<void>> {
+export async function dbDeleteICRateGroupAction(id: string): Promise<DbActionResult<void>> {
   try {
     const parsedId = z.string().min(1).parse(id);
-    const check = await assertRateGroupMutationAllowed(parsedId, branchSlug);
-    if (check) return { success: false, error: check.error };
-
     const res = await query(`DELETE FROM ic_rate_groups WHERE id=$1`, [parsedId]);
     if (res.rowCount === 0) return { success: false, error: 'Group not found' };
     return { success: true };
@@ -682,12 +596,9 @@ export async function dbDeleteICRateGroupAction(id: string, branchSlug?: string)
   }
 }
 
-export async function dbSetICRateGroupCustomersAction(groupId: string, customerIds: string[], branchSlug?: string): Promise<DbActionResult<void>> {
+export async function dbSetICRateGroupCustomersAction(groupId: string, customerIds: string[]): Promise<DbActionResult<void>> {
   try {
     const parsed = setRateGroupCustomersSchema.parse({ groupId, customerIds });
-    const check = await assertRateGroupMutationAllowed(parsed.groupId, branchSlug);
-    if (check) return { success: false, error: check.error };
-
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -730,12 +641,9 @@ export async function dbSetICRateGroupCustomersAction(groupId: string, customerI
   }
 }
 
-export async function dbSetICRateGroupBranchesAction(groupId: string, branchIds: string[], branchSlug?: string): Promise<DbActionResult<void>> {
+export async function dbSetICRateGroupBranchesAction(groupId: string, branchIds: string[]): Promise<DbActionResult<void>> {
   try {
     const parsed = setRateGroupBranchesSchema.parse({ groupId, branchIds });
-    const check = await assertRateGroupMutationAllowed(parsed.groupId, branchSlug);
-    if (check) return { success: false, error: check.error };
-
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -1413,98 +1321,20 @@ async function assertSupplierMutationAllowed(
   if (res.rows.length === 0) return { error: 'Supplier not found' };
 
   const supplierBranchId = res.rows[0].branch_id ? String(res.rows[0].branch_id) : null;
-  const user = await resolveICTransferAdminUser(branchSlug);
-  if (!user) return { error: 'Unauthorized' };
+  const user = branchSlug ? await resolveICTransferAdminUser(branchSlug) : null;
 
-  if (user.role === 'admin') return null;
-
-  if (user.role === 'branch_manager') {
-    if (supplierBranchId) {
-      if (user.branchId === supplierBranchId) return null;
+  if (supplierBranchId) {
+    if (!user || user.role !== 'branch_manager' || user.branchId !== supplierBranchId) {
       return { error: 'Unauthorized' };
     }
-    if (user.branchId) {
-      const branchRes = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
-      if (branchRes.rows.length > 0) {
-        const hiddenPages = Array.isArray(branchRes.rows[0].hidden_pages)
-          ? branchRes.rows[0].hidden_pages.map(String)
-          : [];
-        if (isBranchPageEnabled('ic-transfer-admin', hiddenPages)) {
-          return null;
-        }
-      }
-    }
+    return null;
   }
 
-  return { error: 'Unauthorized' };
-}
-
-async function assertWarehouseMutationAllowed(
-  warehouseId: string,
-  branchSlug?: string,
-): Promise<{ error: string } | null> {
-  const res = await query(`SELECT branch_id FROM ic_warehouses WHERE id = $1 LIMIT 1`, [warehouseId]);
-  if (res.rows.length === 0) return { error: 'Warehouse not found' };
-
-  const warehouseBranchId = res.rows[0].branch_id ? String(res.rows[0].branch_id) : null;
-  const user = await resolveICTransferAdminUser(branchSlug);
-  if (!user) return { error: 'Unauthorized' };
-
-  if (user.role === 'admin') return null;
-
-  if (user.role === 'branch_manager') {
-    if (warehouseBranchId) {
-      if (user.branchId === warehouseBranchId) return null;
-      return { error: 'Unauthorized' };
-    }
-    if (user.branchId) {
-      const branchRes = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
-      if (branchRes.rows.length > 0) {
-        const hiddenPages = Array.isArray(branchRes.rows[0].hidden_pages)
-          ? branchRes.rows[0].hidden_pages.map(String)
-          : [];
-        if (isBranchPageEnabled('ic-transfer-admin', hiddenPages)) {
-          return null;
-        }
-      }
-    }
+  if (user?.role === 'branch_manager') {
+    return { error: 'Unauthorized' };
   }
 
-  return { error: 'Unauthorized' };
-}
-
-async function assertRateGroupMutationAllowed(
-  groupId: string,
-  branchSlug?: string,
-): Promise<{ error: string } | null> {
-  const res = await query(`SELECT created_by_branch_id FROM ic_rate_groups WHERE id = $1 LIMIT 1`, [groupId]);
-  if (res.rows.length === 0) return { error: 'Rate group not found' };
-
-  const createdByBranchId = res.rows[0].created_by_branch_id ? String(res.rows[0].created_by_branch_id) : null;
-  const user = await resolveICTransferAdminUser(branchSlug);
-  if (!user) return { error: 'Unauthorized' };
-
-  if (user.role === 'admin') return null;
-
-  if (user.role === 'branch_manager') {
-    if (createdByBranchId) {
-      if (user.branchId === createdByBranchId) return null;
-      return { error: 'Unauthorized' };
-    }
-    if (user.branchId) {
-      const branchRes = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
-      if (branchRes.rows.length > 0) {
-        const hiddenPages = Array.isArray(branchRes.rows[0].hidden_pages)
-          ? branchRes.rows[0].hidden_pages.map(String)
-          : [];
-        if (isBranchPageEnabled('ic-transfer-admin', hiddenPages)) {
-          return null;
-        }
-      }
-    }
-  }
-
-  return { error: 'Unauthorized' };
+  return null;
 }
 
 async function assertBranchManagerPurchaseSupplier(
@@ -1516,19 +1346,6 @@ async function assertBranchManagerPurchaseSupplier(
   const user = await resolveICTransferAdminUser(branchSlug);
   if (!user || user.role !== 'branch_manager' || !user.branchId) {
     return null;
-  }
-
-  // If the branch manager's branch has ic-transfer-admin enabled, bypass branch restrictions
-  if (user.branchId) {
-    const branchRes = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
-    if (branchRes.rows.length > 0) {
-      const hiddenPages = Array.isArray(branchRes.rows[0].hidden_pages)
-        ? branchRes.rows[0].hidden_pages.map(String)
-        : [];
-      if (isBranchPageEnabled('ic-transfer-admin', hiddenPages)) {
-        return null;
-      }
-    }
   }
 
   const res = await query(`SELECT branch_id FROM ic_suppliers WHERE id = $1 LIMIT 1`, [supplierId]);
@@ -1549,20 +1366,6 @@ async function assertBranchManagerPurchaseWarehouse(
     return null;
   }
   if (!warehouseId) return { error: 'Warehouse is required' };
-
-  // If the branch manager's branch has ic-transfer-admin enabled, bypass branch restrictions
-  if (user.branchId) {
-    const branchRes = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
-    if (branchRes.rows.length > 0) {
-      const hiddenPages = Array.isArray(branchRes.rows[0].hidden_pages)
-        ? branchRes.rows[0].hidden_pages.map(String)
-        : [];
-      if (isBranchPageEnabled('ic-transfer-admin', hiddenPages)) {
-        return null;
-      }
-    }
-  }
-
   return assertBranchWarehouseForBranch(warehouseId, user.branchId);
 }
 
@@ -1574,20 +1377,6 @@ async function assertBranchManagerCanModifyPurchase(
   if (!user || user.role !== 'branch_manager' || !user.branchId) {
     return null;
   }
-
-  // If the branch manager's branch has ic-transfer-admin enabled, bypass branch restrictions
-  if (user.branchId) {
-    const branchRes = await query(`SELECT hidden_pages FROM branches WHERE id = $1 LIMIT 1`, [user.branchId]);
-    if (branchRes.rows.length > 0) {
-      const hiddenPages = Array.isArray(branchRes.rows[0].hidden_pages)
-        ? branchRes.rows[0].hidden_pages.map(String)
-        : [];
-      if (isBranchPageEnabled('ic-transfer-admin', hiddenPages)) {
-        return null;
-      }
-    }
-  }
-
   const res = await query(
     `SELECT w.branch_id
      FROM ic_purchases p

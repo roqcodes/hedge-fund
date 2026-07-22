@@ -38,7 +38,7 @@ export function computePhysicalTxn(values: {
   const totalUsdt = roundTo14(actualPurity * idrRate);
   
   const usdtToAed = values.usdtToAed ?? 0;
-  const tltAedValue = usdtToAed > 0 ? roundTo14(totalUsdt * usdtToAed) : totalUsdt;
+  const tltAedValue = usdtToAed > 0 ? roundTo14(totalUsdt * usdtToAed) : 0;
   const tltIdrValue = roundTo14(actualPurity * values.idrGram);
 
   return {

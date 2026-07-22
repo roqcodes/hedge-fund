@@ -415,7 +415,6 @@ export interface PhysicalBulkSell {
   totalUsdt?: number;
 }
 
-
 export interface UsdtBranchSettings {
   branchId: string;
   presetMargin: number;
@@ -463,6 +462,50 @@ export interface UsdtSell {
   enteredByName?: string;
   enteredByUserId?: string;
   createdAt?: string;
+}
+
+export interface UsdtIdrConversion {
+  id: string;
+  branchId: string;
+  date: string;
+  usdtAmount: number;
+  conversionRate: number;
+  idrAmount: number;
+  enteredBy?: string;
+  enteredByName?: string;
+  enteredByUserId?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export type FundEntryDirection = 'debit' | 'credit';
+export type FundReferenceType = 'manual' | 'settlement' | 'physical_buy' | 'physical_sell' | 'usdt_buy' | 'usdt_sell';
+
+export interface FundEntityBalance {
+  customerId: string;
+  customerName: string;
+  totalDebit: number;
+  totalCredit: number;
+  net: number;
+}
+
+export interface FundEntityLedgerEntry {
+  id: string;
+  branchId: string;
+  customerId: string;
+  entryDate: string;
+  description: string;
+  debit: number;
+  credit: number;
+  referenceType: FundReferenceType;
+  referenceId?: string;
+  customerCurrency?: string;
+  customerCurrencyRate?: number;
+  settlementCurrency?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdByUserId?: string;
+  createdAt: string;
 }
 
 export interface Ledger {
@@ -678,51 +721,4 @@ export interface ICWarehouseTransaction {
   referenceType?: string;
   referenceId?: string;
   createdAt?: string;
-}
-
-// ═══════════════════════════════════════════════════════════
-// Funds Module — Entity Settlement Ledger (AR/AP)
-// ═══════════════════════════════════════════════════════════
-
-export type FundEntryDirection = 'debit' | 'credit';
-
-export type FundReferenceType =
-  | 'manual'
-  | 'settlement'
-  | 'physical_buy'
-  | 'physical_sell'
-  | 'usdt_buy'
-  | 'usdt_sell';
-
-/** Single row in the entity settlement ledger.
- *  debit  = entity owes the branch (receivable)
- *  credit = branch owes the entity (payable)
- *  balance = SUM(debit) - SUM(credit) per entity
- *    positive → entity owes us
- *    negative → we owe entity
- */
-export interface FundEntityLedgerEntry {
-  id: string;
-  branchId: string;
-  customerId: string;
-  entryDate: string;
-  description: string;
-  debit: number;
-  credit: number;
-  referenceType: FundReferenceType;
-  referenceId?: string;
-  customerCurrency?: string;
-  customerCurrencyRate?: number;
-  createdBy?: string;
-  createdByName?: string;
-  createdByUserId?: string;
-  createdAt: string;
-}
-
-export interface FundEntityBalance {
-  customerId: string;
-  customerName: string;
-  totalDebit: number;   // entity owes branch
-  totalCredit: number;  // branch owes entity
-  net: number;          // totalDebit - totalCredit
 }

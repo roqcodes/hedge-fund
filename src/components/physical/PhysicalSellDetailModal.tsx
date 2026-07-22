@@ -81,7 +81,7 @@ export default function PhysicalSellDetailModal({
             <PhysicalDetailField label="Payment" value={physicalPaymentLabel(sell.paymentMode)} />
             <PhysicalDetailField
               label="Sell Value (USDT)"
-              value={<PhysicalAmountDisplay aedAmount={sell.sellValue} size="sm" showUnit={false} />}
+              value={<PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="sm" showUnit={false} />}
             />
             <PhysicalDetailField label="Narration" value={sell.narration || sell.particulars || '—'} />
             {sourceBuy ? (

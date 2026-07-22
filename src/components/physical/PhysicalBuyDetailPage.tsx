@@ -275,7 +275,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
             {/* USDT — main */}
             <div className="mb-5 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/60 p-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Total Value (USDT)</p>
-              <PhysicalAmountKpiValue aedAmount={buy.buyValue} valueClassName="text-slate-900" />
+              <PhysicalAmountKpiValue usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} valueClassName="text-slate-900" />
             </div>
 
             {/* IDR + AED row */}
@@ -310,7 +310,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               </div>
               <div>
                 <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Cost / Gram (USDT)</p>
-                <PhysicalAmountDisplay aedAmount={buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0} size="sm" align="left" showUnit={false} className="!items-start !text-left" />
+                <PhysicalAmountDisplay usdtAmount={buy.totalUsdt != null && buy.pureGram > 0 ? buy.totalUsdt / buy.pureGram : undefined} aedAmount={buy.totalUsdt == null && buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0} size="sm" align="left" showUnit={false} className="!items-start !text-left" />
               </div>
             </div>
           </div>
@@ -485,7 +485,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         {sell.idrToUsdt || '0'}
                       </td>
                       <td className="border-y border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
-                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" showUnit={false} />
+                        <PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="md" showUnit={false} />
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 sm:px-5 sm:py-4">
                         <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
@@ -538,7 +538,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                           </svg>
                         </button>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell Value (USDT)</span>
-                        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="right" showUnit={false} />
+                        <PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="md" align="right" showUnit={false} />
                       </div>
                     </div>
                     

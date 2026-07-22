@@ -268,15 +268,15 @@ CREATE TABLE IF NOT EXISTS physical_buys (
     branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     particulars TEXT NOT NULL,
-    gross_weight DECIMAL(28, 14) NOT NULL,
+    gross_weight DECIMAL(15, 2) NOT NULL,
     pure_conversion DECIMAL(15, 4) NOT NULL,
-    pure_gram DECIMAL(28, 14) NOT NULL,
+    pure_gram DECIMAL(15, 2) NOT NULL,
     idr_gram DECIMAL(15, 2) NOT NULL,
     idr_to_usdt DECIMAL(15, 2) NOT NULL,
-    idr_rate DECIMAL(28, 14) NOT NULL,
-    total DECIMAL(28, 14) NOT NULL,
-    buy_value DECIMAL(28, 14) NOT NULL,
-    remaining_weight DECIMAL(28, 14) NOT NULL,
+    idr_rate DECIMAL(15, 4) NOT NULL,
+    total DECIMAL(15, 2) NOT NULL,
+    buy_value DECIMAL(15, 2) NOT NULL,
+    remaining_weight DECIMAL(15, 2) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -287,15 +287,15 @@ CREATE TABLE IF NOT EXISTS physical_sells (
     buy_id VARCHAR(50) NOT NULL REFERENCES physical_buys(id) ON DELETE CASCADE,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     particulars TEXT DEFAULT '',
-    gross_weight DECIMAL(28, 14) NOT NULL DEFAULT 0,
+    gross_weight DECIMAL(15, 2) NOT NULL DEFAULT 0,
     pure_conversion DECIMAL(15, 4) NOT NULL DEFAULT 1,
-    pure_gram DECIMAL(28, 14) NOT NULL DEFAULT 0,
+    pure_gram DECIMAL(15, 2) NOT NULL DEFAULT 0,
     idr_gram DECIMAL(15, 2) NOT NULL DEFAULT 0,
     idr_to_usdt DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    idr_rate DECIMAL(28, 14) NOT NULL DEFAULT 0,
-    total DECIMAL(28, 14) NOT NULL DEFAULT 0,
-    sell_value DECIMAL(28, 14) NOT NULL,
-    profit DECIMAL(28, 14) NOT NULL,
+    idr_rate DECIMAL(15, 4) NOT NULL DEFAULT 0,
+    total DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    sell_value DECIMAL(15, 2) NOT NULL,
+    profit DECIMAL(15, 2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -439,7 +439,6 @@ CREATE TABLE IF NOT EXISTS customers (
 
 CREATE INDEX IF NOT EXISTS idx_customers_branch_id ON customers(branch_id);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS cognito_user_id VARCHAR(128) UNIQUE;
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'AED';
 CREATE INDEX IF NOT EXISTS idx_customers_cognito_user_id ON customers(cognito_user_id);
 
 -- Physical buy/sell extended fields
@@ -452,17 +451,17 @@ ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS item VARCHAR(255);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS purity DECIMAL(15, 7);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS touch_loss DECIMAL(15, 4) DEFAULT 0;
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS actual_purity DECIMAL(28, 14);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS actual_purity DECIMAL(15, 2);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS market_usd DECIMAL(15, 4);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS deal DECIMAL(28, 14);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS deal DECIMAL(15, 2);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(30);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS idr_amount DECIMAL(28, 14);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS usd_amount DECIMAL(28, 14);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS aed_amount DECIMAL(28, 14);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_weight DECIMAL(28, 14);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_idr_value DECIMAL(28, 14);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_aed_value DECIMAL(28, 14);
-ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(28, 14);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS idr_amount DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS usd_amount DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS aed_amount DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_weight DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_idr_value DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS tlt_aed_value DECIMAL(15, 2);
+ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(15, 4);
 ALTER TABLE physical_buys ADD COLUMN IF NOT EXISTS fix_or_unfix VARCHAR(20) DEFAULT 'unfixed';
 
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS txn_id VARCHAR(50);
@@ -473,19 +472,19 @@ ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS narration TEXT;
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS purity DECIMAL(15, 7);
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS touch_loss DECIMAL(15, 4) DEFAULT 0;
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS actual_purity DECIMAL(28, 14);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS actual_purity DECIMAL(15, 2);
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS market_usd DECIMAL(15, 4);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS deal DECIMAL(28, 14);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS deal DECIMAL(15, 2);
 ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(30);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS idr_amount DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS usd_amount DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS aed_amount DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS total_weight DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS tlt_idr_value DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS tlt_aed_value DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS cost_value DECIMAL(28, 14);
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS margin DECIMAL(28, 14);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS idr_amount DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS usd_amount DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS aed_amount DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS total_weight DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS tlt_idr_value DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS tlt_aed_value DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS total_usdt DECIMAL(15, 4);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS cost_value DECIMAL(15, 2);
+ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS margin DECIMAL(15, 4);
 
 -- Physical deal drafts (scratchpad only).
 -- Fully isolated from physical_buys/physical_sells: drafts never affect
@@ -561,6 +560,22 @@ ALTER TABLE usdt_buys ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);
 ALTER TABLE usdt_sells ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255);
 ALTER TABLE usdt_sells ADD COLUMN IF NOT EXISTS entered_by_name VARCHAR(255);
 ALTER TABLE usdt_sells ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);
+
+CREATE TABLE IF NOT EXISTS usdt_idr_conversions (
+    id VARCHAR(50) PRIMARY KEY,
+    branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usdt_amount DECIMAL(18, 4) NOT NULL,
+    conversion_rate DECIMAL(15, 6) NOT NULL,
+    idr_amount DECIMAL(18, 2) NOT NULL,
+    entered_by VARCHAR(255),
+    entered_by_name VARCHAR(255),
+    entered_by_user_id VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_usdt_idr_conversions_branch ON usdt_idr_conversions(branch_id);
 
 -- Branch staff page permissions (RBAC)
 CREATE TABLE IF NOT EXISTS user_page_permissions (
@@ -857,78 +872,5 @@ CREATE INDEX IF NOT EXISTS idx_ic_sales_delivery_agent ON ic_sales(delivery_agen
 -- Ensure warehouse stock cannot go negative
 ALTER TABLE ic_warehouses DROP CONSTRAINT IF EXISTS ic_warehouses_stock_nonnegative;
 ALTER TABLE ic_warehouses ADD CONSTRAINT ic_warehouses_stock_nonnegative CHECK (current_stock >= 0);
-
--- Bulk Sells Module
-CREATE TABLE IF NOT EXISTS physical_bulk_sells (
-    id VARCHAR(50) PRIMARY KEY,
-    branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    particulars TEXT DEFAULT '',
-    gross_weight DECIMAL(28, 14) NOT NULL DEFAULT 0,
-    pure_conversion DECIMAL(15, 4) NOT NULL DEFAULT 1,
-    pure_gram DECIMAL(28, 14) NOT NULL DEFAULT 0,
-    idr_gram DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    idr_to_usdt DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    idr_rate DECIMAL(28, 14) NOT NULL DEFAULT 0,
-    total DECIMAL(28, 14) NOT NULL DEFAULT 0,
-    sell_value DECIMAL(28, 14) NOT NULL,
-    profit DECIMAL(28, 14) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    txn_id VARCHAR(50),
-    customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL,
-    customer_name VARCHAR(255),
-    opening_balance DECIMAL(15, 2),
-    narration TEXT,
-    notes TEXT,
-    payment_mode VARCHAR(30),
-    idr_amount DECIMAL(28, 14),
-    usd_amount DECIMAL(28, 14),
-    aed_amount DECIMAL(28, 14),
-    total_weight DECIMAL(28, 14),
-    tlt_idr_value DECIMAL(28, 14),
-    tlt_aed_value DECIMAL(28, 14),
-    total_usdt DECIMAL(28, 14)
-);
-
-ALTER TABLE physical_sells ADD COLUMN IF NOT EXISTS bulk_sell_id VARCHAR(50) REFERENCES physical_bulk_sells(id) ON DELETE CASCADE;
-CREATE INDEX IF NOT EXISTS idx_physical_sells_bulk_sell ON physical_sells(bulk_sell_id);
-
--- Fund Entity Settlement Ledger (AR/AP)
-CREATE TABLE IF NOT EXISTS fund_entity_ledger (
-    id VARCHAR(50) PRIMARY KEY,
-    branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    customer_id VARCHAR(50) NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
-    entry_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    description TEXT NOT NULL DEFAULT '',
-    debit DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    credit DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    reference_type VARCHAR(30),
-    reference_id VARCHAR(50),
-    customer_currency VARCHAR(10),
-    customer_currency_rate DECIMAL(15, 6),
-    created_by VARCHAR(255),
-    created_by_name VARCHAR(255),
-    created_by_user_id VARCHAR(255),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT single_side CHECK ((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0)),
-    CONSTRAINT non_negative CHECK (debit >= 0 AND credit >= 0)
-);
-
-CREATE INDEX IF NOT EXISTS idx_fund_el_branch ON fund_entity_ledger(branch_id);
-CREATE INDEX IF NOT EXISTS idx_fund_el_customer ON fund_entity_ledger(customer_id);
-CREATE INDEX IF NOT EXISTS idx_fund_el_date ON fund_entity_ledger(branch_id, entry_date DESC);
-CREATE INDEX IF NOT EXISTS idx_fund_el_reference ON fund_entity_ledger(reference_type, reference_id);
-
--- Branch USDT Capital (working capital in USDT)
-CREATE TABLE IF NOT EXISTS branch_usdt_balances (
-    branch_id VARCHAR(50) PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
-    initial_capital DECIMAL(18, 4) NOT NULL DEFAULT 0.0000,
-    available_fund DECIMAL(18, 4) NOT NULL DEFAULT 0.0000,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
-ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
 
 

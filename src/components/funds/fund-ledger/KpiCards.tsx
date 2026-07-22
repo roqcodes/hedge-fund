@@ -33,7 +33,7 @@ export default function KpiCards({
   return (
     <div className={`${kpiGrid} mb-8`}>
       <KpiCard
-        label="Total Receivables (USDT)"
+        label="Total Receivables"
         value={fmt(totalReceivable)}
         sub="What entities owe the branch"
         icon={
@@ -46,7 +46,7 @@ export default function KpiCards({
         valueClass="text-emerald-600"
       />
       <KpiCard
-        label="Total Payables (USDT)"
+        label="Total Payables"
         value={fmt(totalPayable)}
         sub="What the branch owes entities"
         icon={
@@ -59,7 +59,7 @@ export default function KpiCards({
         valueClass="text-red-600"
       />
       <KpiCard
-        label="Net Position (USDT)"
+        label="Net Position"
         value={fmt(netPosition)}
         sub={netPosition >= 0 ? 'Branch is net owed' : 'Branch owes net'}
         icon={

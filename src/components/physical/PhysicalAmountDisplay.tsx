@@ -7,7 +7,9 @@ type ProfitTone = 'positive' | 'negative' | 'neutral' | 'auto';
 
 interface PhysicalAmountDisplayProps {
   /** Backend-standardized AED amount. */
-  aedAmount: number;
+  aedAmount?: number;
+  /** USDT amount (bypasses AED→USDT conversion). */
+  usdtAmount?: number;
   showPlus?: boolean;
   /** Color profit/loss values automatically from sign. */
   profitTone?: ProfitTone;
@@ -41,6 +43,7 @@ function resolveTone(aedAmount: number, profitTone: ProfitTone): string | undefi
 
 export default function PhysicalAmountDisplay({
   aedAmount,
+  usdtAmount,
   showPlus = false,
   profitTone = 'neutral',
   size = 'md',
@@ -48,13 +51,15 @@ export default function PhysicalAmountDisplay({
   className = '',
   showUnit = true,
 }: PhysicalAmountDisplayProps) {
-  const { fmtUsdt } = usePhysicalCurrency();
-  const toneClass = resolveTone(aedAmount, profitTone);
+  const { fmtUsdt, fmtUsdtDirect } = usePhysicalCurrency();
+  const displayValue = usdtAmount ?? aedAmount ?? 0;
+  const toneClass = resolveTone(displayValue, profitTone);
+  const formatted = usdtAmount != null ? fmtUsdtDirect(displayValue, showPlus) : fmtUsdt(displayValue, showPlus);
 
   return (
     <div className={`flex flex-col gap-0.5 font-mono tabular-nums ${alignClass[align]} ${className}`}>
       <span className={`${primarySizeClass[size]} ${toneClass ?? 'text-slate-900'}`}>
-        {fmtUsdt(aedAmount, showPlus)}
+        {formatted}
         {showUnit && (
           <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">USDT</span>
         )}
@@ -66,19 +71,22 @@ export default function PhysicalAmountDisplay({
 /** Compact inline variant for KPI cards. */
 export function PhysicalAmountKpiValue({
   aedAmount,
+  usdtAmount,
   showPlus = false,
   profitTone = 'neutral',
   valueClassName,
-}: Pick<PhysicalAmountDisplayProps, 'aedAmount' | 'showPlus' | 'profitTone'> & {
+}: Pick<PhysicalAmountDisplayProps, 'aedAmount' | 'usdtAmount' | 'showPlus' | 'profitTone'> & {
   valueClassName?: string;
 }) {
-  const { fmtUsdt } = usePhysicalCurrency();
-  const toneClass = resolveTone(aedAmount, profitTone);
+  const { fmtUsdt, fmtUsdtDirect } = usePhysicalCurrency();
+  const displayValue = usdtAmount ?? aedAmount ?? 0;
+  const toneClass = resolveTone(displayValue, profitTone);
+  const formatted = usdtAmount != null ? fmtUsdtDirect(displayValue, showPlus) : fmtUsdt(displayValue, showPlus);
 
   return (
     <div className="flex flex-col gap-0.5 font-mono tabular-nums">
       <span className={`truncate text-base font-extrabold tracking-tight sm:text-lg ${toneClass ?? valueClassName ?? 'text-slate-900'}`}>
-        {fmtUsdt(aedAmount, showPlus)}
+        {formatted}
         <span className="ml-1 text-[10px] font-bold uppercase text-slate-400">USDT</span>
       </span>
     </div>

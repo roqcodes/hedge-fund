@@ -212,6 +212,7 @@ export async function dbAddPhysicalBuyAction(buy: PhysicalBuyInput): Promise<DbA
           referenceId: id,
           description: parts.join(' | '),
           ...currencyInfo,
+          settlementCurrency: currencyInfo.customerCurrency,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, buyId: id }, 'Auto ledger entry failed for buy');
@@ -364,6 +365,7 @@ export async function dbAddPhysicalSellAction(sell: PhysicalSellInput): Promise<
           referenceId: id,
           description: parts.join(' | '),
           ...currencyInfo,
+          settlementCurrency: currencyInfo.customerCurrency,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, sellId: id }, 'Auto ledger entry failed for sell');
@@ -909,6 +911,7 @@ export async function dbAddPhysicalBulkSellAction(bulk: {
           referenceId: bulkSellId,
           description: parts.join(' | '),
           ...currencyInfo,
+          settlementCurrency: currencyInfo.customerCurrency,
         });
       } catch (autoErr) {
         logger.error({ err: autoErr, bulkSellId }, 'Auto ledger entry failed for bulk sell');

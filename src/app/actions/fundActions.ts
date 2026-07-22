@@ -23,6 +23,7 @@ function mapRow(row: Record<string, unknown>): FundEntityLedgerEntry {
     referenceId: (row.reference_id as string) ?? undefined,
     customerCurrency: (row.customer_currency as string) ?? undefined,
     customerCurrencyRate: row.customer_currency_rate != null ? Number(row.customer_currency_rate) : undefined,
+    settlementCurrency: (row.settlement_currency as string) ?? undefined,
     createdBy: (row.created_by as string) ?? undefined,
     createdByName: (row.created_by_name as string) ?? undefined,
     createdByUserId: (row.created_by_user_id as string) ?? undefined,
@@ -135,9 +136,10 @@ export async function createFundLedgerEntryAction(params: {
   referenceId?: string;
   customerCurrency?: string;
   customerCurrencyRate?: number;
+  settlementCurrency?: string;
 }): Promise<{ success: true; entryId: string } | { success: false; error: string }> {
   try {
-    const { branchId, customerId, direction, amount, description, entryDate, referenceType, referenceId, customerCurrency, customerCurrencyRate } = params;
+    const { branchId, customerId, direction, amount, description, entryDate, referenceType, referenceId, customerCurrency, customerCurrencyRate, settlementCurrency } = params;
 
     // Look up branch slug for session auth
     const branchRes = await query('SELECT slug FROM branches WHERE id = $1', [branchId]);
@@ -158,18 +160,30 @@ export async function createFundLedgerEntryAction(params: {
     const id = `FL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const now = new Date().toISOString();
 
+    // Compute amount in customer's currency (debit/credit is always in customer's currency)
+    const amountInCustomerCurrency = (customerCurrencyRate != null && customerCurrencyRate > 0)
+      ? amount * customerCurrencyRate
+      : amount;
+
     const baseCols = ['id', 'branch_id', 'customer_id', 'entry_date', 'description', 'debit', 'credit',
       'reference_type', 'reference_id', 'created_by', 'created_by_name', 'created_by_user_id', 'created_at'];
     const baseVals: unknown[] = [id, branchId, customerId, entryDate ?? now,
       description.trim() || `${direction === 'debit' ? 'Receivable' : 'Payable'} entry`,
-      direction === 'debit' ? amount : 0, direction === 'credit' ? amount : 0,
+      direction === 'debit' ? amountInCustomerCurrency : 0, direction === 'credit' ? amountInCustomerCurrency : 0,
       referenceType ?? 'manual', referenceId ?? null,
       user.id ?? null, user.name ?? null, user.id ?? null, now];
 
-    const hasCurrency = customerCurrency && customerCurrencyRate != null && customerCurrencyRate > 0;
-    if (hasCurrency) {
-      baseCols.push('customer_currency', 'customer_currency_rate');
-      baseVals.push(customerCurrency, customerCurrencyRate);
+    if (customerCurrency) {
+      baseCols.push('customer_currency');
+      baseVals.push(customerCurrency);
+    }
+    if (customerCurrencyRate != null && customerCurrencyRate > 0) {
+      baseCols.push('customer_currency_rate');
+      baseVals.push(customerCurrencyRate);
+    }
+    if (settlementCurrency) {
+      baseCols.push('settlement_currency');
+      baseVals.push(settlementCurrency);
     }
 
     const ph = baseVals.map((_, i) => `$${i + 1}`).join(', ');
@@ -179,8 +193,9 @@ export async function createFundLedgerEntryAction(params: {
     );
 
     if (referenceType === 'settlement') {
-      const capitalDelta = direction === 'credit' ? amount : -amount;
-      await adjustBranchUsdtCapital(branchId, capitalDelta);
+      const directionMultiplier = direction === 'credit' ? 1 : -1;
+      const balanceCurrency = settlementCurrency || customerCurrency || 'AED';
+      await adjustBranchCashBalance(branchId, balanceCurrency, directionMultiplier * amount);
     }
 
     logger.info({ entryId: id, branchId, customerId, direction, amount }, 'Fund ledger entry created');
@@ -197,7 +212,7 @@ export async function deleteFundLedgerEntryAction(
   try {
     // Look up entry's branch to authenticate
     const entryRes = await query(
-      'SELECT e.branch_id, e.debit, e.credit, e.reference_type, b.slug FROM fund_entity_ledger e JOIN branches b ON e.branch_id = b.id WHERE e.id = $1',
+      'SELECT e.branch_id, e.debit, e.credit, e.reference_type, e.customer_currency, e.customer_currency_rate, e.settlement_currency, b.slug FROM fund_entity_ledger e JOIN branches b ON e.branch_id = b.id WHERE e.id = $1',
       [entryId],
     );
     if (entryRes.rows.length === 0) return { success: false, error: 'Entry not found' };
@@ -209,8 +224,13 @@ export async function deleteFundLedgerEntryAction(
     if (String(row.reference_type) === 'settlement') {
       const debit = parseFloat(row.debit) || 0;
       const credit = parseFloat(row.credit) || 0;
-      const capitalDelta = credit > 0 ? -credit : debit;
-      await adjustBranchUsdtCapital(String(row.branch_id), capitalDelta);
+      const custAmount = debit > 0 ? debit : credit;
+      const directionMultiplier = debit > 0 ? 1 : -1;
+      const currency = String(row.settlement_currency || row.customer_currency || 'AED');
+      // amount = custAmount (in customer currency) / rate if rate present, else custAmount
+      const rate = row.customer_currency_rate ? parseFloat(String(row.customer_currency_rate)) : null;
+      const balanceAmount = (rate && rate > 0) ? custAmount / rate : custAmount;
+      await adjustBranchCashBalance(String(row.branch_id), currency, directionMultiplier * balanceAmount);
     }
 
     await query('DELETE FROM fund_entity_ledger WHERE id = $1', [entryId]);
@@ -278,6 +298,7 @@ export async function createAutoLedgerEntry(params: {
   description?: string;
   customerCurrency?: string;
   customerCurrencyRate?: number;
+  settlementCurrency?: string;
 }): Promise<string | null> {
   try {
     const result = await createFundLedgerEntryAction({
@@ -290,6 +311,7 @@ export async function createAutoLedgerEntry(params: {
       referenceId: params.referenceId,
       customerCurrency: params.customerCurrency,
       customerCurrencyRate: params.customerCurrencyRate,
+      settlementCurrency: params.settlementCurrency,
     });
 
     if (result.success) return result.entryId;
@@ -300,17 +322,19 @@ export async function createAutoLedgerEntry(params: {
   }
 }
 
-async function adjustBranchUsdtCapital(branchId: string, delta: number) {
+async function adjustBranchCashBalance(branchId: string, currency: string, delta: number) {
   try {
+    const col = currency === 'AED' ? 'aed_balance' : currency === 'IDR' ? 'idr_balance' : 'available_fund';
     await query(
-      `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund)
-       VALUES ($1, 0, $2)
-       ON CONFLICT (branch_id) DO UPDATE SET
-         available_fund = branch_usdt_balances.available_fund + $2,
-         updated_at = CURRENT_TIMESTAMP`,
-      [branchId, delta],
+      `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund, aed_balance, idr_balance)
+       VALUES ($1, 0, 0, 0, 0) ON CONFLICT (branch_id) DO NOTHING`,
+      [branchId],
+    );
+    await query(
+      `UPDATE branch_usdt_balances SET ${col} = ${col} + $1, updated_at = CURRENT_TIMESTAMP WHERE branch_id = $2`,
+      [delta, branchId],
     );
   } catch (err) {
-    logger.error({ err, branchId, delta }, 'Failed to adjust branch USDT capital');
+    logger.error({ err, branchId, currency, delta }, 'Failed to adjust branch cash balance');
   }
 }

@@ -68,7 +68,7 @@ export function DraftBuyRow({
       <td className={`${draftCellBase} text-center text-sm`}>{buy.pureConversion}</td>
       <td className={`${draftCellBase} text-center text-sm font-bold`}>{buy.pureGram.toFixed(3)}</td>
       <td className={draftCellBase}>
-        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" showUnit={false} />
+        <PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="md" showUnit={false} />
       </td>
       <td className={`${draftCellBase} text-center text-xs font-semibold text-slate-400`}>
         Not sellable
@@ -110,7 +110,7 @@ export function DraftBuyCard({
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
-          <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="left" className="!items-start !text-left" showUnit={false} />
+          <PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="md" align="left" className="!items-start !text-left" showUnit={false} />
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</span>
@@ -160,7 +160,7 @@ export function DraftSellRow({
       <td className={`${draftCellBase} text-center text-sm font-bold`}>{sell.pureGram.toFixed(3)}</td>
       <td className={`${draftCellBase} text-center text-xs`}>{paymentLabel(sell.paymentMode)}</td>
       <td className={draftCellBase}>
-        <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" showUnit={false} />
+        <PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="md" showUnit={false} />
       </td>
       <td className={draftCellBase}>
         <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
@@ -202,7 +202,7 @@ export function DraftSellCard({
         </div>
         <div>
           <span className="text-[10px] font-bold uppercase text-slate-400">Sell Value (USDT)</span>
-          <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} />
+          <PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} />
         </div>
         <div>
           <span className="text-[10px] font-bold uppercase text-slate-400">Profit (USDT)</span>

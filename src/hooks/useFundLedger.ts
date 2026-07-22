@@ -40,6 +40,7 @@ export interface FundLedgerActions {
     entryDate?: string;
     customerCurrency?: string;
     customerCurrencyRate?: number;
+    settlementCurrency?: string;
   }) => Promise<{ success: boolean; error?: string; entryId?: string }>;
   recordPayment: (params: {
     customerId: string;
@@ -49,6 +50,7 @@ export interface FundLedgerActions {
     entryDate?: string;
     customerCurrency?: string;
     customerCurrencyRate?: number;
+    settlementCurrency?: string;
   }) => Promise<{ success: boolean; error?: string; entryId?: string }>;
   deleteEntry: (entryId: string) => Promise<{ success: boolean; error?: string }>;
   refresh: () => Promise<void>;
@@ -139,12 +141,20 @@ export function useFundLedger(): UseFundLedgerReturn {
       entryDate?: string;
       customerCurrency?: string;
       customerCurrencyRate?: number;
+      settlementCurrency?: string;
     }) => {
       if (!branchId) return { success: false, error: 'No branch selected' };
 
       const result = await createFundLedgerEntryAction({
         branchId,
-        ...params,
+        customerId: params.customerId,
+        direction: params.direction,
+        amount: params.amount,
+        description: params.description,
+        entryDate: params.entryDate,
+        customerCurrency: params.customerCurrency,
+        customerCurrencyRate: params.customerCurrencyRate,
+        settlementCurrency: params.settlementCurrency,
       });
 
       if (result.success) {
@@ -181,6 +191,7 @@ export function useFundLedger(): UseFundLedgerReturn {
       entryDate?: string;
       customerCurrency?: string;
       customerCurrencyRate?: number;
+      settlementCurrency?: string;
     }) => {
       if (!branchId) return { success: false, error: 'No branch selected' };
 
@@ -194,6 +205,7 @@ export function useFundLedger(): UseFundLedgerReturn {
         referenceType: 'settlement',
         customerCurrency: params.customerCurrency,
         customerCurrencyRate: params.customerCurrencyRate,
+        settlementCurrency: params.settlementCurrency,
       });
 
       if (result.success) {

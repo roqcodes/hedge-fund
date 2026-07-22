@@ -240,7 +240,7 @@ export default function PhysicalBuyEditModal({ open, slug, buy, onClose, onSucce
             <PhysicalDetailField label="USDT Rate" value={buy.idrToUsdt.toLocaleString()} />
             <PhysicalDetailField
               label="Buy Value (USDT)"
-              value={<PhysicalAmountDisplay aedAmount={buy.buyValue} size="sm" showUnit={false} />}
+              value={<PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="sm" showUnit={false} />}
             />
             <PhysicalDetailField label="Remaining" value={`${buy.remainingWeight.toFixed(3)} g`} />
             {buy.totalUsdt != null ? (

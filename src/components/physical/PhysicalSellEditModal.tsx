@@ -187,7 +187,7 @@ export default function PhysicalSellEditModal({ open, slug, sell, sourceBuy, onC
             <PhysicalDetailField label="USDT Rate" value={sell.idrToUsdt.toLocaleString()} />
             <PhysicalDetailField
               label="Sell Value (USDT)"
-              value={<PhysicalAmountDisplay aedAmount={sell.sellValue} size="sm" showUnit={false} />}
+              value={<PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="sm" showUnit={false} />}
             />
             <PhysicalDetailField
               label="Profit (USDT)"

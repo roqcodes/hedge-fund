@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef } from 'react';
 import Modal from '@/components/ui/Modal';
-import type { Customer } from '@/types';
-import type { FundEntryDirection } from '@/types';
+import type { Customer, FundEntryDirection } from '@/types';
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-all';
 
 const labelClass = 'mb-1.5 block text-[10px] font-extrabold uppercase tracking-widest text-slate-400';
+
+const CURRENCIES = ['AED', 'IDR', 'USDT'] as const;
 
 interface NewEntryModalProps {
   open: boolean;
@@ -22,6 +23,7 @@ interface NewEntryModalProps {
     entryDate?: string;
     customerCurrency?: string;
     customerCurrencyRate?: number;
+    settlementCurrency?: string;
   }) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -37,9 +39,10 @@ export default function NewEntryModal({
   const blurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [direction, setDirection] = useState<FundEntryDirection>('debit');
   const [amount, setAmount] = useState('');
+  const [settlementCurrency, setSettlementCurrency] = useState('AED');
+  const [rate, setRate] = useState('');
   const [description, setDescription] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
-  const [currencyRate, setCurrencyRate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +52,7 @@ export default function NewEntryModal({
 
   const selectedCustomer = customers.find(c => c.id === customerId);
   const customerCurrency = selectedCustomer?.currency || 'AED';
+  const needsRate = settlementCurrency !== customerCurrency;
   const showDropdown = focused && !customerId;
 
   const handleFocus = () => {
@@ -66,7 +70,8 @@ export default function NewEntryModal({
     setFocused(false);
     setDirection('debit');
     setAmount('');
-    setCurrencyRate('');
+    setSettlementCurrency('AED');
+    setRate('');
     setDescription('');
     setEntryDate(new Date().toISOString().slice(0, 10));
     setError(null);
@@ -78,24 +83,48 @@ export default function NewEntryModal({
   };
 
   const numAmount = parseFloat(amount) || 0;
-  const numCurrencyRate = parseFloat(currencyRate) || 0;
-  const secondaryAmount = numCurrencyRate > 0 ? numAmount * numCurrencyRate : 0;
-  const canSubmit = customerId && numAmount > 0 && !submitting;
+  const numRate = parseFloat(rate) || 0;
+  const rateValid = !needsRate || numRate > 0;
+  const canSubmit = customerId && numAmount > 0 && rateValid && !submitting;
+
+  const selectCustomer = (c: Customer) => {
+    setCustomerId(c.id);
+    setSearch('');
+    setFocused(false);
+    const curr = c.currency || 'AED';
+    setSettlementCurrency(curr);
+    setRate('');
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setError(null);
     setSubmitting(true);
 
-    const result = await onSubmit({
+    const params: {
+      customerId: string;
+      direction: FundEntryDirection;
+      amount: number;
+      description: string;
+      entryDate?: string;
+      customerCurrency?: string;
+      customerCurrencyRate?: number;
+      settlementCurrency?: string;
+    } = {
       customerId,
       direction,
       amount: numAmount,
       description: description.trim() || `${direction === 'debit' ? 'Receivable' : 'Payable'} - ${selectedCustomer?.name ?? ''}`,
       entryDate: entryDate || undefined,
-      customerCurrency: numCurrencyRate > 0 ? customerCurrency : undefined,
-      customerCurrencyRate: numCurrencyRate > 0 ? numCurrencyRate : undefined,
-    });
+      customerCurrency,
+      settlementCurrency,
+    };
+
+    if (needsRate && numRate > 0) {
+      params.customerCurrencyRate = numRate;
+    }
+
+    const result = await onSubmit(params);
 
     setSubmitting(false);
     if (result.success) {
@@ -109,7 +138,7 @@ export default function NewEntryModal({
   return (
     <Modal open={open} onClose={handleClose} title="New Fund Entry" maxWidth="max-w-lg w-[95vw]">
       <div className="space-y-5 pb-4">
-        {/* Entity search + select */}
+        {/* Entity search */}
         <div className="relative">
           <label className={labelClass}>Entity</label>
           <input
@@ -130,13 +159,14 @@ export default function NewEntryModal({
                   <button
                     key={c.id}
                     type="button"
-                    onMouseDown={() => { setCustomerId(c.id); setSearch(''); setFocused(false); }}
+                    onMouseDown={() => selectCustomer(c)}
                     className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
                   >
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-200 text-xs font-bold text-slate-600">
                       {c.name.charAt(0).toUpperCase()}
                     </div>
                     <span className="font-medium">{c.name}</span>
+                    <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-slate-400">{c.currency || 'AED'}</span>
                   </button>
                 ))
               )}
@@ -183,10 +213,39 @@ export default function NewEntryModal({
           </div>
         </div>
 
+        {/* Entry currency */}
+        <div>
+          <label className={labelClass}>Entry Currency</label>
+          <div className="grid grid-cols-3 gap-2">
+            {CURRENCIES.map(curr => (
+              <button
+                key={curr}
+                type="button"
+                onClick={() => {
+                  setSettlementCurrency(curr);
+                  if (curr === customerCurrency) setRate('');
+                }}
+                className={`rounded-xl border px-3 py-2.5 text-center transition-all ${
+                  settlementCurrency === curr
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <p className={`text-xs font-extrabold uppercase tracking-wider ${
+                  settlementCurrency === curr ? 'text-white' : 'text-slate-500'
+                }`}>{curr}</p>
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[10px] font-semibold text-slate-400">
+            Customer currency: <span className="font-bold text-slate-600">{customerCurrency}</span>
+          </p>
+        </div>
+
         {/* Amount + Date */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Amount (USDT)</label>
+            <label className={labelClass}>Amount ({settlementCurrency})</label>
             <input
               type="number"
               step="0.01"
@@ -208,20 +267,20 @@ export default function NewEntryModal({
           </div>
         </div>
 
-        {/* Currency Rate */}
-        {selectedCustomer && (
+        {/* Rate (only when currencies differ) */}
+        {needsRate && (
           <div>
             <label className={labelClass}>
-              1 USDT = ? {customerCurrency} <span className="text-slate-300 font-normal normal-case tracking-normal">(optional)</span>
+              Rate <span className="text-slate-400 font-normal normal-case tracking-normal">(1 {settlementCurrency} = ? {customerCurrency})</span>
             </label>
             <input
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               className={inputClass}
-              value={currencyRate}
-              onChange={e => setCurrencyRate(e.target.value)}
-              placeholder={customerCurrency === 'AED' ? 'e.g. 3.67' : 'e.g. 16000'}
+              value={rate}
+              onChange={e => setRate(e.target.value)}
+              placeholder={`e.g. 3.67 for USDT → AED`}
             />
           </div>
         )}
@@ -247,7 +306,7 @@ export default function NewEntryModal({
         )}
 
         {/* Summary */}
-        {customerId && numAmount > 0 && (
+        {customerId && numAmount > 0 && rateValid && (
           <div className={`rounded-xl border px-4 py-3 ${
             direction === 'debit' ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/50'
           }`}>
@@ -257,11 +316,11 @@ export default function NewEntryModal({
               Summary
             </p>
             <p className={`text-sm font-bold mt-0.5 ${direction === 'debit' ? 'text-emerald-800' : 'text-red-800'}`}>
-              {selectedCustomer?.name} {direction === 'debit' ? 'owes branch' : 'is owed by branch'} {numAmount.toFixed(2)} USDT
+              {selectedCustomer?.name} {direction === 'debit' ? 'owes branch' : 'is owed by branch'} {numAmount.toFixed(2)} {settlementCurrency}
             </p>
-            {secondaryAmount > 0 && (
-              <p className="text-xs font-semibold text-slate-500 mt-1">
-                ≈ {secondaryAmount.toFixed(2)} {customerCurrency} @ {numCurrencyRate}
+            {needsRate && numRate > 0 && (
+              <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                ≈ {(numAmount * numRate).toFixed(2)} {customerCurrency} @ {numRate}
               </p>
             )}
           </div>

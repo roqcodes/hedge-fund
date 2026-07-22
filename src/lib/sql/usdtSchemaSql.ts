@@ -52,4 +52,26 @@ ALTER TABLE usdt_buys ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);
 ALTER TABLE usdt_sells ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255);
 ALTER TABLE usdt_sells ADD COLUMN IF NOT EXISTS entered_by_name VARCHAR(255);
 ALTER TABLE usdt_sells ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);
+
+ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS aed_balance DECIMAL(18, 4) NOT NULL DEFAULT 0.0000;
+ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS idr_balance DECIMAL(18, 4) NOT NULL DEFAULT 0.0000;
+
+ALTER TABLE fund_entity_ledger ADD COLUMN IF NOT EXISTS settlement_currency VARCHAR(10);
+
+CREATE TABLE IF NOT EXISTS usdt_idr_conversions (
+    id VARCHAR(50) PRIMARY KEY,
+    branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usdt_amount DECIMAL(18, 4) NOT NULL,
+    conversion_rate DECIMAL(15, 6) NOT NULL,
+    idr_amount DECIMAL(18, 2) NOT NULL,
+    entered_by VARCHAR(255),
+    entered_by_name VARCHAR(255),
+    entered_by_user_id VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_usdt_idr_conversions_branch ON usdt_idr_conversions(branch_id);
 `;
+

@@ -220,6 +220,7 @@ export async function createSession(user: User, branchSlug?: string): Promise<Us
     sameSite: 'lax',
     path: cookiePath,
   });
+
   return enriched;
 }
 

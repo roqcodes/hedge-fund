@@ -84,6 +84,10 @@ export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess,
     e.preventDefault();
     const usdtAmount = parseFloat(cleanCommaNumber(form.usdtAmountStr)) || 0;
     const aedRate = parseFloat(cleanCommaNumber(form.aedRateStr)) || 0;
+    if (!form.customerName.trim()) {
+      alert('Customer is required');
+      return;
+    }
     if (usdtAmount <= 0 || aedRate <= 0) {
       alert('USDT amount and AED rate are required');
       return;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { PhysicalBuy, PhysicalSell } from '@/types';
+import { PhysicalBuy, PhysicalBulkSell, PhysicalSell } from '@/types';
 import { 
   dbUpdatePhysicalBalanceAction, 
 } from '@/app/actions/physicalActions';
@@ -68,7 +68,7 @@ export default function PhysicalPage() {
 
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
   const [isBulkSellModalOpen, setIsBulkSellModalOpen] = useState(false);
-  const [selectedBulkSell, setSelectedBulkSell] = useState<any>(null);
+  const [selectedBulkSell, setSelectedBulkSell] = useState<PhysicalBulkSell | null>(null);
   const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [editingBuy, setEditingBuy] = useState<PhysicalBuy | null>(null);
@@ -115,8 +115,8 @@ export default function PhysicalPage() {
   }, [branchBulkSells, dateFilter, customStartDate, customEndDate]);
 
   const mergedSells = useMemo(() => {
-    const normal = filteredSells.map(s => ({ ...s, isBulk: false }));
-    const bulk = filteredBulkSells.map(b => ({ ...b, isBulk: true }));
+    const normal = filteredSells.map(s => ({ ...s, isBulk: false as const }));
+    const bulk = filteredBulkSells.map(b => ({ ...b, isBulk: true as const }));
     return [...normal, ...bulk];
   }, [filteredSells, filteredBulkSells]);
 
@@ -452,7 +452,7 @@ export default function PhysicalPage() {
                         {buy.pureGram.toFixed(3)}
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent' : 'bg-white'}`}>
-                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" showUnit={false} />
+                        <PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="md" showUnit={false} />
                       </td>
                       <td className={`border-y border-black/5 px-3 py-3.5 text-center text-sm font-bold sm:px-5 sm:py-4 ${buy.remainingWeight > 0 ? 'bg-transparent text-amber-600' : 'bg-white text-slate-900'}`}>
                         {buy.remainingWeight > 0 ? `${buy.remainingWeight.toFixed(3)} g` : '0 g'}
@@ -519,7 +519,7 @@ export default function PhysicalPage() {
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Buy Value (USDT)</span>
-                        <PhysicalAmountDisplay aedAmount={buy.buyValue} size="md" align="right" showUnit={false} />
+                        <PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="md" align="right" showUnit={false} />
                       </div>
                     </div>
                     
@@ -679,7 +679,7 @@ export default function PhysicalPage() {
                           {paymentLabel(sell.paymentMode)}
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${cellBg}`}>
-                          <PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" showUnit={false} />
+                          <PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="md" showUnit={false} />
                         </td>
                         <td className={`border-y border-black/5 px-3 py-3.5 sm:px-5 sm:py-4 ${cellBg}`}>
                           <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
@@ -773,7 +773,7 @@ export default function PhysicalPage() {
                            <span className="text-[10px] font-bold uppercase text-slate-400">Item</span>
                            <p>{sell.isBulk ? `Bulk Sell (${childCount} Buys)` : (buy?.item || '—')}</p>
                          </div>
-                         <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value (USDT)</span><PhysicalAmountDisplay aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} /></div>
+                          <div><span className="text-[10px] font-bold uppercase text-slate-400">Sell Value (USDT)</span><PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="md" align="left" className="!items-start !text-left" showUnit={false} /></div>
                          <div className="col-span-2"><span className="text-[10px] font-bold uppercase text-slate-400">Narration</span><p>{sell.narration || '—'}</p></div>
                        </div>
                      </div>
