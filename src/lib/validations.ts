@@ -68,6 +68,7 @@ export const addExpenseSchema = z.object({
   category: nonEmptyString,
   description: nonEmptyString,
   amount: positiveAmount,
+  paymentMethod: z.enum(['AED', 'USDT', 'IDR']).optional(),
 });
 
 export type AddExpenseInput = z.infer<typeof addExpenseSchema>;

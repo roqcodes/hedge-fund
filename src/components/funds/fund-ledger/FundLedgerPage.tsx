@@ -4,19 +4,23 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useFundLedger } from '@/hooks/useFundLedger';
 import { getBranchUsdtBalanceAction } from '@/app/actions/usdtActions';
 import { btnPrimary, btnSecondary, pageHeader, pageTitle, pageSubtitle } from '@/lib/ui';
-import KpiCards from './KpiCards';
-import EntryTable from './EntryTable';
+import FundLedgerKpiSection from './FundLedgerKpiSection';
+import FundLedgerTable from './FundLedgerTable';
 import NewEntryModal from './NewEntryModal';
 import RecordPaymentModal from './RecordPaymentModal';
+import ExpenseEntryModal from './ExpenseEntryModal';
 import EntryDetailModal from './EntryDetailModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import { useApp } from '@/context/AppContext';
-import type { FundEntityLedgerEntry } from '@/types';
+import { createBranchExpenseAction } from '@/app/actions/fundActions';
+import type { FundEntityLedgerEntry, ExpensePaymentMethod, ExpenseType } from '@/types';
 
 export default function FundLedgerPage() {
   const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
-  const { currentSlug, branches } = useApp();
-  const branchId = branches.find(b => b.slug === currentSlug)?.id;
+  const { currentSlug, branches, showToast, refetchData, expenses, isInitialLoading } = useApp();
+  const branch = branches.find(b => b.slug === currentSlug);
+  const branchId = branch?.id;
+
   const {
     entries,
     balances,
@@ -35,20 +39,11 @@ export default function FundLedgerPage() {
 
   const [showNewEntry, setShowNewEntry] = useState(false);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [showExpenseEntry, setShowExpenseEntry] = useState(false);
   const [preselectedEntity, setPreselectedEntity] = useState<string | undefined>(undefined);
   const [preselectedAmount, setPreselectedAmount] = useState<number>(0);
   const [paymentKey, setPaymentKey] = useState(0);
   const [viewingEntry, setViewingEntry] = useState<FundEntityLedgerEntry | null>(null);
-
-  const handleViewEntry = (entry: FundEntityLedgerEntry) => setViewingEntry(entry);
-
-  const openRecordPayment = (customerId?: string, amount?: number) => {
-    setPreselectedEntity(customerId);
-    setPreselectedAmount(amount ?? 0);
-    setPaymentKey(k => k + 1);
-    setShowRecordPayment(true);
-  };
-
   const [branchBalances, setBranchBalances] = useState<{ usdt: number; aed: number; idr: number } | null>(null);
 
   const fetchCapital = useCallback(async () => {
@@ -58,11 +53,17 @@ export default function FundLedgerPage() {
   }, [branchId]);
 
   const refreshAll = useCallback(async () => {
-    await refresh();
-    await fetchCapital();
-  }, [refresh, fetchCapital]);
+    await Promise.all([refresh(), fetchCapital(), refetchData()]);
+  }, [refresh, fetchCapital, refetchData]);
 
   useEffect(() => { fetchCapital(); }, [fetchCapital]);
+
+  const openRecordPayment = (customerId?: string, amount?: number) => {
+    setPreselectedEntity(customerId);
+    setPreselectedAmount(amount ?? 0);
+    setPaymentKey(k => k + 1);
+    setShowRecordPayment(true);
+  };
 
   const handleCreateEntry = async (params: Parameters<typeof createEntry>[0]) => {
     const result = await createEntry(params);
@@ -82,23 +83,51 @@ export default function FundLedgerPage() {
     await fetchCapital();
   };
 
+  const handleCreateExpense = async (params: {
+    date: string;
+    type: ExpenseType;
+    category: string;
+    description: string;
+    amount: number;
+    paymentMethod: ExpensePaymentMethod;
+  }) => {
+    if (!branchId) return { success: false, error: 'No branch selected' };
+    const result = await createBranchExpenseAction({ ...params, branchId });
+    if (result.success) {
+      await fetchCapital();
+      await refetchData();
+      showToast(`Expense of ${params.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} ${params.paymentMethod} recorded`, 'success');
+    }
+    return result;
+  };
+
+  const branchExpenses = branchId
+    ? expenses.filter(e => e.branchId === branchId)
+    : expenses;
+
+  const writeBlocked = !canWrite;
+
   return (
     <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
       <header className={pageHeader}>
         <div className="min-w-0 space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Entity settlement</p>
-          <h1 className={pageTitle}>Entity Ledger</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Branch operations</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className={pageTitle}>Funds</h1>
+            {branch?.name && (
+              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                {branch.name}
+              </span>
+            )}
+          </div>
           <p className={pageSubtitle}>
-            Track receivables, payables, and settlements per entity
+            Entity settlements, branch expenses, and cash balances in one ledger
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={refreshAll}
-            className={btnSecondary}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <button type="button" onClick={refreshAll} className={`${btnSecondary} w-full sm:w-auto`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="23 4 23 10 17 10" />
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>
@@ -106,92 +135,63 @@ export default function FundLedgerPage() {
           </button>
           <button
             type="button"
-            className={`${btnSecondary}${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
+            className={`${btnSecondary} w-full sm:w-auto${writeBlocked ? ' cursor-not-allowed opacity-50' : ''}`}
+            {...wp()}
+            onClick={() => canWrite && setShowExpenseEntry(true)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+            Record expense
+          </button>
+          <button
+            type="button"
+            className={`${btnSecondary} w-full sm:w-auto${writeBlocked ? ' cursor-not-allowed opacity-50' : ''}`}
             {...wp()}
             onClick={() => canWrite && openRecordPayment()}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
-            Record Payment
+            Record payment
           </button>
-
           <button
             type="button"
-            className={`${btnPrimary} w-full sm:w-auto${!canWrite ? ' pointer-events-none opacity-50' : ''}`}
+            className={`${btnPrimary} w-full sm:w-auto${writeBlocked ? ' pointer-events-none opacity-50' : ''}`}
             {...wp()}
             onClick={() => canWrite && setShowNewEntry(true)}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <path d="M12 5v14M5 12h14" />
             </svg>
-            Post Entry
+            Post entry
           </button>
         </div>
       </header>
 
-      {/* Branch Cash Balances */}
-      <div className="mb-6">
-        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-surface-xs">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Branch Cash Balances</p>
-            </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-light text-accent">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M3 21h18M3 10h18M5 21V10m14 11V10M2 7l10-5 10 5M10 14h4v7h-4z" />
-              </svg>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-slate-50 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">USDT Capital</p>
-              <p className="mt-1 text-xl font-black text-slate-900 font-mono">
-                {branchBalances !== null ? branchBalances.usdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '\u2014'}
-                <span className="text-xs font-bold text-slate-500 ml-1.5">USDT</span>
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">AED Balance</p>
-              <p className="mt-1 text-xl font-black text-slate-900 font-mono">
-                {branchBalances !== null ? branchBalances.aed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '\u2014'}
-                <span className="text-xs font-bold text-slate-500 ml-1.5">AED</span>
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">IDR Balance</p>
-              <p className="mt-1 text-xl font-black text-slate-900 font-mono">
-                {branchBalances !== null ? branchBalances.idr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '\u2014'}
-                <span className="text-xs font-bold text-slate-500 ml-1.5">IDR</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <KpiCards
+      <FundLedgerKpiSection
+        branchBalances={branchBalances}
         totalReceivable={totalReceivable}
         totalPayable={totalPayable}
         netPosition={netPosition}
         entityCount={balances.length}
-        loading={loading}
+        loading={loading || isInitialLoading}
       />
 
-      {/* Main content: entity list + ledger entries */}
-      <EntryTable
+      <FundLedgerTable
         entries={entries}
+        expenses={branchExpenses}
         balances={balances}
         customers={customers}
         selectedCustomerId={selectedCustomerId}
+        loading={loading || isInitialLoading}
         onSelectCustomer={selectCustomer}
-        onView={handleViewEntry}
-        onDelete={handleDeleteEntry}
+        onViewEntry={entry => setViewingEntry(entry)}
+        onDeleteEntry={handleDeleteEntry}
         onRecordPayment={openRecordPayment}
         canWrite={canWrite}
       />
 
-      {/* Post Entry Modal */}
       <NewEntryModal
         open={showNewEntry}
         onClose={() => setShowNewEntry(false)}
@@ -199,7 +199,6 @@ export default function FundLedgerPage() {
         onSubmit={handleCreateEntry}
       />
 
-      {/* Record Payment Modal */}
       <RecordPaymentModal
         key={paymentKey}
         open={showRecordPayment}
@@ -210,7 +209,13 @@ export default function FundLedgerPage() {
         onSubmit={handleRecordPayment}
       />
 
-      {/* Detail Modal */}
+      <ExpenseEntryModal
+        open={showExpenseEntry}
+        onClose={() => setShowExpenseEntry(false)}
+        branchBalances={branchBalances}
+        onSubmit={handleCreateExpense}
+      />
+
       <EntryDetailModal
         open={viewingEntry !== null}
         entry={viewingEntry}
@@ -220,10 +225,8 @@ export default function FundLedgerPage() {
         canWrite={canWrite}
       />
 
-
-
       {!canWrite && writeBlockedReason && (
-        <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs font-semibold text-amber-700">
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700">
           {writeBlockedReason}
         </div>
       )}

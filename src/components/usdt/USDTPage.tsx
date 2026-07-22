@@ -151,12 +151,12 @@ export default function USDTPage() {
     return idrConversions.filter(item => isDateInRange(item.date, range));
   }, [idrConversions, dateFilter, customStartDate, customEndDate]);
 
-  // Weighted average USDT <-> AED buy rate
-  const usdtAedWeightedAvg = useMemo(() => {
+  // Weighted average USDT <-> AED buy rate (from usdt_buys only)
+  const usdtAedWeightedAvg = useMemo((): number | null => {
     const totalAed = branchBuys.reduce((sum, b) => sum + b.aedTotal, 0);
     const totalUsdt = branchBuys.reduce((sum, b) => sum + b.usdtAmount, 0);
     if (totalUsdt > 0) return totalAed / totalUsdt;
-    return 3.6725;
+    return null;
   }, [branchBuys]);
 
   // Weighted average USDT -> IDR conversion rate
@@ -316,9 +316,16 @@ export default function USDTPage() {
 
   const totalAedEquiv = useMemo(() => {
     const aed = branchBalances?.aed ?? 0;
-    const usdtInAed = (branchBalances?.usdt ?? 0) * usdtAedWeightedAvg;
-    const idrInAed = (branchBalances?.idr ?? 0) / (usdtIdrWeightedAvg || 16000) * usdtAedWeightedAvg;
-    return aed + usdtInAed + idrInAed;
+    const usdt = branchBalances?.usdt ?? 0;
+    const idr = branchBalances?.idr ?? 0;
+    let total = aed;
+    if (usdtAedWeightedAvg != null && usdt > 0) {
+      total += usdt * usdtAedWeightedAvg;
+    }
+    if (usdtAedWeightedAvg != null && usdtIdrWeightedAvg != null && idr > 0) {
+      total += (idr / usdtIdrWeightedAvg) * usdtAedWeightedAvg;
+    }
+    return total;
   }, [branchBalances, usdtAedWeightedAvg, usdtIdrWeightedAvg]);
 
   return (
@@ -401,7 +408,7 @@ export default function USDTPage() {
             top={{ label: 'USDT Vault Stock', value: fmtUsdt(branchBalances?.usdt ?? 0) }}
             bottom={{
               label: 'Avg Buy Rate',
-              value: `${fmtRate(usdtAedWeightedAvg)} AED`,
+              value: usdtAedWeightedAvg != null ? `${fmtRate(usdtAedWeightedAvg)} AED` : 'No purchases',
             }}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

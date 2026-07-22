@@ -95,6 +95,7 @@ export interface Transaction {
 }
 
 export type ExpenseType = 'capex' | 'opex';
+export type ExpensePaymentMethod = 'AED' | 'USDT' | 'IDR';
 
 export interface Expense {
   id: string;
@@ -105,6 +106,7 @@ export interface Expense {
   category: string;
   description: string;
   amount: number;
+  paymentMethod?: ExpensePaymentMethod;
 }
 
 export interface DailyReport {

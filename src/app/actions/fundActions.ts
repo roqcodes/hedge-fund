@@ -1,13 +1,16 @@
 'use server';
 
 import { getSessionUser } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { query, pool } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { addExpenseSchema } from '@/lib/validations';
 import type {
   FundEntityLedgerEntry,
   FundEntityBalance,
   FundEntryDirection,
   FundReferenceType,
+  ExpensePaymentMethod,
+  ExpenseType,
 } from '@/types';
 
 function mapRow(row: Record<string, unknown>): FundEntityLedgerEntry {
@@ -336,5 +339,123 @@ async function adjustBranchCashBalance(branchId: string, currency: string, delta
     );
   } catch (err) {
     logger.error({ err, branchId, currency, delta }, 'Failed to adjust branch cash balance');
+  }
+}
+
+function balanceColumnForCurrency(currency: ExpensePaymentMethod): string {
+  if (currency === 'AED') return 'aed_balance';
+  if (currency === 'IDR') return 'idr_balance';
+  return 'available_fund';
+}
+
+export async function createBranchExpenseAction(params: {
+  branchId: string;
+  date: string;
+  type: ExpenseType;
+  category: string;
+  description: string;
+  amount: number;
+  paymentMethod: ExpensePaymentMethod;
+}): Promise<{ success: true; expenseId: string } | { success: false; error: string }> {
+  const branchRes = await query('SELECT id, name, slug FROM branches WHERE id = $1', [params.branchId]);
+  if (branchRes.rows.length === 0) return { success: false, error: 'Branch not found' };
+
+  const branch = branchRes.rows[0];
+  const branchSlug = String(branch.slug);
+  const branchName = String(branch.name);
+  const user = await getSessionUser(branchSlug);
+  if (!user) return { success: false, error: 'Not authenticated' };
+
+  const validation = addExpenseSchema.safeParse({
+    date: params.date,
+    branchId: params.branchId,
+    branchName,
+    type: params.type,
+    category: params.category,
+    description: params.description,
+    amount: params.amount,
+    paymentMethod: params.paymentMethod,
+  });
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues.map(i => i.message).join(', ') };
+  }
+
+  const expenseId = `EXP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  const txnId = `TXN-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  const timestamp = new Date().toISOString();
+  const balanceCol = balanceColumnForCurrency(params.paymentMethod);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund, aed_balance, idr_balance)
+       VALUES ($1, 0, 0, 0, 0) ON CONFLICT (branch_id) DO NOTHING`,
+      [params.branchId],
+    );
+
+    const balRes = await client.query(
+      `SELECT ${balanceCol} AS balance FROM branch_usdt_balances WHERE branch_id = $1 FOR UPDATE`,
+      [params.branchId],
+    );
+    const currentBalance = parseFloat(String(balRes.rows[0]?.balance ?? '0')) || 0;
+    if (currentBalance < params.amount) {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        error: `Insufficient ${params.paymentMethod} balance. Available: ${currentBalance.toFixed(2)}`,
+      };
+    }
+
+    await client.query(
+      `INSERT INTO expenses (id, date, branch_id, branch_name, type, category, description, amount, payment_method)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        expenseId,
+        params.date,
+        params.branchId,
+        branchName,
+        params.type,
+        params.category,
+        params.description,
+        params.amount,
+        params.paymentMethod,
+      ],
+    );
+
+    await client.query(
+      `UPDATE branch_usdt_balances SET ${balanceCol} = ${balanceCol} - $1, updated_at = CURRENT_TIMESTAMP WHERE branch_id = $2`,
+      [params.amount, params.branchId],
+    );
+
+    if (params.paymentMethod === 'AED') {
+      await client.query(
+        `UPDATE branches SET current_balance = current_balance - $1, last_activity = $2 WHERE id = $3`,
+        [params.amount, timestamp, params.branchId],
+      );
+    } else {
+      await client.query(
+        `UPDATE branches SET last_activity = $1 WHERE id = $2`,
+        [timestamp, params.branchId],
+      );
+    }
+
+    const notes = `${params.category}: ${params.description} (${params.paymentMethod})`;
+    await client.query(
+      `INSERT INTO transactions (id, date, from_entity, to_entity, amount, type, status, notes, branch_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [txnId, timestamp, branchName, 'External (Expense)', params.amount, 'expense', 'completed', notes, params.branchId],
+    );
+
+    await client.query('COMMIT');
+    logger.info({ expenseId, branchId: params.branchId, amount: params.amount, paymentMethod: params.paymentMethod }, 'Branch expense created');
+    return { success: true, expenseId };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error({ err, params }, 'Failed to create branch expense');
+    return { success: false, error: 'Failed to record expense' };
+  } finally {
+    client.release();
   }
 }

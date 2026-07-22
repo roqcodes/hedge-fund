@@ -3,9 +3,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { PhysicalBuy, PhysicalBulkSell, PhysicalSell } from '@/types';
-import { 
-  dbUpdatePhysicalBalanceAction, 
-} from '@/app/actions/physicalActions';
 import { useApp } from '@/context/AppContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import { resolveDateFilterRange, isDateInRange } from '@/lib/dateFilterRange';
@@ -69,7 +66,6 @@ export default function PhysicalPage() {
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
   const [isBulkSellModalOpen, setIsBulkSellModalOpen] = useState(false);
   const [selectedBulkSell, setSelectedBulkSell] = useState<PhysicalBulkSell | null>(null);
-  const [isInitialSetupOpen, setIsInitialSetupOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [editingBuy, setEditingBuy] = useState<PhysicalBuy | null>(null);
   const [selectedSell, setSelectedSell] = useState<PhysicalSell | null>(null);
@@ -125,28 +121,6 @@ export default function PhysicalPage() {
     () => computePhysicalKpiMetrics(buys, filteredBuys, filteredSells, isFixedDeal, currencyRates),
     [buys, filteredBuys, filteredSells, currencyRates],
   );
-
-  useEffect(() => {
-    if (balance && balance.initialCapital === 0 && balance.initialVolume === 0 && buys.length === 0) {
-      setIsInitialSetupOpen(true);
-    }
-  }, [balance, buys.length]);
-
-  const handleInitialSetup = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const cap = parseFloat(fd.get('initialCapital') as string);
-    const vol = parseFloat(fd.get('initialVolume') as string);
-    
-    if (!branchId) return;
-    const res = await dbUpdatePhysicalBalanceAction(branchId, cap, vol);
-    if (res.success) {
-      setIsInitialSetupOpen(false);
-      await refetchData();
-    } else {
-      alert(res.error);
-    }
-  };
 
   const handleCreateBuySuccess = async () => {
     await refetchData();
@@ -790,42 +764,6 @@ export default function PhysicalPage() {
       </div>
 
       {/* Modals */}
-      {isInitialSetupOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-bold">Gold Capital Setup</h3>
-            <form onSubmit={handleInitialSetup} className="space-y-4">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600">Initial Capital (Fund)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="initialCapital"
-                  defaultValue={balance?.initialCapital || 0}
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600">Initial Gold Weight (g)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="initialVolume"
-                  defaultValue={balance?.initialVolume || 0}
-                  className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsInitialSetupOpen(false)} className={btnSecondary}>Cancel</button>
-                <button type="submit" className={btnPrimary}>Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {isDealModalOpen && branchSlug && branchId && (
         <PhysicalDealModal
           open={isDealModalOpen}

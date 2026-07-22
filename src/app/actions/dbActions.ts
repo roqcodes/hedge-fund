@@ -339,6 +339,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       category: r.category,
       description: r.description,
       amount: parseFloat(r.amount),
+      paymentMethod: r.payment_method ?? undefined,
     }));
 
     // 5. Fetch Invoices
@@ -976,6 +977,7 @@ export async function dbAddExpenseAction(
     category: expense.category,
     description: expense.description,
     amount: expense.amount,
+    paymentMethod: expense.paymentMethod,
   });
   if (!validation.success) {
     return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
@@ -985,10 +987,12 @@ export async function dbAddExpenseAction(
   try {
     await client.query('BEGIN');
 
+    const paymentMethod = expense.paymentMethod ?? 'AED';
+
     // 1. Insert expense
     await client.query(
-      `INSERT INTO expenses (id, date, branch_id, branch_name, type, category, description, amount)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO expenses (id, date, branch_id, branch_name, type, category, description, amount, payment_method)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         expense.id,
         expense.date,
@@ -998,6 +1002,7 @@ export async function dbAddExpenseAction(
         expense.category,
         expense.description,
         expense.amount,
+        paymentMethod,
       ]
     );
 
@@ -1007,11 +1012,28 @@ export async function dbAddExpenseAction(
       await client.query('UPDATE hq_balance SET amount = amount - $1 WHERE id = 1', [expense.amount]);
     } else {
       await client.query(
-        `UPDATE branches 
-         SET current_balance = current_balance - $1, last_activity = $2
-         WHERE id = $3`,
-        [expense.amount, timestamp, expense.branchId]
+        `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund, aed_balance, idr_balance)
+         VALUES ($1, 0, 0, 0, 0) ON CONFLICT (branch_id) DO NOTHING`,
+        [expense.branchId],
       );
+      const balanceCol = paymentMethod === 'AED' ? 'aed_balance' : paymentMethod === 'IDR' ? 'idr_balance' : 'available_fund';
+      await client.query(
+        `UPDATE branch_usdt_balances SET ${balanceCol} = ${balanceCol} - $1, updated_at = CURRENT_TIMESTAMP WHERE branch_id = $2`,
+        [expense.amount, expense.branchId],
+      );
+      if (paymentMethod === 'AED') {
+        await client.query(
+          `UPDATE branches 
+           SET current_balance = current_balance - $1, last_activity = $2
+           WHERE id = $3`,
+          [expense.amount, timestamp, expense.branchId]
+        );
+      } else {
+        await client.query(
+          `UPDATE branches SET last_activity = $1 WHERE id = $2`,
+          [timestamp, expense.branchId]
+        );
+      }
     }
 
     // 3. Insert transaction

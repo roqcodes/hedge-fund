@@ -108,7 +108,8 @@ CREATE TABLE IF NOT EXISTS expenses (
     type VARCHAR(20) NOT NULL CHECK (type IN ('capex', 'opex')),
     category VARCHAR(100) NOT NULL,
     description TEXT NOT NULL,
-    amount DECIMAL(15, 2) NOT NULL
+    amount DECIMAL(15, 2) NOT NULL,
+    payment_method VARCHAR(10) DEFAULT 'AED' CHECK (payment_method IN ('AED', 'USDT', 'IDR'))
 );
 
 -- 5. Invoices
