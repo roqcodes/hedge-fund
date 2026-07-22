@@ -481,14 +481,19 @@ export interface UsdtIdrConversion {
 }
 
 export type FundEntryDirection = 'debit' | 'credit';
-export type FundReferenceType = 'manual' | 'settlement' | 'physical_buy' | 'physical_sell' | 'usdt_buy' | 'usdt_sell';
+export type FundReferenceType = 'manual' | 'settlement' | 'entity_transfer' | 'physical_buy' | 'physical_sell' | 'usdt_buy' | 'usdt_sell';
 
 export interface FundEntityBalance {
   customerId: string;
   customerName: string;
+  /** USDT totals (base currency) */
   totalDebit: number;
   totalCredit: number;
   net: number;
+  netUsdt?: number;
+  /** Customer-profile currency equivalent of net */
+  netCustomer?: number;
+  customerCurrency?: string;
 }
 
 export interface FundEntityLedgerEntry {
@@ -497,13 +502,18 @@ export interface FundEntityLedgerEntry {
   customerId: string;
   entryDate: string;
   description: string;
+  /** Always USDT (base currency) */
   debit: number;
   credit: number;
   referenceType: FundReferenceType;
   referenceId?: string;
+  /** Entity profile / display currency */
   customerCurrency?: string;
+  /** 1 USDT = customerCurrencyRate × customerCurrency */
   customerCurrencyRate?: number;
   settlementCurrency?: string;
+  /** Cash amount moved on branch balance (settlement rows) */
+  settlementAmount?: number;
   createdBy?: string;
   createdByName?: string;
   createdByUserId?: string;

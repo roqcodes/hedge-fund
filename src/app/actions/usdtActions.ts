@@ -7,6 +7,8 @@ import { mapUsdtBuyRow, mapUsdtSellRow, mapUsdtSettingsRow } from '@/lib/usdtMap
 import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { adjustCustomerBalanceInTx } from './customerActions';
 import { getCurrentUserAction } from './auth';
+import { createAutoLedgerEntry, deleteAutoLedgerEntryByReference } from './fundActions';
+import { logger } from '@/lib/logger';
 
 async function ensureUsdtSchema() {
   await query(SQL_ENSURE_USDT_SCHEMA);
@@ -72,16 +74,6 @@ export async function dbAddUsdtBuyAction(
   try {
     await client.query('BEGIN');
 
-    // Check AED balance
-    const balCheck = await client.query(
-      'SELECT aed_balance FROM branch_usdt_balances WHERE branch_id = $1 FOR UPDATE',
-      [buy.branchId],
-    );
-    const aedAvailable = balCheck.rows.length > 0 ? parseFloat(balCheck.rows[0].aed_balance) || 0 : 0;
-    if (aedAvailable < buy.aedTotal) {
-      throw new Error(`Not enough AED balance. Available: ${aedAvailable.toFixed(2)} AED, needed: ${buy.aedTotal.toFixed(2)} AED`);
-    }
-
     const id = `ubuy-${crypto.randomUUID().slice(0, 8)}`;
     let openingBalance = buy.openingBalance;
 
@@ -116,9 +108,32 @@ export async function dbAddUsdtBuyAction(
       ],
     );
 
-    await adjustUsdtCapitalInTx(client, buy.branchId, buy.usdtAmount, -buy.aedTotal);
+    await adjustUsdtCapitalInTx(client, buy.branchId, buy.usdtAmount);
 
     await client.query('COMMIT');
+
+    if (buy.customerId) {
+      try {
+        const parts = [`USDT buy - ${buy.usdtAmount.toFixed(4)} USDT`, `AED ${buy.aedTotal.toFixed(2)}`];
+        if (buy.txnId) parts.push(`Txn ${buy.txnId}`);
+        await createAutoLedgerEntry({
+          branchId: buy.branchId,
+          customerId: buy.customerId,
+          direction: 'credit',
+          amount: buy.aedTotal,
+          referenceType: 'usdt_buy',
+          referenceId: id,
+          description: parts.join(' | '),
+          customerCurrency: 'AED',
+          customerCurrencyRate: buy.aedRate,
+          settlementCurrency: 'AED',
+          entryDate: buy.date,
+        });
+      } catch (autoErr) {
+        logger.error({ err: autoErr, buyId: id }, 'Auto ledger entry failed for USDT buy');
+      }
+    }
+
     return { success: true, data: mapUsdtBuyRow(res.rows[0]) };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
@@ -139,6 +154,15 @@ export async function dbAddUsdtSellAction(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    const balCheck = await client.query(
+      'SELECT available_fund FROM branch_usdt_balances WHERE branch_id = $1 FOR UPDATE',
+      [sell.branchId],
+    );
+    const usdtAvailable = balCheck.rows.length > 0 ? parseFloat(balCheck.rows[0].available_fund) || 0 : 0;
+    if (usdtAvailable < sell.usdtAmount) {
+      throw new Error(`Not enough USDT stock. Available: ${usdtAvailable.toFixed(4)} USDT, needed: ${sell.usdtAmount.toFixed(4)} USDT`);
+    }
 
     const id = `usell-${crypto.randomUUID().slice(0, 8)}`;
     let openingBalance = sell.openingBalance;
@@ -177,9 +201,32 @@ export async function dbAddUsdtSellAction(
       ],
     );
 
-    await adjustUsdtCapitalInTx(client, sell.branchId, -sell.usdtAmount, sell.aedTotal);
+    await adjustUsdtCapitalInTx(client, sell.branchId, -sell.usdtAmount);
 
     await client.query('COMMIT');
+
+    if (sell.customerId) {
+      try {
+        const parts = [`USDT sell - ${sell.usdtAmount.toFixed(4)} USDT`, `AED ${sell.aedTotal.toFixed(2)}`];
+        if (sell.txnId) parts.push(`Txn ${sell.txnId}`);
+        await createAutoLedgerEntry({
+          branchId: sell.branchId,
+          customerId: sell.customerId,
+          direction: 'debit',
+          amount: sell.aedTotal,
+          referenceType: 'usdt_sell',
+          referenceId: id,
+          description: parts.join(' | '),
+          customerCurrency: 'AED',
+          customerCurrencyRate: sell.aedRate,
+          settlementCurrency: 'AED',
+          entryDate: sell.date,
+        });
+      } catch (autoErr) {
+        logger.error({ err: autoErr, sellId: id }, 'Auto ledger entry failed for USDT sell');
+      }
+    }
+
     return { success: true, data: mapUsdtSellRow(res.rows[0]) };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
@@ -202,10 +249,13 @@ export async function dbDeleteUsdtBuyAction(buyId: string): Promise<DbActionResu
       await adjustCustomerBalanceInTx(client, buy.customer_id, -parseFloat(buy.aed_total));
     }
 
-    await adjustUsdtCapitalInTx(client, buy.branch_id, -parseFloat(buy.usdt_amount), parseFloat(buy.aed_total));
+    await adjustUsdtCapitalInTx(client, buy.branch_id, -parseFloat(buy.usdt_amount));
 
     await client.query('DELETE FROM usdt_buys WHERE id = $1', [buyId]);
     await client.query('COMMIT');
+
+    await deleteAutoLedgerEntryByReference('usdt_buy', buyId);
+
     return { success: true, data: null };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
@@ -228,10 +278,13 @@ export async function dbDeleteUsdtSellAction(sellId: string): Promise<DbActionRe
       await adjustCustomerBalanceInTx(client, sell.customer_id, parseFloat(sell.aed_total));
     }
 
-    await adjustUsdtCapitalInTx(client, sell.branch_id, parseFloat(sell.usdt_amount), -parseFloat(sell.aed_total));
+    await adjustUsdtCapitalInTx(client, sell.branch_id, parseFloat(sell.usdt_amount));
 
     await client.query('DELETE FROM usdt_sells WHERE id = $1', [sellId]);
     await client.query('COMMIT');
+
+    await deleteAutoLedgerEntryByReference('usdt_sell', sellId);
+
     return { success: true, data: null };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
@@ -481,15 +534,14 @@ export async function dbDeleteUsdtConversionAction(conversionId: string, branchI
   }
 }
 
-async function adjustUsdtCapitalInTx(client: any, branchId: string, usdtDelta: number, aedDelta?: number) {
+async function adjustUsdtCapitalInTx(client: any, branchId: string, usdtDelta: number) {
   await client.query(
     `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund, aed_balance)
-     VALUES ($1, 0, $2, COALESCE($3, 0))
+     VALUES ($1, 0, $2, 0)
      ON CONFLICT (branch_id) DO UPDATE SET
        available_fund = branch_usdt_balances.available_fund + $2,
-       aed_balance = CASE WHEN $3 IS NOT NULL THEN branch_usdt_balances.aed_balance + $3 ELSE branch_usdt_balances.aed_balance END,
        updated_at = CURRENT_TIMESTAMP`,
-    [branchId, usdtDelta, aedDelta ?? null],
+    [branchId, usdtDelta],
   );
 }
 

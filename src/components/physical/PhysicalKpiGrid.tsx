@@ -126,14 +126,14 @@ export default function PhysicalKpiGrid({ metrics }: Props) {
             <MetricCell label="Total Deals" value={String(metrics.totalDeals)} hint="buys" />
             <MetricCell
               label="Fix"
-              value={String(metrics.fixCount)}
-              hint="fixed price"
+              value={`${fmtGram(metrics.fixVolumeGram)} g`}
+              hint={`${metrics.fixCount} deals · fixed price`}
               valueClassName="text-indigo-700"
             />
             <MetricCell
               label="Unfix"
-              value={String(metrics.unfixCount)}
-              hint="open price"
+              value={`${fmtGram(metrics.unfixVolumeGram)} g`}
+              hint={`${metrics.unfixCount} deals · open price`}
               valueClassName="text-violet-700"
             />
             <MetricCell

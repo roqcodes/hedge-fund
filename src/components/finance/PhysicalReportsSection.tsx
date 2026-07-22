@@ -107,6 +107,8 @@ export default function PhysicalReportsSection({
             { label: 'Sell Value', value: formatAEDStr(report.kpi.sellValue.aed) },
             { label: 'P&L', value: formatAEDStr(report.kpi.pl.aed) },
             { label: 'Remaining (g)', value: fmtNum(report.kpi.remainingGram) },
+            { label: 'Fix Volume (g)', value: fmtNum(report.kpi.fixVolumeGram) },
+            { label: 'Unfix Volume (g)', value: fmtNum(report.kpi.unfixVolumeGram) },
             { label: 'Fix Positions', value: String(report.kpi.fixCount) },
             { label: 'Unfix Positions', value: String(report.kpi.unfixCount) },
           ]}
@@ -129,8 +131,16 @@ export default function PhysicalReportsSection({
             value: `${fmtNum(report.kpi.remainingGram)} g`,
             subValue: `${report.kpi.soldPct}% sold of purchased`,
           },
-          { label: 'Fix Positions', value: report.kpi.fixCount, subValue: 'Fixed-rate deals' },
-          { label: 'Unfix Positions', value: report.kpi.unfixCount, subValue: 'Open rate exposure' },
+          {
+            label: 'Fix Volume',
+            value: `${fmtNum(report.kpi.fixVolumeGram)} g`,
+            subValue: `${report.kpi.fixCount} deals · fixed rate`,
+          },
+          {
+            label: 'Unfix Volume',
+            value: `${fmtNum(report.kpi.unfixVolumeGram)} g`,
+            subValue: `${report.kpi.unfixCount} deals · open rate exposure`,
+          },
           { label: 'Margin on Purchase', value: formatAEDStr(report.avgBuyMargin), subValue: 'Avg deal margin' },
           { label: 'Avg Sell Margin %', value: `${report.avgSellMargin.toFixed(2)}%`, subValue: 'Selling margin' },
           {

@@ -38,8 +38,9 @@ export function getKpiTotals(
   let totalPayable = 0;
 
   for (const b of balances) {
-    if (b.net > 0) totalReceivable += b.net;
-    else totalPayable += Math.abs(b.net);
+    const net = b.netUsdt ?? b.net;
+    if (net > 0) totalReceivable += net;
+    else totalPayable += Math.abs(net);
   }
 
   return {

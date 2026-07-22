@@ -126,8 +126,8 @@ export default function FundLedgerKpiSection({
           }
         />
         <StatCard
-          label="Receivables"
-          value={fmt(totalReceivable)}
+          label="Receivables (USDT)"
+          value={`${fmt(totalReceivable)} USDT`}
           sub={pendingUsdt > 0 ? `Active only · ${fmt(pendingUsdt)} USDT pending` : 'Entities owe branch'}
           color="#059669"
           bgColor="#d1fae5"
@@ -139,8 +139,8 @@ export default function FundLedgerKpiSection({
           }
         />
         <StatCard
-          label="Payables"
-          value={fmt(totalPayable)}
+          label="Payables (USDT)"
+          value={`${fmt(totalPayable)} USDT`}
           sub="Branch owes entities"
           color="#dc2626"
           bgColor="#fee2e2"
@@ -152,8 +152,8 @@ export default function FundLedgerKpiSection({
           }
         />
         <StatCard
-          label="Net position"
-          value={fmt(netPosition)}
+          label="Net position (USDT)"
+          value={`${fmt(netPosition)} USDT`}
           sub={netPosition >= 0 ? 'Branch is net owed' : 'Branch owes net'}
           color={netPosition >= 0 ? '#059669' : '#dc2626'}
           bgColor={netPosition >= 0 ? '#d1fae5' : '#fee2e2'}

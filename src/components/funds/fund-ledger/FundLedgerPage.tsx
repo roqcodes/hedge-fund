@@ -7,14 +7,14 @@ import DateFilterBar from '@/components/ui/DateFilterBar';
 import { btnPrimary, btnSecondary, pageHeader, pageTitle } from '@/lib/ui';
 import FundLedgerKpiSection from './FundLedgerKpiSection';
 import FundLedgerTable from './FundLedgerTable';
-import NewEntryModal from './NewEntryModal';
-import RecordPaymentModal from './RecordPaymentModal';
+import JournalEntryModal, { type JournalEntryMode } from './JournalEntryModal';
+import EntityTransferModal from './EntityTransferModal';
 import ExpenseEntryModal from './ExpenseEntryModal';
 import EntryDetailModal from './EntryDetailModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import { useApp } from '@/context/AppContext';
 import { createBranchExpenseAction, deleteBranchExpenseAction } from '@/app/actions/fundActions';
-import { resolveEntityLedgerCurrency, sumPendingUsdt } from '@/lib/fundLedgerCurrency';
+import { sumPendingUsdt } from '@/lib/fundLedgerCurrency';
 import type { Expense, FundEntityLedgerEntry, ExpensePaymentMethod, ExpenseType } from '@/types';
 
 export default function FundLedgerPage() {
@@ -33,20 +33,20 @@ export default function FundLedgerPage() {
     netPosition,
     loading,
     selectCustomer,
-    createEntry,
-    recordPayment,
+    postJournalEntry,
+    postEntityTransfer,
     deleteEntry,
     convertEntry,
     refresh,
   } = useFundLedger();
 
-  const [showNewEntry, setShowNewEntry] = useState(false);
-  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [showJournalModal, setShowJournalModal] = useState(false);
+  const [showEntityTransferModal, setShowEntityTransferModal] = useState(false);
+  const [journalModalMode, setJournalModalMode] = useState<JournalEntryMode>('journal');
   const [showExpenseEntry, setShowExpenseEntry] = useState(false);
   const [preselectedEntity, setPreselectedEntity] = useState<string | undefined>(undefined);
   const [preselectedAmount, setPreselectedAmount] = useState<number>(0);
-  const [preselectedLedgerCurrency, setPreselectedLedgerCurrency] = useState<string | undefined>(undefined);
-  const [paymentKey, setPaymentKey] = useState(0);
+  const [journalModalKey, setJournalModalKey] = useState(0);
   const [viewingEntry, setViewingEntry] = useState<FundEntityLedgerEntry | null>(null);
   const [branchBalances, setBranchBalances] = useState<{ usdt: number; aed: number; idr: number } | null>(null);
   const [dateFilter, setDateFilter] = useState('all-time');
@@ -65,27 +65,16 @@ export default function FundLedgerPage() {
 
   useEffect(() => { fetchCapital(); }, [fetchCapital]);
 
-  const openRecordPayment = (customerId?: string, amount?: number, ledgerCurrency?: string) => {
-    const profileCurrency = customerId
-      ? customers.find(c => c.id === customerId)?.currency
-      : undefined;
-    const resolvedLedger = ledgerCurrency
-      ?? (customerId ? resolveEntityLedgerCurrency(entries, customerId, profileCurrency) : undefined);
+  const openJournalModal = (mode: JournalEntryMode, customerId?: string, amount?: number) => {
+    setJournalModalMode(mode);
     setPreselectedEntity(customerId);
     setPreselectedAmount(amount ?? 0);
-    setPreselectedLedgerCurrency(resolvedLedger);
-    setPaymentKey(k => k + 1);
-    setShowRecordPayment(true);
+    setJournalModalKey(k => k + 1);
+    setShowJournalModal(true);
   };
 
-  const handleCreateEntry = async (params: Parameters<typeof createEntry>[0]) => {
-    const result = await createEntry(params);
-    if (result.success) await fetchCapital();
-    return result;
-  };
-
-  const handleRecordPayment = async (params: Parameters<typeof recordPayment>[0]) => {
-    const result = await recordPayment(params);
+  const handlePostJournal = async (params: Parameters<typeof postJournalEntry>[0]) => {
+    const result = await postJournalEntry(params);
     if (result.success) await fetchCapital();
     return result;
   };
@@ -180,18 +169,19 @@ export default function FundLedgerPage() {
             type="button"
             className={`${btnSecondary} w-full sm:w-auto${writeBlocked ? ' cursor-not-allowed opacity-50' : ''}`}
             {...wp()}
-            onClick={() => canWrite && openRecordPayment()}
+            onClick={() => canWrite && setShowEntityTransferModal(true)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              <path d="M7 7h10v10" />
+              <path d="M7 17L17 7" />
             </svg>
-            Record payment
+            Entity transfer
           </button>
           <button
             type="button"
             className={`${btnPrimary} w-full sm:w-auto${writeBlocked ? ' pointer-events-none opacity-50' : ''}`}
             {...wp()}
-            onClick={() => canWrite && setShowNewEntry(true)}
+            onClick={() => canWrite && openJournalModal('journal')}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
               <path d="M12 5v14M5 12h14" />
@@ -234,32 +224,33 @@ export default function FundLedgerPage() {
         onViewEntry={entry => setViewingEntry(entry)}
         onDeleteEntry={handleDeleteEntry}
         onDeleteExpense={handleDeleteExpense}
-        onRecordPayment={openRecordPayment}
+        onRecordPayment={(customerId, amount) => openJournalModal('settlement', customerId, amount)}
         canWrite={canWrite}
       />
 
-      <NewEntryModal
-        open={showNewEntry}
-        onClose={() => setShowNewEntry(false)}
+      <EntityTransferModal
+        open={showEntityTransferModal}
+        onClose={() => setShowEntityTransferModal(false)}
         customers={customers}
-        onSubmit={handleCreateEntry}
+        entries={entries}
+        onSubmit={postEntityTransfer}
       />
 
-      <RecordPaymentModal
-        key={paymentKey}
-        open={showRecordPayment}
+      <JournalEntryModal
+        key={journalModalKey}
+        open={showJournalModal}
         onClose={() => {
-          setShowRecordPayment(false);
+          setShowJournalModal(false);
           setPreselectedEntity(undefined);
           setPreselectedAmount(0);
-          setPreselectedLedgerCurrency(undefined);
         }}
         customers={customers}
         entries={entries}
+        mode={journalModalMode}
         preselectedCustomerId={preselectedEntity}
         preselectedAmount={preselectedAmount}
-        preselectedLedgerCurrency={preselectedLedgerCurrency}
-        onSubmit={handleRecordPayment}
+        preselectedSide="customer"
+        onSubmit={handlePostJournal}
       />
 
       <ExpenseEntryModal

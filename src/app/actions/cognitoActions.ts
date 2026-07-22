@@ -253,6 +253,16 @@ export async function updateCognitoUserAttributesAction(
   }
 }
 
+async function lookupCognitoUserByEmail(email: string) {
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) return null;
+  const listRes = await cognitoClient.send(new ListUsersCommand({
+    UserPoolId: env.COGNITO_USER_POOL_ID,
+    Filter: `email = "${email}"`,
+    Limit: 1,
+  }));
+  return listRes.Users?.[0] ?? null;
+}
+
 export async function resetCognitoUserPasswordAction(email: string, passwordRaw: string, branchSlug?: string) {
   const access = await requireUserManagementAccess(branchSlug);
   if ('error' in access && access.error) {
@@ -264,6 +274,20 @@ export async function resetCognitoUserPasswordAction(email: string, passwordRaw:
   }
 
   try {
+    const target = await lookupCognitoUserByEmail(email);
+    if (!target) {
+      return { success: false, error: 'User not found.' };
+    }
+
+    const targetRole = getAttribute(target.Attributes, 'custom:role');
+    const targetBranch = getAttribute(target.Attributes, 'custom:branchId');
+
+    if (access.user?.role === 'branch_manager') {
+      if (targetRole !== 'staff' || targetBranch !== access.user.branchId) {
+        return { success: false, error: 'You can only reset passwords for staff in your branch.' };
+      }
+    }
+
     const setPasswordCommand = new AdminSetUserPasswordCommand({
       UserPoolId: env.COGNITO_USER_POOL_ID,
       Username: email,

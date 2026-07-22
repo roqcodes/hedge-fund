@@ -250,10 +250,15 @@ export function ResetPasswordModal({
   const handleSubmit = async () => {
     if (!validatePassword(password).isValid) return;
     setLoading(true);
-    await onReset(password);
-    setLoading(false);
-    setPassword('');
-    onClose();
+    try {
+      await onReset(password);
+      setPassword('');
+      onClose();
+    } catch {
+      // toast handled by caller
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

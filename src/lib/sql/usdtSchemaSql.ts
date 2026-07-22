@@ -57,6 +57,9 @@ ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS aed_balance DECIMAL(18
 ALTER TABLE branch_usdt_balances ADD COLUMN IF NOT EXISTS idr_balance DECIMAL(18, 4) NOT NULL DEFAULT 0.0000;
 
 ALTER TABLE fund_entity_ledger ADD COLUMN IF NOT EXISTS settlement_currency VARCHAR(10);
+ALTER TABLE fund_entity_ledger ADD COLUMN IF NOT EXISTS customer_currency VARCHAR(10);
+ALTER TABLE fund_entity_ledger ADD COLUMN IF NOT EXISTS customer_currency_rate DECIMAL(18, 6);
+ALTER TABLE fund_entity_ledger ADD COLUMN IF NOT EXISTS settlement_amount DECIMAL(15, 2);
 
 CREATE TABLE IF NOT EXISTS usdt_idr_conversions (
     id VARCHAR(50) PRIMARY KEY,

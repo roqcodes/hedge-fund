@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import {
   canConvertLedgerEntry,
+  getEntryCustomerAmount,
+  getEntryUsdtAmount,
   isPendingLedgerEntry,
-  resolveEntryLedgerCurrency,
+  fmtFundAmount,
 } from '@/lib/fundLedgerCurrency';
 import type { FundEntityLedgerEntry, Customer } from '@/types';
 
@@ -40,17 +42,14 @@ export default function EntryDetailModal({
   const customer = customers.find(c => c.id === entry.customerId);
   const profileCurrency = customer?.currency;
   const isDebit = entry.debit > 0;
-  const amount = isDebit ? entry.debit : entry.credit;
-  const ledgerCurrency = resolveEntryLedgerCurrency(entry);
+  const usdtAmount = getEntryUsdtAmount(entry);
+  const customerAmount = getEntryCustomerAmount(entry);
   const pending = isPendingLedgerEntry(entry, profileCurrency);
   const canConvert = canConvertLedgerEntry(entry, profileCurrency) && canWrite && !!onConvert;
-  const hasConversion = !pending && entry.customerCurrencyRate != null && entry.customerCurrencyRate > 0
-    && entry.settlementCurrency
-    && entry.settlementCurrency !== entry.customerCurrency;
   const settlementCurr = entry.settlementCurrency || 'USDT';
-  const settlementAmount = hasConversion ? amount / entry.customerCurrencyRate! : amount;
+  const hasSettlement = entry.referenceType === 'settlement' && entry.settlementAmount != null && entry.settlementAmount > 0;
   const numRate = parseFloat(rate) || 0;
-  const convertedPreview = numRate > 0 ? amount * numRate : 0;
+  const convertedPreview = numRate > 0 ? usdtAmount * numRate : 0;
 
   const handleDelete = () => {
     if (confirm('Delete this ledger entry? This cannot be undone.')) {
@@ -104,7 +103,6 @@ export default function EntryDetailModal({
           </div>
         )}
 
-        {/* Entity + Direction section */}
         <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5">
           <div className="min-w-0">
             <p className="text-[11px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Entity</p>
@@ -112,7 +110,7 @@ export default function EntryDetailModal({
             {profileCurrency && (
               <p className="mt-1 text-xs font-semibold text-slate-500">
                 Profile: {profileCurrency}
-                {pending && ` · awaiting conversion`}
+                {pending && ' · awaiting conversion'}
               </p>
             )}
           </div>
@@ -125,9 +123,13 @@ export default function EntryDetailModal({
             <p className={`text-xl font-black font-mono ${
               pending ? 'text-amber-700' : isDebit ? 'text-emerald-700' : 'text-red-700'
             }`}>
-              {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              <span className="text-sm font-bold text-slate-500 ml-1">{ledgerCurrency}</span>
+              {fmtFundAmount(usdtAmount, 'USDT')}
             </p>
+            {customerAmount != null && entry.customerCurrency && entry.customerCurrency !== 'USDT' && (
+              <p className="text-sm font-bold font-mono text-indigo-700 mt-0.5">
+                = {fmtFundAmount(customerAmount, entry.customerCurrency)}
+              </p>
+            )}
           </div>
         </div>
 
@@ -157,7 +159,7 @@ export default function EntryDetailModal({
             </div>
             {numRate > 0 && (
               <p className="text-sm font-bold font-mono text-indigo-800">
-                = {convertedPreview.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {profileCurrency}
+                = {fmtFundAmount(convertedPreview, profileCurrency ?? 'AED')}
               </p>
             )}
             {convertError && (
@@ -174,31 +176,33 @@ export default function EntryDetailModal({
           </div>
         )}
 
-        {/* Currency conversion section (post-convert / settlement) */}
-        {hasConversion && (
+        {hasSettlement && (
           <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5">
             <p className="text-[11px] font-extrabold uppercase tracking-widest text-indigo-500 mb-3">
-              Settlement Conversion — {settlementCurr} → {ledgerCurrency}
+              Branch settlement
             </p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-indigo-100 bg-white/60 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Original USDT</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Cash moved</p>
                 <p className="text-xl font-black text-indigo-700 font-mono">
-                  {settlementAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  <span className="text-sm font-bold text-indigo-500 ml-1">{settlementCurr}</span>
+                  {fmtFundAmount(entry.settlementAmount!, settlementCurr)}
                 </p>
               </div>
               <div className="rounded-xl border border-indigo-100 bg-white/60 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Conversion Rate</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-400 mb-0.5">Ledger (USDT)</p>
                 <p className="text-xl font-black text-indigo-700 font-mono">
-                  1 USDT = {entry.customerCurrencyRate} {ledgerCurrency}
+                  {fmtFundAmount(usdtAmount, 'USDT')}
                 </p>
               </div>
             </div>
+            {entry.customerCurrencyRate && entry.customerCurrency && entry.customerCurrency !== 'USDT' && (
+              <p className="mt-3 text-xs font-mono text-indigo-700">
+                1 USDT = {entry.customerCurrencyRate} {entry.customerCurrency}
+              </p>
+            )}
           </div>
         )}
 
-        {/* Meta grid */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
             <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">Date</p>

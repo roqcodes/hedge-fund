@@ -31,7 +31,7 @@ interface Props {
 }
 
 export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
-  const { physicalBuys, physicalSells, refetchData, currentSlug } = useApp();
+  const { physicalBuys, physicalSells, refetchData, currentSlug, removePhysicalBuyOptimistic } = useApp();
   const basePath = currentSlug === 'superadmin' ? `/physical-deals/${branchSlug}` : `/${branchSlug}/physical-deals`;
 
   const buy = physicalBuys.find(b => b.id === buyId) || null;
@@ -57,8 +57,9 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
     setIsDeleting(true);
     const res = await dbDeletePhysicalBuyAction(buyId);
     if (res.success) {
+      if (buy) removePhysicalBuyOptimistic(buy);
       router.push(basePath);
-      await refetchData();
+      void refetchData();
     } else {
       alert(res.error);
       setIsDeleting(false);
@@ -69,7 +70,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
     if (!confirm('Are you sure you want to delete this sell?')) return;
     const res = await dbDeletePhysicalSellAction(sellId);
     if (res.success) {
-      await refetchData();
+      void refetchData();
     } else {
       alert(res.error);
     }
@@ -198,7 +199,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
               </svg>
-              Delete Sale
+              {isDeleting ? 'Deleting…' : 'Delete Sale'}
             </button>
             <button
               type="button"

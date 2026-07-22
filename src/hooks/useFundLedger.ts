@@ -4,20 +4,22 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import {
   listEntityLedgerEntriesAction,
-  getEntityBalancesAction,
-  getEntityBalanceAction,
   createFundLedgerEntryAction,
+  createEntityTransferAction,
   deleteFundLedgerEntryAction,
   convertFundLedgerEntryAction,
 } from '@/app/actions/fundActions';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
+import { computeBalancesFromEntries } from '@/lib/fundLedgerCurrency';
 import { getKpiTotals } from '@/lib/funds/calculations';
 import type {
   FundEntityLedgerEntry,
   FundEntityBalance,
   FundEntryDirection,
+  FundReferenceType,
   Customer,
 } from '@/types';
+import type { AmountInputSide, EntityTransferInputSide } from '@/lib/fundLedgerAmounts';
 
 export interface FundLedgerState {
   entries: FundEntityLedgerEntry[];
@@ -33,7 +35,7 @@ export interface FundLedgerState {
 
 export interface FundLedgerActions {
   selectCustomer: (customerId: string | null) => void;
-  createEntry: (params: {
+  postJournalEntry: (params: {
     customerId: string;
     direction: FundEntryDirection;
     amount: number;
@@ -41,18 +43,23 @@ export interface FundLedgerActions {
     entryDate?: string;
     customerCurrency?: string;
     customerCurrencyRate?: number;
-    settlementCurrency?: string;
+    inputSide: AmountInputSide;
+    referenceType: FundReferenceType;
   }) => Promise<{ success: boolean; error?: string; entryId?: string }>;
-  recordPayment: (params: {
-    customerId: string;
-    direction: FundEntryDirection;
-    amount: number;
-    description: string;
+  postEntityTransfer: (params: {
+    fromCustomerId: string;
+    toCustomerId: string;
+    inputSide: EntityTransferInputSide;
+    inputAmount: number;
+    fromCustomerCurrencyRate?: number;
+    toCustomerCurrencyRate?: number;
+    description?: string;
     entryDate?: string;
-    customerCurrency?: string;
-    customerCurrencyRate?: number;
-    settlementCurrency?: string;
-  }) => Promise<{ success: boolean; error?: string; entryId?: string }>;
+  }) => Promise<{ success: boolean; error?: string; transferId?: string }>;
+  /** @deprecated use postJournalEntry with referenceType manual */
+  createEntry: FundLedgerActions['postJournalEntry'];
+  /** @deprecated use postJournalEntry with referenceType settlement */
+  recordPayment: FundLedgerActions['postJournalEntry'];
   deleteEntry: (entryId: string) => Promise<{ success: boolean; error?: string }>;
   convertEntry: (entryId: string, rate: number) => Promise<{ success: boolean; error?: string }>;
   refresh: () => Promise<void>;
@@ -65,28 +72,16 @@ export function useFundLedger(): UseFundLedgerReturn {
   const branch = branches.find(b => b.slug === currentSlug);
 
   const [entries, setEntries] = useState<FundEntityLedgerEntry[]>([]);
-  const [balances, setBalances] = useState<FundEntityBalance[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-  const [selectedCustomerBalance, setSelectedCustomerBalance] = useState<FundEntityBalance | null>(null);
   const [loading, setLoading] = useState(true);
 
   const branchId = branch?.id;
 
   const fetchEntries = useCallback(async () => {
     if (!branchId) return;
-    const result = await listEntityLedgerEntriesAction({
-      branchId,
-      customerId: selectedCustomerId ?? undefined,
-      limit: 1000,
-    });
+    const result = await listEntityLedgerEntriesAction({ branchId, limit: 5000 });
     setEntries(result);
-  }, [branchId, selectedCustomerId]);
-
-  const fetchBalances = useCallback(async () => {
-    if (!branchId) return;
-    const result = await getEntityBalancesAction(branchId);
-    setBalances(result);
   }, [branchId]);
 
   const fetchCustomers = useCallback(async () => {
@@ -100,16 +95,24 @@ export function useFundLedger(): UseFundLedgerReturn {
   const refreshLedger = useCallback(async () => {
     if (!branchId) return;
     setLoading(true);
-    await Promise.all([fetchEntries(), fetchBalances()]);
+    await fetchEntries();
     setLoading(false);
-  }, [branchId, fetchEntries, fetchBalances]);
+  }, [branchId, fetchEntries]);
 
-  // Fetch customers as soon as currentSlug is available (independent of branch)
+  const balances = useMemo(
+    () => computeBalancesFromEntries(entries, customers),
+    [entries, customers],
+  );
+
+  const selectedCustomerBalance = useMemo(
+    () => (selectedCustomerId ? balances.find(b => b.customerId === selectedCustomerId) ?? null : null),
+    [balances, selectedCustomerId],
+  );
+
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
 
-  // Fetch ledger data when branch (and thus branchId) is available
   useEffect(() => {
     if (branchId) {
       refreshLedger();
@@ -118,15 +121,11 @@ export function useFundLedger(): UseFundLedgerReturn {
     }
   }, [branchId, refreshLedger]);
 
-  // When selectedCustomerId changes, re-fetch entries and fetch their balance
   useEffect(() => {
-    if (!branchId || !selectedCustomerId) {
-      setSelectedCustomerBalance(null);
-      return;
+    if (selectedCustomerId) {
+      fetchEntries();
     }
-    getEntityBalanceAction(branchId, selectedCustomerId).then(setSelectedCustomerBalance);
-    fetchEntries();
-  }, [branchId, selectedCustomerId, fetchEntries]);
+  }, [selectedCustomerId, fetchEntries]);
 
   const kpiTotals = useMemo(() => getKpiTotals(balances), [balances]);
 
@@ -134,7 +133,7 @@ export function useFundLedger(): UseFundLedgerReturn {
     setSelectedCustomerId(customerId);
   }, []);
 
-  const createEntry = useCallback(
+  const postJournalEntry = useCallback(
     async (params: {
       customerId: string;
       direction: FundEntryDirection;
@@ -143,7 +142,8 @@ export function useFundLedger(): UseFundLedgerReturn {
       entryDate?: string;
       customerCurrency?: string;
       customerCurrencyRate?: number;
-      settlementCurrency?: string;
+      inputSide: AmountInputSide;
+      referenceType: FundReferenceType;
     }) => {
       if (!branchId) return { success: false, error: 'No branch selected' };
 
@@ -154,21 +154,58 @@ export function useFundLedger(): UseFundLedgerReturn {
         amount: params.amount,
         description: params.description,
         entryDate: params.entryDate,
+        referenceType: params.referenceType,
         customerCurrency: params.customerCurrency,
         customerCurrencyRate: params.customerCurrencyRate,
-        settlementCurrency: params.settlementCurrency,
+        inputSide: params.inputSide,
       });
 
       if (result.success) {
         await refreshLedger();
         await fetchCustomers();
-        showToast('Entry created', 'success');
+        const label = params.referenceType === 'settlement' ? 'Settlement posted' : 'Journal entry posted';
+        showToast(label, 'success');
         return { success: true, entryId: result.entryId };
       }
 
       return { success: false, error: result.error };
     },
     [branchId, refreshLedger, fetchCustomers, showToast],
+  );
+
+  const createEntry = useCallback(
+    (params: Omit<Parameters<typeof postJournalEntry>[0], 'referenceType'> & { referenceType?: FundReferenceType }) =>
+      postJournalEntry({ ...params, referenceType: params.referenceType ?? 'manual' }),
+    [postJournalEntry],
+  );
+
+  const recordPayment = useCallback(
+    (params: Omit<Parameters<typeof postJournalEntry>[0], 'referenceType'> & { referenceType?: FundReferenceType }) =>
+      postJournalEntry({ ...params, referenceType: params.referenceType ?? 'settlement' }),
+    [postJournalEntry],
+  );
+
+  const postEntityTransfer = useCallback(
+    async (params: {
+      fromCustomerId: string;
+      toCustomerId: string;
+      inputSide: EntityTransferInputSide;
+      inputAmount: number;
+      fromCustomerCurrencyRate?: number;
+      toCustomerCurrencyRate?: number;
+      description?: string;
+      entryDate?: string;
+    }) => {
+      if (!branchId) return { success: false, error: 'No branch selected' };
+      const result = await createEntityTransferAction({ branchId, ...params });
+      if (result.success) {
+        await refreshLedger();
+        showToast('Entity transfer posted', 'success');
+        return { success: true, transferId: result.transferId };
+      }
+      return { success: false, error: result.error };
+    },
+    [branchId, refreshLedger, showToast],
   );
 
   const deleteEntry = useCallback(
@@ -189,50 +226,12 @@ export function useFundLedger(): UseFundLedgerReturn {
       const result = await convertFundLedgerEntryAction({ entryId, rate });
       if (result.success) {
         await refreshLedger();
-        showToast('Entry converted to customer currency', 'success');
+        showToast('Entry rated in customer currency', 'success');
         return { success: true };
       }
       return { success: false, error: result.error };
     },
     [refreshLedger, showToast],
-  );
-
-  const recordPayment = useCallback(
-    async (params: {
-      customerId: string;
-      direction: FundEntryDirection;
-      amount: number;
-      description: string;
-      entryDate?: string;
-      customerCurrency?: string;
-      customerCurrencyRate?: number;
-      settlementCurrency?: string;
-    }) => {
-      if (!branchId) return { success: false, error: 'No branch selected' };
-
-      const result = await createFundLedgerEntryAction({
-        branchId,
-        customerId: params.customerId,
-        direction: params.direction,
-        amount: params.amount,
-        description: params.description || `Payment ${params.direction === 'credit' ? 'received from' : 'made to'} entity`,
-        entryDate: params.entryDate,
-        referenceType: 'settlement',
-        customerCurrency: params.customerCurrency,
-        customerCurrencyRate: params.customerCurrencyRate,
-        settlementCurrency: params.settlementCurrency,
-      });
-
-      if (result.success) {
-        await refreshLedger();
-        await fetchCustomers();
-        showToast('Payment recorded', 'success');
-        return { success: true, entryId: result.entryId };
-      }
-
-      return { success: false, error: result.error };
-    },
-    [branchId, refreshLedger, fetchCustomers, showToast],
   );
 
   return {
@@ -246,6 +245,8 @@ export function useFundLedger(): UseFundLedgerReturn {
     netPosition: kpiTotals.netPosition,
     loading,
     selectCustomer,
+    postJournalEntry,
+    postEntityTransfer,
     createEntry,
     recordPayment,
     deleteEntry,

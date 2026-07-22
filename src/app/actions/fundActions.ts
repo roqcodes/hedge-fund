@@ -5,6 +5,8 @@ import { query, pool } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { parseCalendarDate } from '@/lib/businessTime';
 import { EXCLUDE_PENDING_LEDGER_SQL } from '@/lib/fundLedgerCurrency';
+import { resolveJournalAmounts, resolveEntityTransferUsdt, convertUsdtToCustomer, type AmountInputSide, type EntityTransferInputSide } from '@/lib/fundLedgerAmounts';
+import { roundTo14 } from '@/lib/physicalCalculations';
 import { addExpenseSchema } from '@/lib/validations';
 import type {
   FundEntityLedgerEntry,
@@ -29,6 +31,7 @@ function mapRow(row: Record<string, unknown>): FundEntityLedgerEntry {
     customerCurrency: (row.customer_currency as string) ?? undefined,
     customerCurrencyRate: row.customer_currency_rate != null ? Number(row.customer_currency_rate) : undefined,
     settlementCurrency: (row.settlement_currency as string) ?? undefined,
+    settlementAmount: row.settlement_amount != null ? Number(row.settlement_amount) : undefined,
     createdBy: (row.created_by as string) ?? undefined,
     createdByName: (row.created_by_name as string) ?? undefined,
     createdByUserId: (row.created_by_user_id as string) ?? undefined,
@@ -142,13 +145,21 @@ export async function createFundLedgerEntryAction(params: {
   referenceType?: FundReferenceType;
   referenceId?: string;
   customerCurrency?: string;
+  /** 1 USDT = rate × customerCurrency. Required unless both are USDT. */
   customerCurrencyRate?: number;
+  /** Currency of `amount`: USDT or customer profile currency */
+  inputSide?: AmountInputSide;
   settlementCurrency?: string;
+  /** @deprecated use inputSide + customer currency rate only */
+  settlementUsdtRate?: number;
 }): Promise<{ success: true; entryId: string } | { success: false; error: string }> {
   try {
-    const { branchId, customerId, direction, amount, description, entryDate, referenceType, referenceId, customerCurrency, customerCurrencyRate, settlementCurrency } = params;
+    const {
+      branchId, customerId, direction, amount, description, entryDate,
+      referenceType, referenceId, customerCurrency, customerCurrencyRate,
+      settlementCurrency, settlementUsdtRate, inputSide,
+    } = params;
 
-    // Look up branch slug for session auth
     const branchRes = await query('SELECT slug FROM branches WHERE id = $1', [branchId]);
     if (branchRes.rows.length === 0) return { success: false, error: 'Branch not found' };
     const branchSlug = String(branchRes.rows[0].slug);
@@ -158,40 +169,63 @@ export async function createFundLedgerEntryAction(params: {
     if (!customerId) return { success: false, error: 'Entity is required' };
     if (!amount || amount <= 0) return { success: false, error: 'Amount must be greater than zero' };
 
-    // Verify customer exists
-    const custRes = await query('SELECT id FROM customers WHERE id = $1 AND branch_id = $2', [customerId, branchId]);
+    const custRes = await query('SELECT id, currency FROM customers WHERE id = $1 AND branch_id = $2', [customerId, branchId]);
     if (custRes.rows.length === 0) {
       return { success: false, error: 'Entity not found in this branch' };
     }
+    const profileCurrency = String(custRes.rows[0].currency || 'USDT');
+    const displayCurrency = customerCurrency ?? profileCurrency;
+
+    const usdtRate = customerCurrencyRate ?? (displayCurrency === 'USDT' ? 1 : 0);
+    if (displayCurrency !== 'USDT' && (!usdtRate || usdtRate <= 0)) {
+      return { success: false, error: 'USDT rate is required (1 USDT = ? customer currency)' };
+    }
+
+    const side: AmountInputSide = inputSide
+      ?? (settlementCurrency === 'USDT' || (settlementCurrency == null && displayCurrency === 'USDT')
+        ? 'usdt'
+        : 'customer');
+
+    const resolved = resolveJournalAmounts({
+      inputSide: side,
+      usdtAmount: side === 'usdt' ? amount : 0,
+      customerAmount: side === 'customer' ? amount : 0,
+      customerCurrency: displayCurrency,
+      customerCurrencyRate: roundTo14(usdtRate),
+    });
+
+    if (!resolved) {
+      return { success: false, error: 'Invalid amount or rate' };
+    }
+
+    const usdtAmount = resolved.usdtAmount;
+    const settleCurrency = referenceType === 'settlement'
+      ? resolved.settlementCurrency
+      : (settlementCurrency ?? displayCurrency);
+    const settlementAmount = referenceType === 'settlement' ? resolved.settlementAmount : null;
+
+    if (usdtAmount <= 0) return { success: false, error: 'Invalid USDT amount' };
 
     const id = `FL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const now = new Date().toISOString();
-
-    // Compute amount in customer's currency (debit/credit is always in customer's currency)
-    const amountInCustomerCurrency = (customerCurrencyRate != null && customerCurrencyRate > 0)
-      ? amount * customerCurrencyRate
-      : amount;
 
     const baseCols = ['id', 'branch_id', 'customer_id', 'entry_date', 'description', 'debit', 'credit',
       'reference_type', 'reference_id', 'created_by', 'created_by_name', 'created_by_user_id', 'created_at'];
     const baseVals: unknown[] = [id, branchId, customerId, entryDate ?? now,
       description.trim() || `${direction === 'debit' ? 'Receivable' : 'Payable'} entry`,
-      direction === 'debit' ? amountInCustomerCurrency : 0, direction === 'credit' ? amountInCustomerCurrency : 0,
+      direction === 'debit' ? roundTo14(usdtAmount) : 0, direction === 'credit' ? roundTo14(usdtAmount) : 0,
       referenceType ?? 'manual', referenceId ?? null,
       user.id ?? null, user.name ?? null, user.id ?? null, now];
 
-    if (customerCurrency) {
-      baseCols.push('customer_currency');
-      baseVals.push(customerCurrency);
-    }
-    if (customerCurrencyRate != null && customerCurrencyRate > 0) {
-      baseCols.push('customer_currency_rate');
-      baseVals.push(customerCurrencyRate);
-    }
-    if (settlementCurrency) {
-      baseCols.push('settlement_currency');
-      baseVals.push(settlementCurrency);
-    }
+    baseCols.push('customer_currency', 'customer_currency_rate', 'settlement_currency', 'settlement_amount');
+    baseVals.push(
+      displayCurrency === 'USDT' && profileCurrency !== 'USDT' && referenceType !== 'settlement'
+        ? 'USDT'
+        : displayCurrency,
+      displayCurrency === 'USDT' ? 1 : roundTo14(usdtRate),
+      settleCurrency,
+      settlementAmount,
+    );
 
     const ph = baseVals.map((_, i) => `$${i + 1}`).join(', ');
     await query(
@@ -199,17 +233,142 @@ export async function createFundLedgerEntryAction(params: {
       baseVals,
     );
 
-    if (referenceType === 'settlement') {
+    if (referenceType === 'settlement' && settlementAmount != null) {
       const directionMultiplier = direction === 'credit' ? 1 : -1;
-      const balanceCurrency = settlementCurrency || customerCurrency || 'AED';
-      await adjustBranchCashBalance(branchId, balanceCurrency, directionMultiplier * amount);
+      await adjustBranchCashBalance(branchId, settleCurrency, directionMultiplier * settlementAmount);
     }
 
-    logger.info({ entryId: id, branchId, customerId, direction, amount }, 'Fund ledger entry created');
+    logger.info({ entryId: id, branchId, customerId, direction, usdtAmount, settleCurrency, amount }, 'Fund ledger entry created');
     return { success: true, entryId: id };
   } catch (err) {
     logger.error({ err }, 'Failed to create fund ledger entry');
     return { success: false, error: 'Failed to create entry' };
+  }
+}
+
+export async function createEntityTransferAction(params: {
+  branchId: string;
+  fromCustomerId: string;
+  toCustomerId: string;
+  inputSide: EntityTransferInputSide;
+  inputAmount: number;
+  fromCustomerCurrencyRate?: number;
+  toCustomerCurrencyRate?: number;
+  description?: string;
+  entryDate?: string;
+}): Promise<{ success: true; transferId: string; fromEntryId: string; toEntryId: string } | { success: false; error: string }> {
+  const client = await pool.connect();
+  try {
+    const {
+      branchId, fromCustomerId, toCustomerId, inputSide, inputAmount,
+      fromCustomerCurrencyRate, toCustomerCurrencyRate, description, entryDate,
+    } = params;
+
+    if (fromCustomerId === toCustomerId) {
+      return { success: false, error: 'From and to entity must be different' };
+    }
+    if (!inputAmount || inputAmount <= 0) {
+      return { success: false, error: 'Amount must be greater than zero' };
+    }
+
+    const branchRes = await query('SELECT slug FROM branches WHERE id = $1', [branchId]);
+    if (branchRes.rows.length === 0) return { success: false, error: 'Branch not found' };
+    const user = await getSessionUser(String(branchRes.rows[0].slug));
+    if (!user) return { success: false, error: 'Not authenticated' };
+
+    const custRes = await query(
+      `SELECT id, name, currency FROM customers WHERE branch_id = $1 AND id = ANY($2::varchar[])`,
+      [branchId, [fromCustomerId, toCustomerId]],
+    );
+    if (custRes.rows.length !== 2) {
+      return { success: false, error: 'Both entities must belong to this branch' };
+    }
+
+    const fromRow = custRes.rows.find(r => String(r.id) === fromCustomerId);
+    const toRow = custRes.rows.find(r => String(r.id) === toCustomerId);
+    if (!fromRow || !toRow) return { success: false, error: 'Entity not found' };
+
+    const fromCurrency = String(fromRow.currency || 'AED');
+    const toCurrency = String(toRow.currency || 'AED');
+    const fromRate = fromCurrency === 'USDT' ? 1 : roundTo14(fromCustomerCurrencyRate ?? 0);
+    const toRate = toCurrency === 'USDT' ? 1 : roundTo14(toCustomerCurrencyRate ?? 0);
+
+    if (fromCurrency !== 'USDT' && fromRate <= 0) {
+      return { success: false, error: `USDT rate required for ${fromCurrency} (from entity)` };
+    }
+    if (toCurrency !== 'USDT' && toRate <= 0) {
+      return { success: false, error: `USDT rate required for ${toCurrency} (to entity)` };
+    }
+
+    const usdtAmount = resolveEntityTransferUsdt({
+      inputSide,
+      inputAmount,
+      fromCurrency,
+      fromRate,
+      toCurrency,
+      toRate,
+    });
+    if (!usdtAmount || usdtAmount <= 0) {
+      return { success: false, error: 'Invalid amount or conversion rate' };
+    }
+
+    const fromBookAmount = fromCurrency === 'USDT' ? usdtAmount : convertUsdtToCustomer(usdtAmount, fromRate);
+    const toBookAmount = toCurrency === 'USDT' ? usdtAmount : convertUsdtToCustomer(usdtAmount, toRate);
+
+    const paidInUsdt = inputSide === 'usdt';
+    const fromSettleCurrency = paidInUsdt ? 'USDT' : fromCurrency;
+    const fromSettleAmount = paidInUsdt ? usdtAmount : fromBookAmount;
+    const toSettleCurrency = paidInUsdt ? 'USDT' : toCurrency;
+    const toSettleAmount = paidInUsdt ? usdtAmount : (inputSide === 'to' ? inputAmount : toBookAmount);
+
+    const transferId = `ET-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const now = new Date().toISOString();
+    const fromName = String(fromRow.name);
+    const toName = String(toRow.name);
+    const desc = description?.trim()
+      || `Transfer ${fromName} → ${toName}`;
+
+    const fromEntryId = `FL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const toEntryId = `FL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+
+    await client.query('BEGIN');
+
+    const insertSql = `INSERT INTO fund_entity_ledger (
+      id, branch_id, customer_id, entry_date, description, debit, credit,
+      reference_type, reference_id, created_by, created_by_name, created_by_user_id, created_at,
+      customer_currency, customer_currency_rate, settlement_currency, settlement_amount
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`;
+
+    await client.query(insertSql, [
+      fromEntryId, branchId, fromCustomerId, entryDate ?? now,
+      `${desc} (out)`,
+      0, roundTo14(usdtAmount),
+      'entity_transfer', transferId,
+      user.id ?? null, user.name ?? null, user.id ?? null, now,
+      fromCurrency, fromCurrency === 'USDT' ? 1 : fromRate,
+      fromSettleCurrency, roundTo14(fromSettleAmount),
+    ]);
+
+    await client.query(insertSql, [
+      toEntryId, branchId, toCustomerId, entryDate ?? now,
+      `${desc} (in)`,
+      roundTo14(usdtAmount), 0,
+      'entity_transfer', transferId,
+      user.id ?? null, user.name ?? null, user.id ?? null, now,
+      toCurrency, toCurrency === 'USDT' ? 1 : toRate,
+      toSettleCurrency, roundTo14(toSettleAmount),
+    ]);
+
+    await client.query('COMMIT');
+
+    logger.info({ transferId, fromEntryId, toEntryId, usdtAmount, branchId }, 'Entity transfer posted');
+    return { success: true, transferId, fromEntryId, toEntryId };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error({ err }, 'Failed to create entity transfer');
+    return { success: false, error: 'Failed to create entity transfer' };
+  } finally {
+    client.release();
   }
 }
 
@@ -219,7 +378,7 @@ export async function deleteFundLedgerEntryAction(
   try {
     // Look up entry's branch to authenticate
     const entryRes = await query(
-      'SELECT e.branch_id, e.debit, e.credit, e.reference_type, e.customer_currency, e.customer_currency_rate, e.settlement_currency, b.slug FROM fund_entity_ledger e JOIN branches b ON e.branch_id = b.id WHERE e.id = $1',
+      'SELECT e.branch_id, e.debit, e.credit, e.reference_type, e.reference_id, e.customer_currency, e.customer_currency_rate, e.settlement_currency, e.settlement_amount, b.slug FROM fund_entity_ledger e JOIN branches b ON e.branch_id = b.id WHERE e.id = $1',
       [entryId],
     );
     if (entryRes.rows.length === 0) return { success: false, error: 'Entry not found' };
@@ -231,16 +390,28 @@ export async function deleteFundLedgerEntryAction(
     if (String(row.reference_type) === 'settlement') {
       const debit = parseFloat(row.debit) || 0;
       const credit = parseFloat(row.credit) || 0;
-      const custAmount = debit > 0 ? debit : credit;
       const directionMultiplier = debit > 0 ? 1 : -1;
-      const currency = String(row.settlement_currency || row.customer_currency || 'AED');
-      // amount = custAmount (in customer currency) / rate if rate present, else custAmount
-      const rate = row.customer_currency_rate ? parseFloat(String(row.customer_currency_rate)) : null;
-      const balanceAmount = (rate && rate > 0) ? custAmount / rate : custAmount;
+      const currency = String(row.settlement_currency || row.customer_currency || 'USDT');
+      const storedSettlement = row.settlement_amount != null ? parseFloat(String(row.settlement_amount)) : null;
+      const balanceAmount = storedSettlement != null && storedSettlement > 0
+        ? storedSettlement
+        : (() => {
+          const usdtAmt = debit > 0 ? debit : credit;
+          const rate = row.customer_currency_rate ? parseFloat(String(row.customer_currency_rate)) : null;
+          if (currency === 'USDT') return usdtAmt;
+          return rate && rate > 0 ? usdtAmt * rate : usdtAmt;
+        })();
       await adjustBranchCashBalance(String(row.branch_id), currency, directionMultiplier * balanceAmount);
     }
 
-    await query('DELETE FROM fund_entity_ledger WHERE id = $1', [entryId]);
+    if (String(row.reference_type) === 'entity_transfer' && row.reference_id) {
+      await query(
+        'DELETE FROM fund_entity_ledger WHERE reference_type = $1 AND reference_id = $2',
+        ['entity_transfer', row.reference_id],
+      );
+    } else {
+      await query('DELETE FROM fund_entity_ledger WHERE id = $1', [entryId]);
+    }
 
     logger.info({ entryId, userId: user.id }, 'Fund ledger entry deleted');
     return { success: true };
@@ -319,38 +490,28 @@ export async function convertFundLedgerEntryAction(params: {
       return { success: false, error: 'Only AED/IDR profile entities can convert pending USDT entries' };
     }
 
-    const ledgerCurrency = String(row.customer_currency || row.settlement_currency || 'USDT');
+    const ledgerCurrency = String(row.customer_currency || 'USDT');
     if (ledgerCurrency !== 'USDT') {
-      return { success: false, error: 'Entry is already in customer currency' };
+      return { success: false, error: 'Entry is already rated in customer currency' };
     }
 
     const usdtAmount = (Number(row.debit) || 0) > 0 ? Number(row.debit) : Number(row.credit);
     if (!usdtAmount || usdtAmount <= 0) return { success: false, error: 'Invalid entry amount' };
 
-    const convertedAmount = usdtAmount * rate;
-    const isDebit = Number(row.debit) > 0;
-    const descriptionSuffix = ` | Converted ${usdtAmount.toFixed(2)} USDT @ ${rate} ${profileCurrency}/USDT`;
-    const description = String(row.description || '').includes('Converted ')
+    const descriptionSuffix = ` | Rated ${usdtAmount.toFixed(2)} USDT @ ${rate} ${profileCurrency}/USDT`;
+    const description = String(row.description || '').includes('Rated ')
       ? String(row.description)
       : `${String(row.description || '').trim()}${descriptionSuffix}`.trim();
 
     await query(
       `UPDATE fund_entity_ledger
-       SET debit = $1, credit = $2,
-           customer_currency = $3, customer_currency_rate = $4, settlement_currency = 'USDT',
-           description = $5
-       WHERE id = $6`,
-      [
-        isDebit ? convertedAmount : 0,
-        isDebit ? 0 : convertedAmount,
-        profileCurrency,
-        rate,
-        description,
-        entryId,
-      ],
+       SET customer_currency = $1, customer_currency_rate = $2,
+           description = $3
+       WHERE id = $4`,
+      [profileCurrency, rate, description, entryId],
     );
 
-    logger.info({ entryId, rate, profileCurrency, usdtAmount, convertedAmount }, 'Fund ledger entry converted');
+    logger.info({ entryId, rate, profileCurrency, usdtAmount }, 'Fund ledger entry converted');
     return { success: true };
   } catch (err) {
     logger.error({ err, entryId: params.entryId }, 'Failed to convert fund ledger entry');
@@ -373,6 +534,8 @@ export async function createAutoLedgerEntry(params: {
   customerCurrency?: string;
   customerCurrencyRate?: number;
   settlementCurrency?: string;
+  settlementUsdtRate?: number;
+  entryDate?: string;
 }): Promise<string | null> {
   try {
     const result = await createFundLedgerEntryAction({
@@ -386,6 +549,8 @@ export async function createAutoLedgerEntry(params: {
       customerCurrency: params.customerCurrency,
       customerCurrencyRate: params.customerCurrencyRate,
       settlementCurrency: params.settlementCurrency,
+      settlementUsdtRate: params.settlementUsdtRate,
+      entryDate: params.entryDate,
     });
 
     if (result.success) return result.entryId;
@@ -393,6 +558,22 @@ export async function createAutoLedgerEntry(params: {
   } catch (err) {
     logger.error({ err }, 'Failed to create auto ledger entry');
     return null;
+  }
+}
+
+/** Remove auto-posted ledger rows when a source deal is deleted (non-settlement only). */
+export async function deleteAutoLedgerEntryByReference(
+  referenceType: FundReferenceType,
+  referenceId: string,
+): Promise<void> {
+  try {
+    await query(
+      `DELETE FROM fund_entity_ledger
+       WHERE reference_type = $1 AND reference_id = $2 AND reference_type != 'settlement'`,
+      [referenceType, referenceId],
+    );
+  } catch (err) {
+    logger.error({ err, referenceType, referenceId }, 'Failed to delete auto ledger entry');
   }
 }
 

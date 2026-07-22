@@ -16,6 +16,8 @@ export type PhysicalKpiMetrics = {
   totalDeals: number;
   fixCount: number;
   unfixCount: number;
+  fixVolumeGram: number;
+  unfixVolumeGram: number;
   totalSales: number;
   buyValue: PhysicalCurrencyTotals;
   sellValue: PhysicalCurrencyTotals;
@@ -99,6 +101,13 @@ export function computePhysicalKpiMetrics(
     idr: roundTo14(plIdrEstimate(plAed, buyValue, sellValue)),
   };
 
+  const fixVolumeGram = roundTo14(
+    allBuys.filter(isFixedDeal).reduce((sum, b) => sum + b.remainingWeight, 0),
+  );
+  const unfixVolumeGram = roundTo14(
+    allBuys.filter(b => !isFixedDeal(b)).reduce((sum, b) => sum + b.remainingWeight, 0),
+  );
+
   return {
     totalPurchasedGram,
     remainingGram,
@@ -107,6 +116,8 @@ export function computePhysicalKpiMetrics(
     totalDeals: filteredBuys.length,
     fixCount: filteredBuys.filter(isFixedDeal).length,
     unfixCount: filteredBuys.filter(b => !isFixedDeal(b)).length,
+    fixVolumeGram,
+    unfixVolumeGram,
     totalSales: filteredSells.length,
     buyValue,
     sellValue,

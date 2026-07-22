@@ -54,8 +54,8 @@ export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
       ? await dbDeleteUsdtBuyAction(dealId)
       : await dbDeleteUsdtSellAction(dealId);
     if (res.success) {
-      await refetchData();
       router.push(basePath);
+      void refetchData();
     } else {
       alert(res.error);
     }

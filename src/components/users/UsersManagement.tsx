@@ -5,13 +5,14 @@ import {
   CognitoUser,
   createCognitoUserAction,
   deleteCognitoUserAction,
+  resetCognitoUserPasswordAction,
   updateCognitoUserAttributesAction,
 } from '@/app/actions/cognitoActions';
 import { useApp } from '@/context/AppContext';
 import { formatDateTime } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import { btnPrimary, btnGhost, btnSm, pageHeader, pageTitle, pageSubtitle, tableWrap, dataTable, formInput } from '@/lib/ui';
-import { CreateUserModal, EditUserModal } from './UserModals';
+import { CreateUserModal, EditUserModal, ResetPasswordModal } from './UserModals';
 import UserPermissionsPanel from './UserPermissionsPanel';
 import StaffAccessSummary from './StaffAccessSummary';
 import { fetchBranchStaffPermissionsBatchAction, fetchAdminStaffPermissionsBatchAction } from '@/app/actions/permissionActions';
@@ -41,6 +42,7 @@ export default function UsersManagement({
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<CognitoUser | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<CognitoUser | null>(null);
   const [permissionsUser, setPermissionsUser] = useState<CognitoUser | null>(null);
   const [staffPermissions, setStaffPermissions] = useState<Record<string, PagePermissionMap>>({});
   const [manageablePages, setManageablePages] = useState<BranchPageId[]>([]);
@@ -151,6 +153,17 @@ export default function UsersManagement({
       await loadStaffPermissions();
     } else {
       showToast(res.error || 'Failed to update user', 'error');
+    }
+  };
+
+  const handleResetPassword = async (email: string, newPassword: string) => {
+    const res = await resetCognitoUserPasswordAction(email, newPassword, branchSlug);
+    if (res.success) {
+      showToast('Password reset successfully.');
+      setResetPasswordUser(null);
+    } else {
+      showToast(res.error || 'Failed to reset password', 'error');
+      throw new Error(res.error || 'Failed to reset password');
     }
   };
 
@@ -315,6 +328,14 @@ export default function UsersManagement({
                             <button onClick={() => setEditingUser(u)} className={`${btnGhost} ${btnSm} text-slate-600`}>
                               Edit
                             </button>
+                            {isBranchManager && u.role === 'staff' && (
+                              <button
+                                onClick={() => setResetPasswordUser(u)}
+                                className={`${btnGhost} ${btnSm} text-amber-700 hover:bg-amber-50 hover:text-amber-800`}
+                              >
+                                Reset password
+                              </button>
+                            )}
                             {u.email !== currentUser?.email && (
                               <button onClick={() => handleDelete(u.email)} className={`${btnGhost} ${btnSm} text-red-600 hover:bg-red-50 hover:text-red-700`}>
                                 Delete
@@ -372,6 +393,11 @@ export default function UsersManagement({
                         <button onClick={() => setPermissionsUser(u)} className="text-xs font-bold text-accent">Access</button>
                       )}
                       <button onClick={() => setEditingUser(u)} className="text-xs font-bold text-slate-600">Edit</button>
+                      {isBranchManager && u.role === 'staff' && (
+                        <button onClick={() => setResetPasswordUser(u)} className="text-xs font-bold text-amber-700">
+                          Reset password
+                        </button>
+                      )}
                       {u.email !== currentUser?.email && (
                         <button onClick={() => handleDelete(u.email)} className="text-xs font-bold text-red-600">Delete</button>
                       )}
@@ -398,6 +424,15 @@ export default function UsersManagement({
           onSave={handleEditUser}
           user={editingUser}
           isSuperAdmin={isSuperAdmin}
+        />
+      )}
+
+      {resetPasswordUser && (
+        <ResetPasswordModal
+          open={!!resetPasswordUser}
+          onClose={() => setResetPasswordUser(null)}
+          email={resetPasswordUser.email}
+          onReset={(newPassword) => handleResetPassword(resetPasswordUser.email, newPassword)}
         />
       )}
 
