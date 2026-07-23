@@ -3,20 +3,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput, dataTable, tableWrap } from '@/lib/ui';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbAddPhysicalBulkSellAction } from '@/app/actions/physicalActions';
 import {
   generatePhysicalTxnId,
   PAYMENT_MODE_OPTIONS,
-  type PhysicalPaymentMode,
-  formatNumberWithCommas,
-  cleanCommaNumber,
   roundTo14,
+  type PhysicalPaymentMode,
 } from '@/lib/physicalCalculations';
-import { useApp } from '@/context/AppContext';
-import { convertAedToUsdt } from '@/lib/physicalCurrencyDisplay';
-import { convertFromAed } from '@/lib/currency';
+import {
+  computeBulkSellTotals,
+  fmtBulkIdr,
+  fmtBulkPurity,
+  fmtBulkRate,
+  fmtBulkUsdt,
+  fmtBulkWeight,
+  type BulkSellLineInput,
+} from '@/lib/physical/bulkSellCalculations';
 import Modal from '@/components/ui/Modal';
+import { useApp } from '@/context/AppContext';
+import { convertFromAed } from '@/lib/currency';
 
 interface PhysicalBulkSellModalProps {
   open: boolean;
@@ -67,13 +74,14 @@ export default function PhysicalBulkSellModal({
     buyId: string;
     buyParticulars: string;
     buyDate: string;
-    originalGrossWeight: number; // total gross weight of the source buy (for cost basis)
-    remainingWeight: number;     // remaining gross weight on the buy
+    remainingWeight: number;
     buyPurity: number;
     buyIdrGram: number;
     buyIdrToUsdt: number;
-    buyValue: number;
-    sellVolume: number; // GROSS weight to sell (physical quantity)
+    buyPureGram: number;
+    buyTotalUsdt?: number;
+    buyIdrRate?: number;
+    sellVolume: number;
   }>>([]);
 
   // Manual Overrides State
@@ -102,10 +110,7 @@ export default function PhysicalBulkSellModal({
     }
   }, [open, slug]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   // Filter available buys based on search and whether they are already added
   const filteredStockList = useMemo(() => {
@@ -156,13 +161,14 @@ export default function PhysicalBulkSellModal({
         buyId: currentlySelectedStock.id,
         buyParticulars: currentlySelectedStock.item || currentlySelectedStock.particulars,
         buyDate: currentlySelectedStock.date,
-        originalGrossWeight: currentlySelectedStock.grossWeight, // cost basis denominator
         remainingWeight: currentlySelectedStock.remainingWeight,
         buyPurity: currentlySelectedStock.pureConversion,
         buyIdrGram: currentlySelectedStock.idrGram,
         buyIdrToUsdt: currentlySelectedStock.idrToUsdt,
-        buyValue: currentlySelectedStock.buyValue,
-        sellVolume: vol, // gross grams
+        buyPureGram: currentlySelectedStock.pureGram,
+        buyTotalUsdt: currentlySelectedStock.totalUsdt,
+        buyIdrRate: currentlySelectedStock.idrRate,
+        sellVolume: vol,
       }
     ]);
 
@@ -176,106 +182,42 @@ export default function PhysicalBulkSellModal({
     setAddedItems(prev => prev.filter(item => item.buyId !== buyId));
   };
 
-  // Computations
-  const totalVolume = useMemo(() => {
-    return roundTo14(addedItems.reduce((sum, item) => sum + item.sellVolume, 0));
-  }, [addedItems]);
+  const usdToAedRate = currencyRates['USD'] ? roundTo14(1 / currencyRates['USD']) : 3.6725;
 
-  const calculatedWeightedAverages = useMemo(() => {
-    if (addedItems.length === 0) {
-      return { purity: 0.995, idrGram: 0, idrToUsdt: 17770 };
-    }
-
-    let sumGross = 0;
-    let sumPure = 0;
-    let totalIdrXPure = 0;
-    let totalUsdtXPure = 0;
-
-    for (const item of addedItems) {
-      const itemPure = item.sellVolume * item.buyPurity; // pure = gross × purity
-      sumGross += item.sellVolume;
-      sumPure += itemPure;
-      totalIdrXPure += itemPure * item.buyIdrGram;   // IDR rate weighted by pure grams
-      totalUsdtXPure += itemPure * item.buyIdrToUsdt; // USDT rate weighted by pure grams
-    }
-
-    return {
-      purity:    sumGross > 0 ? roundTo14(sumPure / sumGross) : 0.995,      // avg purity = Σpure / Σgross
-      idrGram:   sumPure > 0 ? roundTo14(totalIdrXPure / sumPure) : 0,      // weighted by pure
-      idrToUsdt: sumPure > 0 ? roundTo14(totalUsdtXPure / sumPure) : 17770, // weighted by pure
-    };
-  }, [addedItems]);
-
-  // Overridden values (fallback to calculated weighted averages)
-  const finalPurity = overridePurity !== '' ? parseFloat(overridePurity) || 0 : calculatedWeightedAverages.purity;
-  const finalIdrGram = overrideIdrGram !== '' ? parseFloat(overrideIdrGram) || 0 : calculatedWeightedAverages.idrGram;
-  const finalIdrToUsdt = overrideIdrToUsdt !== '' ? parseFloat(overrideIdrToUsdt) || 17770 : calculatedWeightedAverages.idrToUsdt;
-
-  const finalIdrRate = finalIdrToUsdt > 0 ? roundTo14(finalIdrGram / finalIdrToUsdt) : 0;
-  // Price is on PURE volume — derive it from gross × purity
-  const totalPureVolume = roundTo14(totalVolume * finalPurity);
-  const totalUsdt = roundTo14(totalPureVolume * finalIdrRate);
-
-  const rates = currencyRates;
-  const usdToAedRate = rates['USD'] ? roundTo14(1 / rates['USD']) : 3.6725;
-  const finalTotalAed = roundTo14(totalUsdt * usdToAedRate);
-  const totalIdrValue = roundTo14(totalPureVolume * finalIdrGram);
-
-  const profitAndCost = useMemo(() => {
-    let totalCostAed = 0;
-    let totalCostUsdt = 0;
-
-    const itemsCalculations = addedItems.map(item => {
-      // Gross weight sold from this buy
-      const itemGrossWeight = item.sellVolume;
-      // Pure weight = gross × this buy's purity
-      const itemPureGram = roundTo14(itemGrossWeight * item.buyPurity);
-
-      // Cost basis: cost per gross gram of the original buy
-      const costPerGramAed = item.originalGrossWeight > 0 ? item.buyValue / item.originalGrossWeight : 0;
-      const costValueAed = roundTo14(costPerGramAed * itemGrossWeight);
-      const costValueUsdt = convertAedToUsdt(costValueAed, currencyRates);
-
-      totalCostAed += costValueAed;
-      totalCostUsdt += costValueUsdt;
-
-      // Sale value: price on pure weight using final averaged rates
-      const itemSellValueUsdt = roundTo14(itemPureGram * finalIdrRate);
-      const itemSellValueAed = roundTo14(itemSellValueUsdt * usdToAedRate);
-      const itemProfitAed = roundTo14(itemSellValueAed - costValueAed);
-      const itemMargin = itemSellValueAed > 0 ? roundTo14((itemProfitAed / itemSellValueAed) * 100) : 0;
-
-      return {
+  const bulkLineInputs: BulkSellLineInput[] = useMemo(
+    () =>
+      addedItems.map(item => ({
         buyId: item.buyId,
         buyParticulars: item.buyParticulars,
         buyDate: item.buyDate,
-        grossWeight: itemGrossWeight,   // physical quantity
-        pureGram: itemPureGram,         // derived for pricing
-        pureConversion: item.buyPurity, // per-buy purity (stored on sell row)
+        sellVolumeGross: item.sellVolume,
         buyPurity: item.buyPurity,
-        idrGram: finalIdrGram,
-        idrToUsdt: finalIdrToUsdt,
-        idrRate: finalIdrRate,
-        total: itemSellValueAed,
-        sellValue: itemSellValueAed,
-        profit: itemProfitAed,
-        costValue: costValueAed,
-        costValueUsdt,
-        margin: itemMargin,
-      };
-    });
+        buyIdrGram: item.buyIdrGram,
+        buyIdrToUsdt: item.buyIdrToUsdt,
+        buyPureGram: item.buyPureGram,
+        buyTotalUsdt: item.buyTotalUsdt,
+        buyIdrRate: item.buyIdrRate,
+      })),
+    [addedItems],
+  );
 
-    const totalProfitUsdt = totalUsdt - totalCostUsdt;
-    const totalProfitAed = finalTotalAed - totalCostAed;
-
+  const rateOverrides = useMemo(() => {
+    const purity = overridePurity.trim() !== '' ? parseFloat(overridePurity) : undefined;
+    const idrGram = overrideIdrGram.trim() !== '' ? parseFloat(overrideIdrGram) : undefined;
+    const idrToUsdt = overrideIdrToUsdt.trim() !== '' ? parseFloat(overrideIdrToUsdt) : undefined;
     return {
-      totalCostAed,
-      totalCostUsdt,
-      totalProfitUsdt,
-      totalProfitAed,
-      items: itemsCalculations,
+      purity: purity != null && Number.isFinite(purity) ? purity : undefined,
+      idrGram: idrGram != null && Number.isFinite(idrGram) ? idrGram : undefined,
+      idrToUsdt: idrToUsdt != null && Number.isFinite(idrToUsdt) ? idrToUsdt : undefined,
     };
-  }, [addedItems, finalPurity, finalIdrGram, finalIdrToUsdt, finalIdrRate, totalUsdt, finalTotalAed, usdToAedRate, currencyRates]);
+  }, [overridePurity, overrideIdrGram, overrideIdrToUsdt]);
+
+  const totals = useMemo(
+    () => computeBulkSellTotals(bulkLineInputs, rateOverrides, usdToAedRate),
+    [bulkLineInputs, rateOverrides, usdToAedRate],
+  );
+
+  const { weighted } = totals;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -295,27 +237,27 @@ export default function PhysicalBulkSellModal({
       branchId,
       date: dateTime,
       particulars: narration.trim() || 'BULK SELL ORDER',
-      notes: narration.trim() || undefined, // Narration and notes are unified
+      notes: narration.trim() || undefined,
       customerName: customerName.trim(),
       customerId: customerId || undefined,
       paymentMode,
-      grossWeight: totalVolume,                         // gross weight total
-      pureConversion: finalPurity,
-      pureGram: totalPureVolume,                        // pure = gross × avg purity
-      idrGram: finalIdrGram,
-      idrToUsdt: finalIdrToUsdt,
-      idrRate: finalIdrRate,
-      total: finalTotalAed,
-      sellValue: finalTotalAed,
-      profit: profitAndCost.totalProfitAed,
+      grossWeight: totals.totalGross,
+      pureConversion: totals.finalPurity,
+      pureGram: totals.totalPure,
+      idrGram: totals.finalIdrGram,
+      idrToUsdt: totals.finalIdrToUsdt,
+      idrRate: totals.finalIdrRate,
+      total: totals.totalUsdt,
+      sellValue: totals.totalUsdt,
+      profit: totals.totalProfitUsdt,
       txnId,
-      usdAmount: convertFromAed(finalTotalAed, 'USD'),
-      aedAmount: finalTotalAed,
-      totalWeight: totalVolume,                         // gross weight
-      tltIdrValue: totalIdrValue,
-      tltAedValue: finalTotalAed,
-      totalUsdt: totalUsdt,
-      items: profitAndCost.items.map(item => ({
+      usdAmount: totals.totalAed != null ? convertFromAed(totals.totalAed, 'USD') : undefined,
+      aedAmount: totals.totalAed,
+      totalWeight: totals.totalGross,
+      tltIdrValue: totals.totalIdr,
+      tltAedValue: totals.totalAed,
+      totalUsdt: totals.totalUsdt,
+      items: totals.lines.map(item => ({
         buyId: item.buyId,
         pureGram: item.pureGram,
         grossWeight: item.grossWeight,
@@ -323,10 +265,10 @@ export default function PhysicalBulkSellModal({
         idrGram: item.idrGram,
         idrToUsdt: item.idrToUsdt,
         idrRate: item.idrRate,
-        total: item.total,
-        sellValue: item.sellValue,
-        profit: item.profit,
-        costValue: item.costValue,
+        total: item.sellValueUsdt,
+        sellValue: item.sellValueUsdt,
+        profit: item.profitUsdt,
+        costValue: item.costValueUsdt,
         margin: item.margin,
       })),
     };
@@ -342,9 +284,9 @@ export default function PhysicalBulkSellModal({
     }
   };
 
-  const formattedCalculatedPurity = calculatedWeightedAverages.purity.toFixed(4);
-  const formattedCalculatedIdr = calculatedWeightedAverages.idrGram.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  const formattedCalculatedUsdt = calculatedWeightedAverages.idrToUsdt.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const formattedCalculatedPurity = fmtBulkPurity(weighted.avgPurity);
+  const formattedCalculatedIdr = fmtBulkRate(weighted.avgIdrGram);
+  const formattedCalculatedUsdt = fmtBulkRate(weighted.avgIdrToUsdt);
 
   if (!open) return null;
 
@@ -517,25 +459,27 @@ export default function PhysicalBulkSellModal({
                       <th className="px-2 pb-2 text-center font-bold text-slate-400">Purity</th>
                       <th className="px-2 pb-2 text-center font-bold text-slate-400">Gross Wt</th>
                       <th className="px-2 pb-2 text-center font-bold text-slate-800">Pure Wt</th>
-                      <th className="px-2 pb-2 text-center font-bold text-slate-400">IDR Rate</th>
-                      <th className="px-2 pb-2 text-center font-bold text-slate-400">USDT Rate</th>
+                      <th className="px-2 pb-2 text-center font-bold text-slate-400">IDR / g</th>
+                      <th className="px-2 pb-2 text-center font-bold text-slate-400">IDR / USDT</th>
                       <th className="px-2 pb-2 text-center font-bold text-slate-450">Total USDT</th>
                       <th className="px-2 pb-2 text-center font-bold text-slate-400">Profit</th>
                       <th className="px-2 pb-2 text-center font-bold text-slate-400">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {profitAndCost.items.map(item => (
+                    {totals.lines.map(item => (
                       <tr key={item.buyId} className="hover:bg-slate-50/40 border-b border-slate-50/80">
                         <td className="px-2 py-2 text-slate-500">{new Date(item.buyDate).toLocaleDateString()}</td>
                         <td className="px-2 py-2 text-slate-800 font-bold max-w-[120px] truncate">{item.buyParticulars}</td>
-                        <td className="px-2 py-2 text-center font-mono">{item.buyPurity.toFixed(4)}</td>
-                        <td className="px-2 py-2 text-center font-mono">{item.grossWeight.toFixed(3)}g</td>
-                        <td className="px-2 py-2 text-center font-mono font-black text-indigo-600 bg-indigo-50/10">{item.pureGram.toFixed(3)}g</td>
-                        <td className="px-2 py-2 text-center font-mono text-slate-650">{item.idrGram.toLocaleString()}</td>
-                        <td className="px-2 py-2 text-center font-mono text-slate-650">{item.idrToUsdt.toLocaleString()}</td>
-                        <td className="px-2 py-2 text-center font-mono font-bold">${(item.pureGram * item.idrRate).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                        <td className={`px-2 py-2 text-center font-mono font-bold ${item.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>${(item.profit / usdToAedRate).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                        <td className="px-2 py-2 text-center font-mono">{fmtBulkPurity(item.buyPurity)}</td>
+                        <td className="px-2 py-2 text-center font-mono">{fmtBulkWeight(item.grossWeight)}g</td>
+                        <td className="px-2 py-2 text-center font-mono font-black text-indigo-600 bg-indigo-50/10">{fmtBulkWeight(item.pureGram)}g</td>
+                        <td className="px-2 py-2 text-center font-mono text-slate-650">{fmtBulkRate(item.buyIdrGram)}</td>
+                        <td className="px-2 py-2 text-center font-mono text-slate-650">{fmtBulkRate(item.buyIdrToUsdt)}</td>
+                        <td className="px-2 py-2 text-center font-mono font-bold">{fmtBulkUsdt(item.sellValueUsdt)}</td>
+                        <td className={`px-2 py-2 text-center font-mono font-bold ${item.profitUsdt >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {item.profitUsdt >= 0 ? '+' : ''}{fmtBulkUsdt(item.profitUsdt)}
+                        </td>
                         <td className="px-2 py-2 text-center">
                           <button
                             type="button"
@@ -583,13 +527,12 @@ export default function PhysicalBulkSellModal({
             {/* Gross Weight — primary physical quantity */}
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase text-sky-600/80 tracking-wider">Gross Weight</span>
-              <span className="text-lg sm:text-xl font-extrabold font-mono text-sky-900">{totalVolume.toFixed(3)} g</span>
+              <span className="text-lg sm:text-xl font-extrabold font-mono text-sky-900">{fmtBulkWeight(totals.totalGross)} g</span>
             </div>
 
-            {/* Pure Weight — calculated pricing quantity */}
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase text-indigo-500/80 tracking-wider">Pure Weight</span>
-              <span className="text-lg sm:text-xl font-extrabold font-mono text-indigo-700">{totalPureVolume.toFixed(3)} g</span>
+              <span className="text-lg sm:text-xl font-extrabold font-mono text-indigo-700">{fmtBulkWeight(totals.totalPure)} g</span>
             </div>
 
             {/* Average Purity / Touch */}
@@ -602,41 +545,43 @@ export default function PhysicalBulkSellModal({
                 type="number"
                 step="0.0001"
                 placeholder={formattedCalculatedPurity}
-                value={overridePurity !== '' ? overridePurity : (addedItems.length > 0 ? calculatedWeightedAverages.purity.toFixed(4) : '')}
+                value={overridePurity !== '' ? overridePurity : (addedItems.length > 0 ? weighted.avgPurity.toFixed(4) : '')}
                 onChange={e => setOverridePurity(e.target.value)}
                 className="w-20 bg-white border border-sky-200 rounded px-2 py-0.5 text-xs sm:text-sm text-sky-950 font-mono focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 text-center"
               />
             </div>
 
-            {/* Average IDR Rate */}
+            {/* Weighted avg IDR / g — used for bulk pricing */}
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase text-sky-600/80 tracking-wider flex items-center gap-1">
-                Avg IDR Rate
+                Wtd avg IDR / g
                 <span className="text-[8px] font-mono text-sky-500/80">({formattedCalculatedIdr})</span>
               </span>
               <input
                 type="number"
-                step="1"
-                placeholder={formattedCalculatedIdr.replace(/,/g, '')}
-                value={overrideIdrGram !== '' ? overrideIdrGram : (addedItems.length > 0 ? Math.round(calculatedWeightedAverages.idrGram).toString() : '')}
+                step="any"
+                placeholder={formattedCalculatedIdr}
+                title="Σ(pure g × IDR/g) ÷ Σ pure g — not a simple mean of the two buys"
+                value={overrideIdrGram !== '' ? overrideIdrGram : (addedItems.length > 0 ? weighted.avgIdrGram.toFixed(3) : '')}
                 onChange={e => setOverrideIdrGram(e.target.value)}
-                className="w-24 bg-white border border-sky-200 rounded px-2 py-0.5 text-xs sm:text-sm text-sky-950 font-mono focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 text-center"
+                className="w-28 bg-white border border-sky-200 rounded px-2 py-0.5 text-xs sm:text-sm text-sky-950 font-mono focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 text-center"
               />
             </div>
 
-            {/* Average USDT Rate */}
+            {/* Weighted avg IDR / USDT — used for bulk pricing */}
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase text-sky-600/80 tracking-wider flex items-center gap-1">
-                Avg USDT Rate
+                Wtd avg IDR / USDT
                 <span className="text-[8px] font-mono text-sky-500/80">({formattedCalculatedUsdt})</span>
               </span>
               <input
                 type="number"
-                step="1"
-                placeholder={formattedCalculatedUsdt.replace(/,/g, '')}
-                value={overrideIdrToUsdt !== '' ? overrideIdrToUsdt : (addedItems.length > 0 ? Math.round(calculatedWeightedAverages.idrToUsdt).toString() : '')}
+                step="any"
+                placeholder={formattedCalculatedUsdt}
+                title="Σ(pure g × IDR/USDT) ÷ Σ pure g — not (rate₁ + rate₂) ÷ 2"
+                value={overrideIdrToUsdt !== '' ? overrideIdrToUsdt : (addedItems.length > 0 ? weighted.avgIdrToUsdt.toFixed(3) : '')}
                 onChange={e => setOverrideIdrToUsdt(e.target.value)}
-                className="w-20 bg-white border border-sky-200 rounded px-2 py-0.5 text-xs sm:text-sm text-sky-950 font-mono focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 text-center"
+                className="w-24 bg-white border border-sky-200 rounded px-2 py-0.5 text-xs sm:text-sm text-sky-950 font-mono focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 text-center"
               />
             </div>
 
@@ -644,24 +589,22 @@ export default function PhysicalBulkSellModal({
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase text-sky-600/80 tracking-wider">Total IDR</span>
               <span className="text-lg sm:text-xl font-extrabold font-mono text-sky-900">
-                {totalIdrValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {fmtBulkIdr(totals.totalIdr)}
               </span>
             </div>
 
-            {/* Total Sell Value */}
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase text-sky-600/80 tracking-wider">Total Value (USDT)</span>
               <span className="text-lg sm:text-xl font-extrabold font-mono text-indigo-700">
-                {totalUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {fmtBulkUsdt(totals.totalUsdt)}
               </span>
             </div>
 
-            {/* Profit USDT */}
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase text-sky-600/80 tracking-wider">Est. Profit (USDT)</span>
-              <span className={`text-lg sm:text-xl font-extrabold font-mono ${profitAndCost.totalProfitUsdt >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                {profitAndCost.totalProfitUsdt >= 0 ? '+' : ''}
-                {profitAndCost.totalProfitUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className={`text-lg sm:text-xl font-extrabold font-mono ${totals.totalProfitUsdt >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                {totals.totalProfitUsdt >= 0 ? '+' : ''}
+                {fmtBulkUsdt(totals.totalProfitUsdt)}
               </span>
             </div>
 

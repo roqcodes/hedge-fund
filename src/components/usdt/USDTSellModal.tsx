@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbAddUsdtSellAction } from '@/app/actions/usdtActions';
 import { computeUsdtSell, generateUsdtTxnId, computeAverageUsdtBuyAedRate, formatUsdtRateInput } from '@/lib/usdtCalculations';
@@ -98,10 +99,7 @@ export default function USDTSellModal({
     return computeUsdtSell({ usdtAmount, cost, margin, serviceCharge });
   }, [form.usdtAmountStr, form.costStr, form.marginStr, form.serviceChargeStr]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

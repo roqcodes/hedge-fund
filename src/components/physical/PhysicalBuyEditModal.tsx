@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { PhysicalBuy } from '@/types';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { getProductsBySlug } from '@/app/actions/productActions';
 import { dbUpdatePhysicalBuyMetadataAction } from '@/app/actions/physicalActions';
@@ -79,10 +80,7 @@ export default function PhysicalBuyEditModal({ open, slug, buy, onClose, onSucce
     });
   }, [open, buy, slug]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   const productOptions = products.map(p => ({
     value: p.id,

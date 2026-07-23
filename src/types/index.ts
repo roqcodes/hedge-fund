@@ -134,6 +134,8 @@ export interface Customer {
   cognitoUserId?: string;
   /** ISO 4217 currency code for this customer (default AED). */
   currency?: string;
+  /** Net fund-ledger position in USDT (positive = receivable, negative = payable). */
+  netUsdt?: number;
 }
 
 /** Third-party recipient scoped to a portal customer — no login, used on IC Transfer orders. */

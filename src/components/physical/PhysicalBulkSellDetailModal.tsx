@@ -20,6 +20,14 @@ import {
   DetailPartyCard,
   DetailFooter,
 } from '@/components/ui/DealDetailLayout';
+import {
+  fmtBulkIdr,
+  fmtBulkPurity,
+  fmtBulkRate,
+  fmtBulkUsdt,
+  fmtBulkWeight,
+} from '@/lib/physical/bulkSellCalculations';
+import { roundTo14 } from '@/lib/physicalCalculations';
 
 interface PhysicalBulkSellDetailModalProps {
   open: boolean;
@@ -77,7 +85,12 @@ export default function PhysicalBulkSellDetailModal({
     ?? childSells.reduce((s, c) => s + (c.grossWeight ?? 0), 0);
   const totalPureGram = bulkSell.pureGram
     ?? childSells.reduce((s, c) => s + (c.pureGram ?? 0), 0);
-  const avgPurity = totalGrossWeight > 0 ? totalPureGram / totalGrossWeight : bulkSell.pureConversion;
+  const avgPurity = totalGrossWeight > 0
+    ? roundTo14(totalPureGram / totalGrossWeight)
+    : bulkSell.pureConversion;
+  const storedIdrRate = bulkSell.idrToUsdt > 0
+    ? roundTo14(bulkSell.idrGram / bulkSell.idrToUsdt)
+    : bulkSell.idrRate;
 
   const dateStr = new Date(bulkSell.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   const timeStr = new Date(bulkSell.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -154,20 +167,20 @@ export default function PhysicalBulkSellDetailModal({
             <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Gross weight</p>
               <p className="mt-1 font-mono text-lg font-black text-slate-900">
-                {totalGrossWeight.toFixed(3)}<span className="ml-1 text-sm font-bold text-slate-400">g</span>
+                {fmtBulkWeight(totalGrossWeight)}<span className="ml-1 text-sm font-bold text-slate-400">g</span>
               </p>
             </div>
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-500">Pure volume</p>
               <p className="mt-1 font-mono text-lg font-black text-indigo-700">
-                {totalPureGram.toFixed(3)}<span className="ml-1 text-sm font-bold text-indigo-400">g</span>
+                {fmtBulkWeight(totalPureGram)}<span className="ml-1 text-sm font-bold text-indigo-400">g</span>
               </p>
-              <p className="mt-0.5 text-[10px] font-mono text-indigo-400">avg {avgPurity.toFixed(4)} purity</p>
+              <p className="mt-0.5 text-[10px] font-mono text-indigo-400">avg {fmtBulkPurity(avgPurity)} purity</p>
             </div>
             <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total IDR</p>
               <p className="mt-1 font-mono text-lg font-black text-slate-900">
-                {computedTotalIdr.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {fmtBulkIdr(computedTotalIdr)}
               </p>
             </div>
             <div className={`rounded-xl border p-4 ${profitPositive ? 'border-emerald-200 bg-emerald-50/60' : profitNegative ? 'border-red-200 bg-red-50/60' : 'border-slate-100 bg-slate-50/80'}`}>
@@ -180,9 +193,9 @@ export default function PhysicalBulkSellDetailModal({
 
           <DetailSection title="Rates">
             <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-white p-4 sm:grid-cols-3">
-              <DetailField label="IDR / gram" value={bulkSell.idrGram.toLocaleString()} mono />
-              <DetailField label="USDT rate" value={bulkSell.idrToUsdt.toLocaleString()} mono />
-              <DetailField label="USDT / gram" value={bulkSell.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} mono />
+              <DetailField label="IDR / gram" value={fmtBulkRate(bulkSell.idrGram)} mono />
+              <DetailField label="USDT rate" value={fmtBulkRate(bulkSell.idrToUsdt)} mono />
+              <DetailField label="USDT / gram" value={fmtBulkRate(storedIdrRate ?? bulkSell.idrRate)} mono />
             </div>
           </DetailSection>
 

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary } from '@/lib/ui';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { getProductsBySlug } from '@/app/actions/productActions';
 import { dbAddPhysicalBuyAction } from '@/app/actions/physicalActions';
@@ -125,10 +126,7 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
     );
   }, [calc.totalUsdt]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   const productOptions = products.map(p => ({
     value: p.id,

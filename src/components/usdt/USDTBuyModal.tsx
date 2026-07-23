@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbAddUsdtBuyAction } from '@/app/actions/usdtActions';
 import { computeUsdtBuy, generateUsdtTxnId } from '@/lib/usdtCalculations';
@@ -75,10 +76,7 @@ export default function USDTBuyModal({ open, slug, branchId, onClose, onSuccess,
     return computeUsdtBuy({ usdtAmount, aedRate, serviceCharge });
   }, [form.usdtAmountStr, form.aedRateStr, form.serviceChargeStr]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

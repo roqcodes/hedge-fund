@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 // Removed Modal import
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbAddPhysicalSellAction } from '@/app/actions/physicalActions';
 import {
@@ -170,10 +171,7 @@ export default function PhysicalDealSellForm({
     );
   }, [calc.totalUsdt]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   const maxRemaining = selectedBuy?.remainingWeight ?? 0;
   const overLimit = calc.pureGram > maxRemaining;

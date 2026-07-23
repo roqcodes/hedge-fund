@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { PhysicalBuy, PhysicalSell } from '@/types';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbUpdatePhysicalSellMetadataAction } from '@/app/actions/physicalActions';
 import { PAYMENT_MODE_OPTIONS, type PhysicalPaymentMode } from '@/lib/physicalCalculations';
@@ -71,10 +72,7 @@ export default function PhysicalSellEditModal({ open, slug, sell, sourceBuy, onC
     });
   }, [open, sell, slug]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

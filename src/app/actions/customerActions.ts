@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 import { getSessionUser } from '@/lib/auth';
 import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
 import { createCustomerCognitoUser, deleteCognitoUserByEmail, updateCognitoUserName } from '@/app/actions/cognitoActions';
+import { EXCLUDE_PENDING_LEDGER_SQL } from '@/lib/fundLedgerCurrency';
 import { PASSWORD_INVALID_MESSAGE, validatePassword } from '@/lib/passwordValidation';
 
 const CUSTOMER_DELETE_BLOCKED_MESSAGE =
@@ -40,6 +41,7 @@ function mapCustomerRow(r: Record<string, unknown>) {
     cognitoUserId: r.cognito_user_id ? String(r.cognito_user_id) : undefined,
     currency: r.currency ? String(r.currency) : 'AED',
     hasOrders: Boolean(r.has_orders),
+    netUsdt: r.net_usdt != null ? parseFloat(String(r.net_usdt)) : 0,
   };
 }
 
@@ -66,7 +68,13 @@ export async function getCustomersBySlug(slug: string) {
   try {
     const res = await query(
       `
-      SELECT c.*, ${customerHasOrdersExpr('c.id')} AS has_orders
+      SELECT c.*, ${customerHasOrdersExpr('c.id')} AS has_orders,
+        COALESCE((
+          SELECT SUM(l.debit - l.credit)
+          FROM fund_entity_ledger l
+          WHERE l.customer_id = c.id AND l.branch_id = c.branch_id
+          ${EXCLUDE_PENDING_LEDGER_SQL}
+        ), 0) AS net_usdt
       FROM customers c
       LEFT JOIN branches b ON c.branch_id = b.id
       WHERE b.slug = $1

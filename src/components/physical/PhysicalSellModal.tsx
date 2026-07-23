@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import ComboSearchInput from '@/components/ui/ComboSearchInput';
 import { btnPrimary } from '@/lib/ui';
+import { buildCustomerComboOptions } from '@/lib/customerDropdown';
 import { getCustomersBySlug } from '@/app/actions/customerActions';
 import { dbAddPhysicalSellAction } from '@/app/actions/physicalActions';
 import {
@@ -133,10 +134,7 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
     );
   }, [calc.totalUsdt]);
 
-  const customerOptions = customers.map(c => ({
-    value: c.id,
-    label: `${c.name}${c.balance != null ? ` (AED ${Number(c.balance).toLocaleString()})` : ''}`,
-  }));
+  const customerOptions = buildCustomerComboOptions(customers);
 
   const overLimit = calc.pureGram > maxRemaining;
 
