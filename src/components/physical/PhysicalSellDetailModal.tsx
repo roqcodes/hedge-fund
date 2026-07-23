@@ -12,12 +12,22 @@ import { physicalPaymentLabel } from '@/lib/physical/paymentLabel';
 import { btnPrimary, btnSecondary } from '@/lib/ui';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import {
-  DetailHero,
-  DetailBadge,
-  DetailSection,
-  DetailField,
-  DetailMetaRow,
-  DetailPartyCard,
+  DetailSummaryStack,
+  DetailSummaryCard,
+  DetailSummaryHeader,
+  DetailSummarySplit,
+  DetailSummaryPanel,
+  DetailSummarySectionTitle,
+  DetailPill,
+  DetailMetricHighlight,
+  DetailMiniMetric,
+  DetailUsdtMetric,
+  DetailCustomerChip,
+  DetailSpecCard,
+  DetailSpecPanel,
+  DetailSpecGrid,
+  DetailSpecCell,
+  DetailMetaInline,
   DetailFooter,
 } from '@/components/ui/DealDetailLayout';
 
@@ -31,6 +41,10 @@ interface Props {
   onSuccess: () => void;
 }
 
+function fmtGram(n: number): string {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
 export default function PhysicalSellDetailModal({
   open,
   slug,
@@ -41,7 +55,7 @@ export default function PhysicalSellDetailModal({
   onSuccess,
 }: Props) {
   const { canWrite, buttonProps: wp } = useWriteAccess();
-  const { fmtUsdt } = usePhysicalCurrency();
+  const { fmtUsdt, fmtUsdtDirect } = usePhysicalCurrency();
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   const handleEditClose = () => setIsEditOpen(false);
@@ -55,7 +69,7 @@ export default function PhysicalSellDetailModal({
 
   const profitPositive = sell.profit > 0;
   const profitNegative = sell.profit < 0;
-  const heroAccent = profitPositive ? 'emerald' : profitNegative ? 'red' : 'slate';
+  const plTone = profitPositive ? 'profit' : profitNegative ? 'loss' : 'neutral';
 
   const dateStr = new Date(sell.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   const timeStr = new Date(sell.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -65,109 +79,126 @@ export default function PhysicalSellDetailModal({
       <Modal
         open={open && !isEditOpen}
         onClose={onClose}
-        title={
-          <div className="flex flex-col gap-0.5">
-            <span>Physical Sell</span>
-            {sell.txnId ? (
-              <span className="font-mono text-xs font-medium text-slate-400">#{sell.txnId}</span>
-            ) : null}
-          </div>
-        }
-        maxWidth="max-w-[720px] w-[96vw]"
+        title="Physical Sell"
+        maxWidth="max-w-[780px] w-[96vw]"
       >
-        <div className="flex flex-col gap-5">
-          <DetailHero
-            eyebrow="Sell value"
-            title={<PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="lg" showUnit />}
-            subtitle={
-              <span className={profitPositive ? 'text-emerald-700' : profitNegative ? 'text-red-700' : 'text-slate-600'}>
-                {fmtUsdt(sell.profit, true)} profit
-              </span>
-            }
-            badge={
-              <DetailBadge tone={profitPositive ? 'success' : profitNegative ? 'danger' : 'neutral'}>
-                {profitPositive ? 'In profit' : profitNegative ? 'Loss' : 'Break even'}
-              </DetailBadge>
-            }
-            accent={heroAccent}
-          />
-
-          <DetailPartyCard
-            label="Customer"
-            name={
-              <CustomerLink
-                slug={slug}
-                customerId={sell.customerId}
-                customerName={sell.customerName || '—'}
-              />
-            }
-            sub={physicalPaymentLabel(sell.paymentMode)}
-          />
-
-          <DetailMetaRow
-            items={[
-              { label: 'Date', value: dateStr },
-              { label: 'Time', value: timeStr },
-              { label: 'Txn ID', value: sell.txnId ?? '—', mono: true },
-              { label: 'Deal #', value: sell.deal ?? '—', mono: true },
-            ]}
-          />
-
-          <DetailSection title="Commercial">
-            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-slate-50/80 p-4 sm:grid-cols-3">
-              <DetailField
-                label="Sell value"
-                value={<PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="sm" showUnit={false} />}
-                mono
-              />
-              {sell.costValue != null ? (
-                <DetailField
-                  label="Cost value"
-                  value={<PhysicalAmountDisplay aedAmount={sell.costValue} size="sm" showUnit={false} />}
-                  mono
+        <DetailSummaryStack className="space-y-4">
+          <DetailSummaryCard ariaLabel="Sell deal summary">
+            <DetailSummaryHeader
+              badges={
+                <>
+                  <DetailPill tone="sell">Sell</DetailPill>
+                  {profitPositive ? <DetailPill tone="profit">In profit</DetailPill> : null}
+                  {profitNegative ? <DetailPill tone="loss">Loss</DetailPill> : null}
+                </>
+              }
+              meta={
+                <DetailMetaInline
+                  txnId={sell.txnId ? `#${sell.txnId}` : sell.id.split('-')[1]?.toUpperCase() ?? sell.id}
+                  date={`${dateStr} · ${timeStr}`}
                 />
-              ) : null}
-              <DetailField
-                label="Profit"
-                value={
-                  <span className={profitPositive ? 'text-emerald-700' : profitNegative ? 'text-red-700' : ''}>
-                    {fmtUsdt(sell.profit, true)}
-                  </span>
-                }
-                mono
-              />
-              {sell.totalUsdt != null ? (
-                <DetailField label="Total USDT" value={sell.totalUsdt.toLocaleString(undefined, { maximumFractionDigits: 4 })} mono />
-              ) : null}
-              {sell.tltIdrValue != null ? (
-                <DetailField label="Total IDR" value={sell.tltIdrValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} mono />
-              ) : null}
-              {(sell.narration || sell.particulars) ? (
-                <DetailField label="Narration" value={sell.narration || sell.particulars || '—'} className="col-span-2 sm:col-span-3" />
-              ) : null}
-            </div>
-          </DetailSection>
+              }
+            />
 
-          <DetailSection title="Metal & rates">
-            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-white p-4 sm:grid-cols-3 md:grid-cols-4">
-              <DetailField label="Gross wt" value={`${sell.grossWeight.toFixed(3)} g`} mono />
-              <DetailField label="Touch" value={sell.pureConversion} />
-              <DetailField label="Loss" value={sell.touchLoss?.toFixed(3) ?? '0'} mono />
-              <DetailField label="Purity" value={sell.actualPurity?.toFixed(3) ?? sell.pureGram.toFixed(3)} mono />
-              <DetailField label="Pure gram" value={`${sell.pureGram.toFixed(3)} g`} mono />
-              <DetailField label="IDR / gram" value={sell.idrGram.toLocaleString()} mono />
-              <DetailField label="USDT rate" value={sell.idrToUsdt.toLocaleString()} mono />
-              <DetailField label="USDT / gram" value={sell.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} mono />
-            </div>
-          </DetailSection>
+            <DetailSummarySplit>
+              <DetailSummaryPanel side="left">
+                <div className="flex max-sm:flex-col max-sm:gap-4 sm:flex-wrap sm:items-end sm:justify-between sm:gap-3">
+                  <DetailMetricHighlight
+                    label="Metal sold"
+                    value={fmtGram(sell.grossWeight)}
+                    unit="g gross"
+                    valueClassName="text-amber-700"
+                  />
+                  <div className="flex gap-5 sm:gap-6">
+                    <DetailMiniMetric label="Pure gram" value={fmtGram(sell.pureGram)} valueClassName="text-indigo-700" align="right" />
+                    <DetailMiniMetric label="Purity" value={sell.actualPurity?.toFixed(3) ?? sell.pureGram.toFixed(3)} align="right" />
+                  </div>
+                </div>
+                {(sell.narration || sell.particulars) && (
+                  <p className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs font-semibold text-slate-600">
+                    {sell.narration || sell.particulars}
+                  </p>
+                )}
+              </DetailSummaryPanel>
+
+              <DetailSummaryPanel side="right">
+                <DetailSummarySectionTitle>Deal economics</DetailSummarySectionTitle>
+                <div className="mt-3 grid grid-cols-3 gap-x-4 gap-y-5 sm:gap-x-6">
+                  <DetailUsdtMetric
+                    label="Sell value"
+                    value={
+                      <>
+                        {sell.totalUsdt != null ? fmtUsdtDirect(sell.totalUsdt) : fmtUsdt(sell.sellValue)}
+                        <span className="ml-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">USDT</span>
+                      </>
+                    }
+                  />
+                  {sell.costValue != null ? (
+                    <DetailUsdtMetric
+                      label="Cost"
+                      value={fmtUsdt(sell.costValue)}
+                    />
+                  ) : (
+                    <DetailUsdtMetric label="Cost" value="—" />
+                  )}
+                  <DetailUsdtMetric
+                    label="P&L"
+                    tone={plTone}
+                    value={fmtUsdt(sell.profit, true)}
+                  />
+                </div>
+                <DetailCustomerChip
+                  initials={(sell.customerName ?? '?').slice(0, 2)}
+                  name={
+                    <CustomerLink slug={slug} customerId={sell.customerId} customerName={sell.customerName || '—'} />
+                  }
+                  sub={physicalPaymentLabel(sell.paymentMode)}
+                />
+              </DetailSummaryPanel>
+            </DetailSummarySplit>
+          </DetailSummaryCard>
+
+          <DetailSpecCard ariaLabel="Sell deal specifications">
+            <DetailSpecPanel title="Commercial">
+              <DetailSpecGrid cols={3}>
+                <DetailSpecCell
+                  label="Sell value"
+                  value={
+                    <PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="sm" showUnit={false} className="!items-start !text-left" align="left" />
+                  }
+                />
+                {sell.tltIdrValue != null ? (
+                  <DetailSpecCell label="IDR value" value={sell.tltIdrValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} mono />
+                ) : null}
+                {sell.totalUsdt != null ? (
+                  <DetailSpecCell label="Total USDT" value={sell.totalUsdt.toLocaleString(undefined, { maximumFractionDigits: 4 })} mono />
+                ) : null}
+                {sell.deal != null ? (
+                  <DetailSpecCell label="Deal #" value={String(sell.deal)} mono />
+                ) : null}
+              </DetailSpecGrid>
+            </DetailSpecPanel>
+
+            <DetailSpecPanel title="Metal & rates" bordered={false}>
+              <DetailSpecGrid cols={4}>
+                <DetailSpecCell label="Gross wt" value={`${fmtGram(sell.grossWeight)} g`} mono />
+                <DetailSpecCell label="Touch" value={String(sell.pureConversion)} mono />
+                <DetailSpecCell label="Loss" value={sell.touchLoss?.toFixed(3) ?? '0'} mono />
+                <DetailSpecCell label="Pure gram" value={`${fmtGram(sell.pureGram)} g`} mono />
+                <DetailSpecCell label="IDR / g" value={sell.idrGram.toLocaleString()} mono />
+                <DetailSpecCell label="IDR / USDT" value={sell.idrToUsdt.toLocaleString()} mono />
+                <DetailSpecCell label="USDT / g" value={sell.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} mono />
+              </DetailSpecGrid>
+            </DetailSpecPanel>
+          </DetailSpecCard>
 
           {(sourceBuy || sell.notes) && (
-            <DetailSection title="Linked & notes">
-              <div className="space-y-3">
-                {sourceBuy ? (
-                  <DetailPartyCard
-                    label="Source item"
-                    name={
+            <DetailSpecCard ariaLabel="Linked buy and notes">
+              {sourceBuy ? (
+                <DetailSpecPanel title="Source buy" bordered={!!sell.notes}>
+                  <DetailSpecCell
+                    label="Item"
+                    value={
                       buyDetailPath ? (
                         <Link href={buyDetailPath} className="text-accent hover:underline">
                           {sourceBuy.item || sourceBuy.particulars || '—'}
@@ -177,14 +208,14 @@ export default function PhysicalSellDetailModal({
                       )
                     }
                   />
-                ) : null}
-                {sell.notes ? (
-                  <p className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                    {sell.notes}
-                  </p>
-                ) : null}
-              </div>
-            </DetailSection>
+                </DetailSpecPanel>
+              ) : null}
+              {sell.notes ? (
+                <DetailSpecPanel title="Notes" bordered={false}>
+                  <p className="mt-2 text-sm text-slate-600">{sell.notes}</p>
+                </DetailSpecPanel>
+              ) : null}
+            </DetailSpecCard>
           )}
 
           <DetailFooter>
@@ -208,7 +239,7 @@ export default function PhysicalSellDetailModal({
               </button>
             </div>
           </DetailFooter>
-        </div>
+        </DetailSummaryStack>
       </Modal>
 
       {isEditOpen ? (

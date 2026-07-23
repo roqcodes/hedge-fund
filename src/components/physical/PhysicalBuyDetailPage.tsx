@@ -15,21 +15,13 @@ import { usePhysicalDrafts } from '@/hooks/usePhysicalDrafts';
 import PhysicalSellModal from './PhysicalSellModal';
 import PhysicalBuyEditModal from './PhysicalBuyEditModal';
 import PhysicalSellDetailModal from './PhysicalSellDetailModal';
+import PhysicalBuyDetailSummary from './PhysicalBuyDetailSummary';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import CustomerLink from '@/components/customers/CustomerLink';
-import PhysicalAmountDisplay, { PhysicalAmountKpiValue } from './PhysicalAmountDisplay';
-import { formatPhysicalIdr, formatPhysicalAed } from '@/lib/physicalCurrencyDisplay';
+import PhysicalAmountDisplay from './PhysicalAmountDisplay';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { DeleteButton, DeleteIconButton } from '@/components/ui/DeleteActions';
-import {
-  DetailHero,
-  DetailBadge,
-  DetailSection,
-  DetailField,
-  DetailMetaRow,
-  DetailPartyCard,
-} from '@/components/ui/DealDetailLayout';
 
 type SortField = 'date' | 'id' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'sellValue' | 'profit';
 type SortDirection = 'asc' | 'desc';
@@ -203,13 +195,13 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               {buy.txnId ? `#${buy.txnId}` : buy.id} · {new Date(buy.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
-          <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
+          <div className="mt-4 flex flex-col items-stretch gap-3 sm:mt-0 sm:flex-row sm:items-center">
             <button
               type="button"
               onClick={() => canWrite && setIsBuyEditOpen(true)}
               disabled={!canWrite}
               {...wp()}
-              className={`inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition-all hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-4 sm:text-sm`}
+              className={`${btnSecondary} w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50' : ''}`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M12 20h9" />
@@ -221,13 +213,14 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               onClick={handleDeleteBuy}
               label="Delete buy"
               loading={isDeleting}
-              disabled={isDeleting}
-              className="w-full sm:w-auto rounded-full px-3.5 sm:px-4"
+              disabled={isDeleting || !canWrite}
+              className="w-full sm:w-auto"
             />
             <button
               type="button"
-              onClick={() => setIsSellModalOpen(true)}
-              disabled={buy.remainingWeight <= 0}
+              onClick={() => canWrite && setIsSellModalOpen(true)}
+              disabled={!canWrite || buy.remainingWeight <= 0}
+              {...wp()}
               className={`${btnPrimary} w-full sm:w-auto disabled:pointer-events-none disabled:opacity-50`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -238,101 +231,13 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           </div>
         </div>
 
-        <div className="mb-6 space-y-5">
-          <DetailHero
-            eyebrow="Buy value"
-            title={<PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="lg" showUnit />}
-            subtitle={`${buy.remainingWeight.toFixed(3)} g remaining · ${buy.pureGram.toFixed(3)} g pure purchased`}
-            badge={<DetailBadge tone="info">Buy</DetailBadge>}
-            accent="indigo"
-          />
-
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Sold value</p>
-              <div className="mt-1">
-                <PhysicalAmountKpiValue aedAmount={totalSellValue} />
-              </div>
-              <p className="mt-0.5 text-[10px] font-medium text-slate-400">{sells.length} sell{sells.length !== 1 ? 's' : ''}</p>
-            </div>
-            <div className={`rounded-xl border p-4 ${totalSaleProfit >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-red-200 bg-red-50/60'}`}>
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">P&L from sells</p>
-              <div className="mt-1">
-                <PhysicalAmountKpiValue aedAmount={totalSaleProfit} showPlus profitTone="auto" />
-              </div>
-            </div>
-            <div className="col-span-2 rounded-xl border border-amber-200 bg-amber-50/60 p-4 sm:col-span-1">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Stock remaining</p>
-              <p className="mt-1 font-mono text-xl font-black tabular-nums text-amber-900">
-                {buy.remainingWeight.toFixed(3)}<span className="ml-1 text-sm font-bold text-amber-600">g</span>
-              </p>
-            </div>
-          </div>
-
-          <DetailPartyCard
-            label="Customer"
-            name={<CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} />}
-            sub={buy.item || buy.particulars || undefined}
-          />
-
-          <DetailMetaRow
-            items={[
-              {
-                label: 'Date',
-                value: new Date(buy.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-              },
-              { label: 'Txn ID', value: buy.txnId || '—', mono: true },
-              { label: 'Buy ID', value: buy.id.split('-')[1]?.toUpperCase() ?? buy.id, mono: true },
-              { label: 'Pure gram', value: `${buy.pureGram.toFixed(3)} g`, mono: true },
-            ]}
-          />
-
-          <DetailSection title="Commercial">
-            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-slate-50/80 p-4 sm:grid-cols-3">
-              <DetailField
-                label="Total value (USDT)"
-                value={<PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="sm" showUnit={false} />}
-                mono
-              />
-              <DetailField
-                label="IDR value"
-                value={formatPhysicalIdr(buy.idrAmount ?? buy.idrGram * buy.pureGram)}
-                mono
-              />
-              <DetailField
-                label="AED value"
-                value={formatPhysicalAed(buy.aedAmount ?? buy.buyValue)}
-                mono
-              />
-              <DetailField label="IDR / gram" value={buy.idrGram.toLocaleString()} mono />
-              <DetailField label="IDR / USDT" value={buy.idrToUsdt.toLocaleString()} mono />
-              <DetailField label="USDT / gram" value={buy.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} mono />
-              <DetailField
-                label="Cost / gram"
-                value={
-                  <PhysicalAmountDisplay
-                    usdtAmount={buy.totalUsdt != null && buy.pureGram > 0 ? buy.totalUsdt / buy.pureGram : undefined}
-                    aedAmount={buy.totalUsdt == null && buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0}
-                    size="sm"
-                    align="left"
-                    showUnit={false}
-                    className="!items-start !text-left"
-                  />
-                }
-                mono
-              />
-            </div>
-          </DetailSection>
-
-          <DetailSection title="Metal & inventory">
-            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-white p-4 sm:grid-cols-4">
-              <DetailField label="Gross wt" value={`${buy.grossWeight.toFixed(3)} g`} mono />
-              <DetailField label="Pure conv" value={buy.pureConversion} mono />
-              <DetailField label="Pure gram" value={`${buy.pureGram.toFixed(3)} g`} mono />
-              <DetailField label="Remaining" value={`${buy.remainingWeight.toFixed(3)} g`} mono />
-            </div>
-          </DetailSection>
-        </div>
+        <PhysicalBuyDetailSummary
+          buy={buy}
+          branchSlug={branchSlug}
+          sellCount={sells.length}
+          totalSellValueAed={totalSellValue}
+          totalProfitAed={totalSaleProfit}
+        />
 
         <DateFilterBar
           dateFilter={dateFilter}
@@ -343,7 +248,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           setCustomEndDate={setCustomEndDate}
         />
 
-        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
+        <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover mb-6">
           <div className="flex flex-col gap-4 pb-4 px-4 md:border-b md:border-slate-100 md:px-6 md:py-5 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-lg font-bold text-slate-900">Sell Deals</h3>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

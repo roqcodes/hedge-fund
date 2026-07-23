@@ -14,12 +14,22 @@ import UsdtEnteredBy from './UsdtEnteredBy';
 import CustomerLink from '@/components/customers/CustomerLink';
 import { pageHeader, pageTitle, pageSubtitle } from '@/lib/ui';
 import {
-  DetailHero,
-  DetailBadge,
-  DetailSection,
-  DetailField,
-  DetailMetaRow,
-  DetailPartyCard,
+  DetailSummaryStack,
+  DetailSummaryCard,
+  DetailSummaryHeader,
+  DetailSummarySplit,
+  DetailSummaryPanel,
+  DetailSummarySectionTitle,
+  DetailPill,
+  DetailMetricHighlight,
+  DetailMiniMetric,
+  DetailUsdtMetric,
+  DetailCustomerChip,
+  DetailSpecCard,
+  DetailSpecPanel,
+  DetailSpecGrid,
+  DetailSpecCell,
+  DetailMetaInline,
 } from '@/components/ui/DealDetailLayout';
 
 interface Props {
@@ -75,7 +85,9 @@ export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
   const isSell = isUsdtSell(deal);
   const profitPositive = isSell && deal.profit > 0;
   const profitNegative = isSell && deal.profit < 0;
-  const heroAccent = type === 'buy' ? 'indigo' : profitPositive ? 'emerald' : profitNegative ? 'red' : 'slate';
+  const plTone = profitPositive ? 'profit' : profitNegative ? 'loss' : 'neutral';
+
+  const dateParts = formatDateTime(deal.date).split(',');
 
   return (
     <>
@@ -92,9 +104,7 @@ export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
                   <path d="M19 12H5M12 19l-7-7 7-7" />
                 </svg>
               </Link>
-              <h2 className={pageTitle}>
-                USDT {type === 'buy' ? 'Purchase' : 'Sale'}
-              </h2>
+              <h2 className={pageTitle}>USDT {type === 'buy' ? 'Purchase' : 'Sale'}</h2>
             </div>
             <p className={pageSubtitle}>
               {deal.txnId ? `#${deal.txnId}` : deal.id} · {formatDateTime(deal.date)}
@@ -105,106 +115,132 @@ export default function UsdtDealDetailPage({ branchSlug, dealId }: Props) {
               onClick={() => void handleDelete()}
               label="Delete deal"
               disabled={!canWrite}
-              className={`w-full sm:w-auto rounded-full${!canWrite ? ' cursor-not-allowed opacity-50 hover:bg-red-50' : ''}`}
+              className={`w-full sm:w-auto${!canWrite ? ' cursor-not-allowed opacity-50 hover:bg-red-50' : ''}`}
               {...wp()}
             />
           </div>
         </div>
 
-        <div className="space-y-5">
-          <DetailHero
-            eyebrow="USDT amount"
-            title={`${fmtUsdt(deal.usdtAmount)} USDT`}
-            subtitle={fmtAed(deal.aedTotal)}
-            badge={
-              <DetailBadge tone={type === 'buy' ? 'info' : profitPositive ? 'success' : profitNegative ? 'danger' : 'neutral'}>
-                {type === 'buy' ? 'Buy' : profitPositive ? 'In profit' : profitNegative ? 'Loss' : 'Sell'}
-              </DetailBadge>
-            }
-            accent={heroAccent}
-          />
+        <DetailSummaryStack>
+          <DetailSummaryCard ariaLabel="USDT deal summary">
+            <DetailSummaryHeader
+              badges={
+                <>
+                  <DetailPill tone="usdt">USDT</DetailPill>
+                  <DetailPill tone={type === 'buy' ? 'buy' : 'sell'}>
+                    {type === 'buy' ? 'Purchase' : 'Sale'}
+                  </DetailPill>
+                  {profitPositive ? <DetailPill tone="profit">In profit</DetailPill> : null}
+                  {profitNegative ? <DetailPill tone="loss">Loss</DetailPill> : null}
+                </>
+              }
+              meta={
+                <DetailMetaInline
+                  txnId={deal.txnId ? `#${deal.txnId}` : deal.id}
+                  date={dateParts[0]?.trim()}
+                />
+              }
+            />
 
-          <DetailPartyCard
-            label="Customer"
-            name={
-              <CustomerLink
-                slug={branchSlug}
-                customerId={deal.customerId}
-                customerName={deal.customerName}
-              />
-            }
-            sub={deal.walletId ? `Wallet ${deal.walletId}` : undefined}
-          />
-
-          {isSell && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <div className={`rounded-xl border p-4 ${deal.profit >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-red-200 bg-red-50/60'}`}>
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Profit</p>
-                <p className={`mt-1 font-mono text-xl font-black tabular-nums ${deal.profit >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
-                  {deal.profit > 0 ? '+' : ''}{fmtAed(deal.profit)}
+            <DetailSummarySplit>
+              <DetailSummaryPanel side="left">
+                <DetailMetricHighlight
+                  label="USDT amount"
+                  value={fmtUsdt(deal.usdtAmount)}
+                  unit="USDT"
+                  valueClassName="text-teal-700"
+                />
+                <p className="mt-3 text-sm font-semibold text-slate-600">
+                  ≈ {fmtAed(deal.aedTotal)} AED equivalent
                 </p>
-              </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Cost rate</p>
-                <p className="mt-1 font-mono text-lg font-bold text-slate-800">{fmtRate(deal.cost)}</p>
-              </div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Margin</p>
-                <p className="mt-1 font-mono text-lg font-bold text-slate-800">{fmtRate(deal.margin)}</p>
-              </div>
-            </div>
-          )}
+                {isSell && (
+                  <div className="mt-4 flex gap-5 sm:gap-6">
+                    <DetailMiniMetric label="Cost rate" value={fmtRate(deal.cost)} align="left" />
+                    <DetailMiniMetric label="Margin" value={fmtRate(deal.margin)} align="left" />
+                  </div>
+                )}
+              </DetailSummaryPanel>
 
-          <DetailSection title="Pricing">
-            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-white p-4 shadow-surface-xs sm:grid-cols-3 md:grid-cols-4">
-              <DetailField label="AED rate" value={fmtRate(deal.aedRate)} mono />
-              <DetailField label="AED total" value={fmtAed(deal.aedTotal)} mono />
-              <DetailField label="USDT amount" value={fmtUsdt(deal.usdtAmount)} mono />
-              <DetailField
-                label="Service charge"
-                value={deal.serviceCharge > 0 ? fmtAed(deal.serviceCharge) : '—'}
-                mono
-              />
-              {type === 'buy' ? null : isSell ? (
-                <DetailField
-                  label="Profit"
-                  value={
-                    <span className={deal.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}>
-                      {fmtAed(deal.profit)}
-                    </span>
+              <DetailSummaryPanel side="right">
+                <DetailSummarySectionTitle>Deal economics</DetailSummarySectionTitle>
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 sm:gap-x-6">
+                  <DetailUsdtMetric label="AED rate" value={fmtRate(deal.aedRate)} />
+                  <DetailUsdtMetric label="AED total" value={fmtAed(deal.aedTotal)} />
+                  {isSell ? (
+                    <DetailUsdtMetric
+                      label="Profit"
+                      tone={plTone}
+                      value={fmtAed(deal.profit)}
+                    />
+                  ) : (
+                    <DetailUsdtMetric
+                      label="Service charge"
+                      value={deal.serviceCharge > 0 ? fmtAed(deal.serviceCharge) : '—'}
+                    />
+                  )}
+                </div>
+                <DetailCustomerChip
+                  initials={(deal.customerName ?? '?').slice(0, 2)}
+                  name={
+                    <CustomerLink slug={branchSlug} customerId={deal.customerId} customerName={deal.customerName} />
                   }
+                  sub={deal.walletId ? `Wallet ${deal.walletId}` : undefined}
+                />
+              </DetailSummaryPanel>
+            </DetailSummarySplit>
+          </DetailSummaryCard>
+
+          <DetailSpecCard ariaLabel="USDT deal details">
+            <DetailSpecPanel title="Pricing">
+              <DetailSpecGrid cols={3}>
+                <DetailSpecCell label="AED rate" value={fmtRate(deal.aedRate)} mono />
+                <DetailSpecCell label="AED total" value={fmtAed(deal.aedTotal)} mono />
+                <DetailSpecCell label="USDT amount" value={fmtUsdt(deal.usdtAmount)} mono />
+                <DetailSpecCell
+                  label="Service charge"
+                  value={deal.serviceCharge > 0 ? fmtAed(deal.serviceCharge) : '—'}
                   mono
                 />
+                {isSell ? (
+                  <>
+                    <DetailSpecCell label="Cost rate" value={fmtRate(deal.cost)} mono />
+                    <DetailSpecCell
+                      label="Profit"
+                      value={
+                        <span className={deal.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                          {fmtAed(deal.profit)}
+                        </span>
+                      }
+                      mono
+                    />
+                    <DetailSpecCell label="Margin" value={fmtRate(deal.margin)} mono />
+                  </>
+                ) : null}
+              </DetailSpecGrid>
+            </DetailSpecPanel>
+
+            <DetailSpecPanel title="Record info" bordered={false}>
+              <DetailSpecGrid cols={2}>
+                <DetailSpecCell label="Txn ID" value={deal.txnId || '—'} mono />
+                <DetailSpecCell label="Date" value={formatDateTime(deal.date)} />
+                <DetailSpecCell
+                  label="Opening balance"
+                  value={deal.openingBalance != null ? fmtAed(deal.openingBalance) : '—'}
+                  mono
+                />
+                <DetailSpecCell
+                  label="Entered by"
+                  value={<UsdtEnteredBy deal={deal} className="w-auto text-xs font-bold" />}
+                />
+              </DetailSpecGrid>
+              {deal.notes ? (
+                <div className="mt-4 border-t border-dashed border-slate-200 pt-4">
+                  <DetailSpecCell label="Notes" value={deal.notes} />
+                </div>
               ) : null}
-            </div>
-          </DetailSection>
-
-          <DetailSection title="Record info">
-            <DetailMetaRow
-              items={[
-                { label: 'Txn ID', value: deal.txnId || '—', mono: true },
-                { label: 'Date', value: formatDateTime(deal.date) },
-                {
-                  label: 'Opening balance',
-                  value: deal.openingBalance != null ? fmtAed(deal.openingBalance) : '—',
-                  mono: true,
-                },
-                {
-                  label: 'Entered by',
-                  value: <UsdtEnteredBy deal={deal} className="w-auto text-xs font-bold" />,
-                },
-              ]}
-            />
-          </DetailSection>
-
-          {deal.notes ? (
-            <DetailSection title="Notes">
-              <p className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                {deal.notes}
-              </p>
-            </DetailSection>
-          ) : null}
-        </div>
+            </DetailSpecPanel>
+          </DetailSpecCard>
+        </DetailSummaryStack>
       </div>
       <Dialog />
     </>

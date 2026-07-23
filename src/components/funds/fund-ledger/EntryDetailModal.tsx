@@ -11,12 +11,23 @@ import {
 import { getLinkedSourceDeleteMessage, isAutoLinkedLedgerEntry } from '@/lib/fundLedgerDelete';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { DeleteButton } from '@/components/ui/DeleteActions';
+import { btnSecondary } from '@/lib/ui';
 import {
-  DetailHero,
-  DetailBadge,
-  DetailSection,
-  DetailMetaRow,
-  DetailPartyCard,
+  DetailSummaryStack,
+  DetailSummaryCard,
+  DetailSummaryHeader,
+  DetailSummarySplit,
+  DetailSummaryPanel,
+  DetailSummarySectionTitle,
+  DetailPill,
+  DetailMetricHighlight,
+  DetailUsdtMetric,
+  DetailCustomerChip,
+  DetailSpecCard,
+  DetailSpecPanel,
+  DetailSpecGrid,
+  DetailSpecCell,
+  DetailMetaInline,
   DetailFooter,
 } from '@/components/ui/DealDetailLayout';
 import type { FundEntityLedgerEntry, Customer } from '@/types';
@@ -61,16 +72,20 @@ export default function EntryDetailModal({
   const convertedPreview = numRate > 0 ? wallet.usdtAmount * numRate : 0;
 
   const statusLabel = pending ? 'Pending' : isDebit ? 'Receivable' : 'Payable';
-  const statusTone = pending ? 'warning' : isDebit ? 'success' : 'danger';
-  const heroAccent = pending ? 'amber' : isDebit ? 'emerald' : 'red';
+  const pillTone = pending ? 'pending' : isDebit ? 'profit' : 'loss';
 
-  const walletPrimary = fmtFundAmount(wallet.walletAmount, wallet.walletCurrency);
   const usdtSecondary =
     wallet.walletCurrency !== 'USDT'
       ? fmtFundAmount(wallet.usdtAmount, 'USDT')
       : wallet.bookAmount != null && wallet.bookCurrency !== 'USDT'
         ? fmtFundAmount(wallet.bookAmount, wallet.bookCurrency)
         : null;
+
+  const dateStr = new Date(entry.entryDate).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 
   const handleDelete = async () => {
     if (isAutoLinkedLedgerEntry(entry)) {
@@ -108,51 +123,65 @@ export default function EntryDetailModal({
 
   return (
     <>
-      <Modal
-        open={open}
-        onClose={onClose}
-        title={
-          <div className="flex items-center gap-3">
-            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-              pending ? 'bg-amber-100 text-amber-600' : isDebit ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
-            }`}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-base font-extrabold leading-tight text-slate-900">Ledger Entry</p>
-              <p className="font-mono text-[10px] leading-tight text-slate-400">{entry.id}</p>
-            </div>
-          </div>
-        }
-        maxWidth="max-w-xl w-[95vw]"
-      >
-        <div className="space-y-5 pb-4">
-          <DetailHero
-            eyebrow={wallet.walletCurrency !== 'USDT' ? 'Wallet amount' : 'USDT amount'}
-            title={walletPrimary}
-            subtitle={usdtSecondary ? `≈ ${usdtSecondary}` : undefined}
-            badge={<DetailBadge tone={statusTone}>{statusLabel}</DetailBadge>}
-            accent={heroAccent}
-          />
+      <Modal open={open} onClose={onClose} title="Ledger Entry" maxWidth="max-w-xl w-[95vw]">
+        <DetailSummaryStack className="space-y-4 pb-2">
+          <DetailSummaryCard ariaLabel="Ledger entry summary">
+            <DetailSummaryHeader
+              badges={<DetailPill tone={pillTone}>{statusLabel}</DetailPill>}
+              meta={
+                <DetailMetaInline
+                  txnId={entry.id.split('-').pop()?.toUpperCase() ?? entry.id}
+                  date={dateStr}
+                />
+              }
+            />
 
-          <DetailPartyCard
-            label="Entity"
-            name={customer?.name ?? entry.customerId}
-            sub={profileCurrency ? `Profile currency: ${profileCurrency}${pending ? ' · awaiting conversion' : ''}` : undefined}
-          />
+            <DetailSummarySplit>
+              <DetailSummaryPanel side="left">
+                <DetailMetricHighlight
+                  label={wallet.walletCurrency !== 'USDT' ? 'Wallet amount' : 'USDT amount'}
+                  value={wallet.walletAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  unit={wallet.walletCurrency}
+                  valueClassName={pending ? 'text-amber-700' : isDebit ? 'text-emerald-700' : 'text-red-700'}
+                />
+                {usdtSecondary ? (
+                  <p className="mt-3 text-sm font-semibold text-slate-600">≈ {usdtSecondary}</p>
+                ) : null}
+                {pending && (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                    Stored in USDT — not in receivables/payables until converted to {profileCurrency}.
+                  </p>
+                )}
+              </DetailSummaryPanel>
 
-          {pending && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
-              Stored in USDT — not counted in receivables/payables until converted to {profileCurrency}.
-            </div>
-          )}
+              <DetailSummaryPanel side="right">
+                <DetailSummarySectionTitle>Entry details</DetailSummarySectionTitle>
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-4">
+                  <DetailUsdtMetric label="Reference" value={entry.referenceType !== 'manual' ? entry.referenceType.replace(/_/g, ' ') : 'Manual'} />
+                  <DetailUsdtMetric label="USDT book" value={fmtFundAmount(wallet.usdtAmount, 'USDT')} />
+                  {hasSettlement ? (
+                    <DetailUsdtMetric
+                      label="Cash moved"
+                      value={fmtFundAmount(entry.settlementAmount!, entry.settlementCurrency || 'USDT')}
+                    />
+                  ) : null}
+                </div>
+                <DetailCustomerChip
+                  initials={(customer?.name ?? entry.customerId ?? '?').slice(0, 2)}
+                  label="Entity"
+                  name={customer?.name ?? entry.customerId}
+                  sub={profileCurrency ? `Profile: ${profileCurrency}` : undefined}
+                />
+              </DetailSummaryPanel>
+            </DetailSummarySplit>
+          </DetailSummaryCard>
 
           {canConvert && (
-            <DetailSection title={`Convert to ${profileCurrency}`}>
-              <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 space-y-4">
+            <DetailSummaryCard ariaLabel="Convert entry">
+              <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-5">
+                <DetailSummarySectionTitle>Convert to {profileCurrency}</DetailSummarySectionTitle>
+              </div>
+              <div className="space-y-4 p-4 sm:p-5">
                 <p className="text-xs text-slate-600">
                   Enter rate to book in customer currency. After convert, entry joins tally and you can settle in {profileCurrency}.
                 </p>
@@ -187,81 +216,44 @@ export default function EntryDetailModal({
                   {converting ? 'Converting…' : `Convert to ${profileCurrency}`}
                 </button>
               </div>
-            </DetailSection>
+            </DetailSummaryCard>
           )}
 
-          {hasSettlement && (
-            <DetailSection title="Branch settlement">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400">Cash moved</p>
-                  <p className="mt-1 font-mono text-xl font-black text-indigo-700">
-                    {fmtFundAmount(entry.settlementAmount!, entry.settlementCurrency || 'USDT')}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400">Ledger (USDT)</p>
-                  <p className="mt-1 font-mono text-xl font-black text-indigo-700">
-                    {fmtFundAmount(wallet.usdtAmount, 'USDT')}
-                  </p>
-                </div>
-              </div>
-              {entry.customerCurrencyRate && entry.customerCurrency && entry.customerCurrency !== 'USDT' && (
-                <p className="mt-3 text-xs font-mono text-indigo-700">
-                  1 USDT = {entry.customerCurrencyRate} {entry.customerCurrency}
-                </p>
-              )}
-            </DetailSection>
-          )}
+          <DetailSpecCard ariaLabel="Ledger record info">
+            <DetailSpecPanel title="Record info">
+              <DetailSpecGrid cols={2}>
+                <DetailSpecCell label="Date" value={dateStr} />
+                <DetailSpecCell label="Created by" value={entry.createdByName || entry.createdBy || '—'} />
+                <DetailSpecCell label="Reference" value={entry.referenceType !== 'manual' ? entry.referenceType.replace(/_/g, ' ') : 'Manual'} />
+                <DetailSpecCell label="Ref ID" value={entry.referenceId || '—'} mono />
+                {entry.customerCurrencyRate && entry.customerCurrency && entry.customerCurrency !== 'USDT' ? (
+                  <DetailSpecCell
+                    label="Conversion rate"
+                    value={`1 USDT = ${entry.customerCurrencyRate} ${entry.customerCurrency}`}
+                    mono
+                  />
+                ) : null}
+              </DetailSpecGrid>
+            </DetailSpecPanel>
 
-          <DetailSection title="Record info">
-            <DetailMetaRow
-              items={[
-                {
-                  label: 'Date',
-                  value: new Date(entry.entryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-                },
-                {
-                  label: 'Created by',
-                  value: entry.createdByName || entry.createdBy || '—',
-                },
-                {
-                  label: 'Reference',
-                  value: entry.referenceType !== 'manual' ? entry.referenceType.replace(/_/g, ' ') : 'Manual',
-                },
-                {
-                  label: 'Ref ID',
-                  value: entry.referenceId || '—',
-                  mono: true,
-                },
-              ]}
-            />
-          </DetailSection>
-
-          {entry.description && (
-            <DetailSection title="Description">
-              <p className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                {entry.description}
-              </p>
-            </DetailSection>
-          )}
+            {entry.description ? (
+              <DetailSpecPanel title="Description" bordered={false}>
+                <p className="mt-2 text-sm text-slate-600">{entry.description}</p>
+              </DetailSpecPanel>
+            ) : null}
+          </DetailSpecCard>
 
           <DetailFooter>
-            <div />
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div>
               {canWrite && !pending && (
                 <DeleteButton onClick={() => void handleDelete()} label="Delete entry" />
               )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-[0.98]"
-              >
-                Close
-              </button>
             </div>
+            <button type="button" onClick={onClose} className={btnSecondary}>
+              Close
+            </button>
           </DetailFooter>
-        </div>
+        </DetailSummaryStack>
       </Modal>
       <Dialog />
     </>

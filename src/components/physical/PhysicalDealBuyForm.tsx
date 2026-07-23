@@ -160,7 +160,7 @@ export default function PhysicalDealBuyForm({ slug, branchId, onClose, onSuccess
       deal: calc.deal || undefined,
       fixOrUnfix: form.fixOrUnfix,
       paymentMode: form.paymentMode,
-      idrAmount: calc.idrGram || undefined,
+      idrAmount: calc.tltIdrValue || undefined,
       aedAmount: calc.usdtToAed > 0 ? calc.buyValue : undefined,
       totalWeight: calc.actualPurity,
       tltIdrValue: calc.tltIdrValue,

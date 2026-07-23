@@ -7,24 +7,33 @@ import { dbDeletePhysicalBulkSellAction } from '@/app/actions/physicalActions';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { DeleteButton } from '@/components/ui/DeleteActions';
 import { physicalPaymentLabel } from '@/lib/physical/paymentLabel';
-import PhysicalAmountDisplay from './PhysicalAmountDisplay';
 import { usePhysicalCurrency } from '@/hooks/usePhysicalCurrency';
 import { useApp } from '@/context/AppContext';
 import CustomerLink from '@/components/customers/CustomerLink';
+import { btnSecondary } from '@/lib/ui';
 import {
-  DetailHero,
-  DetailBadge,
-  DetailSection,
-  DetailField,
-  DetailMetaRow,
-  DetailPartyCard,
+  DetailSummaryStack,
+  DetailSummaryCard,
+  DetailSummaryHeader,
+  DetailSummarySplit,
+  DetailSummaryPanel,
+  DetailSummarySectionTitle,
+  DetailPill,
+  DetailMetricHighlight,
+  DetailMiniMetric,
+  DetailUsdtMetric,
+  DetailCustomerChip,
+  DetailSpecCard,
+  DetailSpecPanel,
+  DetailSpecGrid,
+  DetailSpecCell,
+  DetailMetaInline,
   DetailFooter,
 } from '@/components/ui/DealDetailLayout';
 import {
   fmtBulkIdr,
   fmtBulkPurity,
   fmtBulkRate,
-  fmtBulkUsdt,
   fmtBulkWeight,
 } from '@/lib/physical/bulkSellCalculations';
 import { roundTo14 } from '@/lib/physicalCalculations';
@@ -79,7 +88,7 @@ export default function PhysicalBulkSellDetailModal({
   const computedTotalIdr = bulkSell.tltIdrValue ?? bulkSell.pureGram * bulkSell.idrGram;
   const profitPositive = bulkSell.profit > 0;
   const profitNegative = bulkSell.profit < 0;
-  const heroAccent = profitPositive ? 'emerald' : profitNegative ? 'red' : 'indigo';
+  const plTone = profitPositive ? 'profit' : profitNegative ? 'loss' : 'neutral';
 
   const totalGrossWeight = (bulkSell.grossWeight > 0 ? bulkSell.grossWeight : null)
     ?? childSells.reduce((s, c) => s + (c.grossWeight ?? 0), 0);
@@ -104,111 +113,101 @@ export default function PhysicalBulkSellDetailModal({
 
   return (
     <>
-      <Modal
-        open={open}
-        onClose={onClose}
-        title={
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
-                <line x1="7" y1="7" x2="7.01" y2="7" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-base font-extrabold leading-tight text-slate-900">Bulk Sell</p>
-              <p className="font-mono text-[10px] leading-tight text-slate-400">
-                {bulkSell.txnId || bulkSell.id.split('-')[1]?.toUpperCase()}
-              </p>
-            </div>
-          </div>
-        }
-        maxWidth="max-w-[900px] w-[95vw]"
-      >
-        <div className="space-y-5 pb-4">
-          <DetailHero
-            eyebrow="Sell value"
-            title={<PhysicalAmountDisplay usdtAmount={bulkSell.totalUsdt} aedAmount={bulkSell.sellValue} size="lg" showUnit />}
-            subtitle={
-              <span className={profitPositive ? 'text-emerald-700' : profitNegative ? 'text-red-700' : 'text-slate-600'}>
-                {fmtUsdt(bulkSell.profit, true)} profit · {childSells.length} source deal{childSells.length !== 1 ? 's' : ''}
-              </span>
-            }
-            badge={
-              <DetailBadge tone={profitPositive ? 'success' : profitNegative ? 'danger' : 'info'}>
-                Bulk sell
-              </DetailBadge>
-            }
-            accent={heroAccent}
-          />
+      <Modal open={open} onClose={onClose} title="Bulk Sell" maxWidth="max-w-[900px] w-[95vw]">
+        <DetailSummaryStack className="space-y-4 pb-2">
+          <DetailSummaryCard ariaLabel="Bulk sell summary">
+            <DetailSummaryHeader
+              badges={
+                <>
+                  <DetailPill tone="bulk">Bulk sell</DetailPill>
+                  {profitPositive ? <DetailPill tone="profit">In profit</DetailPill> : null}
+                  {profitNegative ? <DetailPill tone="loss">Loss</DetailPill> : null}
+                </>
+              }
+              meta={
+                <DetailMetaInline
+                  txnId={bulkSell.txnId || bulkSell.id.split('-')[1]?.toUpperCase()}
+                  date={`${dateStr} · ${timeStr}`}
+                />
+              }
+            />
 
-          <DetailPartyCard
-            label="Customer"
-            name={
-              bulkSell.customerId ? (
-                <CustomerLink slug={slug} customerId={bulkSell.customerId} customerName={bulkSell.customerName || '—'} />
-              ) : (
-                bulkSell.customerName || '—'
-              )
-            }
-            sub={physicalPaymentLabel(bulkSell.paymentMode)}
-          />
+            <DetailSummarySplit>
+              <DetailSummaryPanel side="left">
+                <div className="flex max-sm:flex-col max-sm:gap-4 sm:flex-wrap sm:items-end sm:justify-between sm:gap-3">
+                  <DetailMetricHighlight
+                    label="Pure volume"
+                    value={fmtBulkWeight(totalPureGram)}
+                    unit="g pure"
+                    valueClassName="text-indigo-700"
+                  />
+                  <div className="flex gap-5 sm:gap-6">
+                    <DetailMiniMetric label="Gross wt" value={fmtBulkWeight(totalGrossWeight)} align="right" />
+                    <DetailMiniMetric label="Sources" value={String(childSells.length)} valueClassName="text-slate-700" align="right" />
+                  </div>
+                </div>
+                <p className="mt-4 text-[11px] text-slate-400">
+                  Wtd avg purity {fmtBulkPurity(avgPurity)} · {childSells.length} source deal{childSells.length !== 1 ? 's' : ''}
+                </p>
+              </DetailSummaryPanel>
 
-          <DetailMetaRow
-            items={[
-              { label: 'Date', value: dateStr },
-              { label: 'Time', value: timeStr },
-              { label: 'Txn ID', value: bulkSell.txnId || '—', mono: true },
-              { label: 'Source deals', value: String(childSells.length) },
-            ]}
-          />
+              <DetailSummaryPanel side="right">
+                <DetailSummarySectionTitle>Deal economics</DetailSummarySectionTitle>
+                <div className="mt-3 grid grid-cols-3 gap-x-4 gap-y-5 sm:gap-x-6">
+                  <DetailUsdtMetric
+                    label="Sell value"
+                    value={
+                      <>
+                        {bulkSell.totalUsdt != null
+                          ? bulkSell.totalUsdt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          : fmtUsdt(bulkSell.sellValue)}
+                        <span className="ml-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">USDT</span>
+                      </>
+                    }
+                  />
+                  <DetailUsdtMetric label="Cost" value={fmtUsdt(totalCost)} />
+                  <DetailUsdtMetric label="P&L" tone={plTone} value={fmtUsdt(bulkSell.profit, true)} />
+                </div>
+                <DetailCustomerChip
+                  initials={(bulkSell.customerName ?? '?').slice(0, 2)}
+                  name={
+                    bulkSell.customerId ? (
+                      <CustomerLink slug={slug} customerId={bulkSell.customerId} customerName={bulkSell.customerName || '—'} />
+                    ) : (
+                      bulkSell.customerName || '—'
+                    )
+                  }
+                  sub={physicalPaymentLabel(bulkSell.paymentMode)}
+                />
+              </DetailSummaryPanel>
+            </DetailSummarySplit>
+          </DetailSummaryCard>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Gross weight</p>
-              <p className="mt-1 font-mono text-lg font-black text-slate-900">
-                {fmtBulkWeight(totalGrossWeight)}<span className="ml-1 text-sm font-bold text-slate-400">g</span>
-              </p>
-            </div>
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-500">Pure volume</p>
-              <p className="mt-1 font-mono text-lg font-black text-indigo-700">
-                {fmtBulkWeight(totalPureGram)}<span className="ml-1 text-sm font-bold text-indigo-400">g</span>
-              </p>
-              <p className="mt-0.5 text-[10px] font-mono text-indigo-400">avg {fmtBulkPurity(avgPurity)} purity</p>
-            </div>
-            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total IDR</p>
-              <p className="mt-1 font-mono text-lg font-black text-slate-900">
-                {fmtBulkIdr(computedTotalIdr)}
-              </p>
-            </div>
-            <div className={`rounded-xl border p-4 ${profitPositive ? 'border-emerald-200 bg-emerald-50/60' : profitNegative ? 'border-red-200 bg-red-50/60' : 'border-slate-100 bg-slate-50/80'}`}>
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Profit</p>
-              <div className="mt-1">
-                <PhysicalAmountDisplay aedAmount={bulkSell.profit} size="md" showPlus profitTone="auto" align="left" showUnit={false} className="!items-start !text-left" />
-              </div>
-            </div>
-          </div>
+          <DetailSpecCard ariaLabel="Bulk sell rates">
+            <DetailSpecPanel title="Rates & totals">
+              <DetailSpecGrid cols={3}>
+                <DetailSpecCell label="IDR / g" value={fmtBulkRate(bulkSell.idrGram)} mono />
+                <DetailSpecCell label="IDR / USDT" value={fmtBulkRate(bulkSell.idrToUsdt)} mono />
+                <DetailSpecCell label="USDT / g" value={fmtBulkRate(storedIdrRate ?? bulkSell.idrRate)} mono />
+                <DetailSpecCell label="Total IDR" value={fmtBulkIdr(computedTotalIdr)} mono />
+                <DetailSpecCell label="Avg margin" value={`${avgMargin.toFixed(2)}%`} mono />
+              </DetailSpecGrid>
+            </DetailSpecPanel>
 
-          <DetailSection title="Rates">
-            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-white p-4 sm:grid-cols-3">
-              <DetailField label="IDR / gram" value={fmtBulkRate(bulkSell.idrGram)} mono />
-              <DetailField label="USDT rate" value={fmtBulkRate(bulkSell.idrToUsdt)} mono />
-              <DetailField label="USDT / gram" value={fmtBulkRate(storedIdrRate ?? bulkSell.idrRate)} mono />
+            {(bulkSell.narration || bulkSell.particulars || bulkSell.notes) ? (
+              <DetailSpecPanel title="Notes" bordered={false}>
+                <p className="mt-2 text-sm text-slate-600">
+                  {bulkSell.narration || bulkSell.particulars || bulkSell.notes}
+                </p>
+              </DetailSpecPanel>
+            ) : null}
+          </DetailSpecCard>
+
+          <DetailSummaryCard ariaLabel="Source buy deals">
+            <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-5">
+              <DetailSummarySectionTitle>Source buy deals ({childSells.length})</DetailSummarySectionTitle>
             </div>
-          </DetailSection>
-
-          {(bulkSell.narration || bulkSell.particulars || bulkSell.notes) && (
-            <DetailSection title="Notes">
-              <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                {bulkSell.narration || bulkSell.particulars || bulkSell.notes}
-              </p>
-            </DetailSection>
-          )}
-
-          <DetailSection title={`Source buy deals (${childSells.length})`}>
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <div className="overflow-x-auto">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
@@ -289,7 +288,7 @@ export default function PhysicalBulkSellDetailModal({
                 </tfoot>
               </table>
             </div>
-          </DetailSection>
+          </DetailSummaryCard>
 
           <DetailFooter>
             <div>
@@ -302,15 +301,11 @@ export default function PhysicalBulkSellDetailModal({
                 />
               )}
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-[0.98]"
-            >
+            <button type="button" onClick={onClose} className={btnSecondary}>
               Close
             </button>
           </DetailFooter>
-        </div>
+        </DetailSummaryStack>
       </Modal>
       <Dialog />
     </>

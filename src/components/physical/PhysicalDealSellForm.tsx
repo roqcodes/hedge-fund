@@ -201,7 +201,7 @@ export default function PhysicalDealSellForm({
       marketUsd: parseFloat(form.marketUsdStr) || undefined,
       deal: parseFloat(form.dealStr) || undefined,
       paymentMode: form.paymentMode,
-      idrAmount: calc.idrGram || undefined,
+      idrAmount: calc.tltIdrValue || undefined,
       aedAmount: calc.usdtToAed > 0 ? calc.sellValue : undefined,
       totalWeight: calc.actualPurity,
       tltIdrValue: calc.tltIdrValue,
