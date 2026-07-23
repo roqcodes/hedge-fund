@@ -7,6 +7,9 @@ import { getEntryUsdtAmount, getEntryCustomerAmount, getEntryWalletDisplay, isPe
 import { badgeClass } from '@/lib/badgeClass';
 import { isDateInRange, resolveDateFilterRange } from '@/lib/dateFilterRange';
 import { btnPrimary, dataTable, formInput, tableWrap } from '@/lib/ui';
+import { DeleteIconButton } from '@/components/ui/DeleteActions';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { getLinkedSourceDeleteMessage, isAutoLinkedLedgerEntry } from '@/lib/fundLedgerDelete';
 import { txnTd, txnTdFromTo, txnTh, txnThSortable } from '@/lib/transactionTableStyles';
 
 export type FundLedgerTab = 'all' | 'entries' | 'expenses' | 'transfers' | 'entities';
@@ -275,6 +278,7 @@ export default function FundLedgerTable({
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const tableRef = useRef<HTMLDivElement>(null);
+  const { confirm, alert, Dialog } = useConfirmDialog();
 
   const getCustomerName = (cid: string) =>
     customers.find(c => c.id === cid)?.name ?? cid.slice(0, 8);
@@ -471,6 +475,44 @@ export default function FundLedgerTable({
       return Math.abs(b.netCustomer);
     }
     return Math.abs(b.netUsdt ?? b.net);
+  };
+
+  const requestDeleteEntry = async (entry: FundEntityLedgerEntry) => {
+    if (isAutoLinkedLedgerEntry(entry)) {
+      await alert({
+        title: 'Delete source deal first',
+        message: getLinkedSourceDeleteMessage(entry.referenceType) ?? 'Delete the linked deal first.',
+      });
+      return;
+    }
+    const ok = await confirm({
+      title: 'Delete ledger entry?',
+      message: entry.referenceType === 'entity_transfer'
+        ? `Delete transfer ${entry.referenceId ?? ''}? Both legs will be removed.`
+        : entry.referenceType === 'settlement'
+          ? 'This will reverse branch cash and remove the ledger line.'
+          : 'This cannot be undone.',
+      confirmLabel: 'Delete',
+    });
+    if (ok) onDeleteEntry(entry);
+  };
+
+  const requestDeleteExpense = async (expense: Expense) => {
+    const ok = await confirm({
+      title: 'Delete expense?',
+      message: 'This will reverse the branch cash movement and remove the expense record.',
+      confirmLabel: 'Delete',
+    });
+    if (ok) onDeleteExpense(expense);
+  };
+
+  const requestDeleteTransfer = async (row: TransferRow) => {
+    const ok = await confirm({
+      title: 'Delete entity transfer?',
+      message: `Remove transfer ${row.fromName} → ${row.toName}? Both ledger legs will be deleted.`,
+      confirmLabel: 'Delete',
+    });
+    if (ok) onDeleteEntry(row.fromEntry);
   };
 
   return (
@@ -745,17 +787,14 @@ export default function FundLedgerTable({
                         </td>
                         {canWrite && (
                           <td className={`${txnTd} last:rounded-r-2xl text-right`}>
-                            <button
-                              type="button"
+                            <DeleteIconButton
                               title="Delete transfer"
-                              onClick={() => {
-                                if (!confirm(`Delete transfer ${row.fromName} → ${row.toName}? Both legs will be removed.`)) return;
-                                onDeleteEntry(row.fromEntry);
+                              showOnRowHover
+                              onClick={e => {
+                                e.stopPropagation();
+                                void requestDeleteTransfer(row);
                               }}
-                              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:border-red-400 hover:bg-red-50 hover:text-red-600"
-                            >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>
-                            </button>
+                            />
                           </td>
                         )}
                       </tr>
@@ -866,19 +905,14 @@ export default function FundLedgerTable({
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                                   </button>
                                 )}
-                                <button
-                                  type="button"
-                                  title="Delete"
+                                <DeleteIconButton
+                                  title={`Delete ${row.kind === 'expense' ? 'expense' : 'entry'}`}
                                   onClick={e => {
                                     e.stopPropagation();
-                                    if (!confirm(`Delete this ${row.kind === 'expense' ? 'expense' : 'entry'}? This cannot be undone.`)) return;
-                                    if (row.entry) onDeleteEntry(row.entry);
-                                    else if (row.expense) onDeleteExpense(row.expense);
+                                    if (row.entry) void requestDeleteEntry(row.entry);
+                                    else if (row.expense) void requestDeleteExpense(row.expense);
                                   }}
-                                  className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm hover:border-red-400 hover:bg-red-50 hover:text-red-600"
-                                >
-                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>
-                                </button>
+                                />
                               </div>
                             )}
                           </td>
@@ -914,6 +948,7 @@ export default function FundLedgerTable({
           </div>
         )}
       </div>
+      <Dialog />
     </>
   );
 }

@@ -15,6 +15,8 @@ import USDTBuyModal from './USDTBuyModal';
 import USDTSellModal from './USDTSellModal';
 import USDTSettingsModal from './USDTSettingsModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { DeleteIconButton } from '@/components/ui/DeleteActions';
 import {
   getBranchUsdtBalanceAction,
   setBranchUsdtCapitalAction,
@@ -107,6 +109,7 @@ function TextCell({
 export default function USDTPage() {
   const router = useRouter();
   const { canWrite, buttonProps: wp } = useWriteAccess();
+  const { confirm, alert, Dialog } = useConfirmDialog();
   const { currentSlug, branches, usdtBuys, usdtSells, usdtSettings, refetchData, activeCurrency } = useApp();
   const branchId = branches.find(b => b.slug === currentSlug)?.id;
   const branchSlug = currentSlug;
@@ -524,24 +527,24 @@ export default function USDTPage() {
                           <div className="text-xs font-semibold text-slate-800">{conv.enteredByName || conv.enteredBy || '—'}</div>
                         </td>
                         <td className="border-y border-black/5 bg-white px-2 py-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!confirm('Delete this conversion? This will reverse the balance changes.')) return;
+                          <DeleteIconButton
+                            title="Delete conversion"
+                            onClick={async e => {
+                              e.stopPropagation();
+                              const ok = await confirm({
+                                title: 'Delete conversion?',
+                                message: 'This will reverse the USDT and IDR balance changes.',
+                                confirmLabel: 'Delete',
+                              });
+                              if (!ok) return;
                               const res = await dbDeleteUsdtConversionAction(conv.id, branchId!);
                               if (res.success) {
                                 await fetchBalancesAndConversions();
                               } else {
-                                alert(res.error ?? 'Failed to delete conversion');
+                                await alert({ title: 'Delete failed', message: res.error ?? 'Could not delete conversion.' });
                               }
                             }}
-                            className="text-red-400 transition-colors hover:text-red-600"
-                            title="Delete Conversion"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
-                            </svg>
-                          </button>
+                          />
                         </td>
                       </tr>
                     ))
@@ -843,6 +846,7 @@ export default function USDTPage() {
           </button>
         </div>
       </Modal>
+      <Dialog />
     </>
   );
 }

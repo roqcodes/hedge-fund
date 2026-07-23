@@ -6,6 +6,7 @@ import UsersManagement from '@/components/users/UsersManagement';
 import StaffAccountSettings from '@/components/users/StaffAccountSettings';
 import { fetchCognitoUsersAction } from '@/app/actions/cognitoActions';
 import BranchDetailsSettings from '@/components/settings/BranchDetailsSettings';
+import BranchBalanceOverwriteSettings from '@/components/settings/BranchBalanceOverwriteSettings';
 import { pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
 import { isBranchPortalRole } from '@/lib/rbac';
 
@@ -65,6 +66,9 @@ export default async function BranchSettingsPage({ params }: { params: Promise<{
         ) : (
           <>
             {branch && <BranchDetailsSettings branch={branch} />}
+            {branch && branchId && (
+              <BranchBalanceOverwriteSettings branchId={branchId} branchSlug={slug} />
+            )}
             <UsersManagement
               initialUsers={branchUsers ?? []}
               error={usersError}

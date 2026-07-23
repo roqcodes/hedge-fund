@@ -216,6 +216,7 @@ export function useFundLedger(): UseFundLedgerReturn {
         showToast('Entry deleted', 'success');
         return { success: true };
       }
+      showToast(result.error ?? 'Failed to delete entry', 'error');
       return { success: false, error: result.error };
     },
     [refreshLedger, showToast],

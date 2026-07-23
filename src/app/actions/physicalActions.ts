@@ -6,7 +6,7 @@ import { PhysicalBalance, PhysicalBuy, PhysicalSell, PhysicalBulkSell, PhysicalP
 
 import { mapPhysicalBuyRow, mapPhysicalSellRow, mapPhysicalBulkSellRow } from '@/lib/physicalMappers';
 import { adjustCustomerBalanceInTx } from './customerActions';
-import { createAutoLedgerEntry } from './fundActions';
+import { createAutoLedgerEntry, deleteAutoLedgerEntryByReference } from './fundActions';
 import { logger } from '@/lib/logger';
 import type { PhysicalDraftBuy, PhysicalDraftSell } from '@/lib/physical/drafts';
 import { roundTo14 } from '@/lib/physicalCalculations';
@@ -582,6 +582,7 @@ export async function dbDeletePhysicalSellAction(sellId: string): Promise<DbActi
     await client.query('DELETE FROM physical_sells WHERE id = $1', [sellId]);
 
     await client.query('COMMIT');
+    await deleteAutoLedgerEntryByReference('physical_sell', sellId);
     return { success: true, data: null };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
@@ -628,6 +629,7 @@ export async function dbDeletePhysicalBuyAction(buyId: string): Promise<DbAction
     await client.query('DELETE FROM physical_buys WHERE id = $1', [buyId]);
 
     await client.query('COMMIT');
+    await deleteAutoLedgerEntryByReference('physical_buy', buyId);
     return { success: true, data: null };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
@@ -971,6 +973,7 @@ export async function dbDeletePhysicalBulkSellAction(bulkSellId: string): Promis
     await client.query('DELETE FROM physical_bulk_sells WHERE id = $1', [bulkSellId]);
 
     await client.query('COMMIT');
+    await deleteAutoLedgerEntryByReference('physical_sell', bulkSellId);
     return { success: true, data: null };
   } catch (error: unknown) {
     await client.query('ROLLBACK');

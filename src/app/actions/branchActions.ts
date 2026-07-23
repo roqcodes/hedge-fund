@@ -1,11 +1,82 @@
 'use server';
 
-import { query } from '@/lib/db';
+import { query, pool } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 import { getCurrentUserAction } from '@/app/actions/auth';
 import { HIDEABLE_BRANCH_PAGE_IDS } from '@/lib/branchPages';
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
 import { logger } from '@/lib/logger';
+
+export type BranchCashBalances = {
+  usdt: number;
+  aed: number;
+  idr: number;
+};
+
+function parseBalance(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Directly overwrite branch USDT / AED / IDR wallet balances (branch manager only). */
+export async function overwriteBranchCashBalancesAction(
+  branchId: string,
+  balances: { usdt: number; aed: number; idr: number },
+  branchSlug?: string,
+): Promise<{ success: true; data: BranchCashBalances } | { success: false; error: string }> {
+  const usdt = parseBalance(balances.usdt);
+  const aed = parseBalance(balances.aed);
+  const idr = parseBalance(balances.idr);
+  if (usdt == null || aed == null || idr == null) {
+    return { success: false, error: 'Enter valid numbers for USDT, AED, and IDR balances.' };
+  }
+
+  try {
+    const userRes = branchSlug ? await getCurrentUserAction(branchSlug) : await getCurrentUserAction();
+    const user = userRes.success ? userRes.data : null;
+    if (!user || user.role !== 'branch_manager' || user.branchId !== branchId) {
+      return { success: false, error: 'Only the branch manager can overwrite cash balances.' };
+    }
+
+    if (!pool) return { success: false, error: 'Database not connected.' };
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `INSERT INTO branch_usdt_balances (branch_id, initial_capital, available_fund, aed_balance, idr_balance)
+         VALUES ($1, 0, $2, $3, $4)
+         ON CONFLICT (branch_id) DO UPDATE SET
+           available_fund = EXCLUDED.available_fund,
+           aed_balance = EXCLUDED.aed_balance,
+           idr_balance = EXCLUDED.idr_balance,
+           updated_at = CURRENT_TIMESTAMP`,
+        [branchId, usdt, aed, idr],
+      );
+
+      await client.query(
+        `UPDATE branches SET current_balance = $1, cash_balance = $1, last_activity = CURRENT_TIMESTAMP WHERE id = $2`,
+        [aed, branchId],
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    revalidatePath('/', 'layout');
+    logger.warn({ branchId, usdt, aed, idr, userId: user.id }, 'Branch cash balances overwritten');
+
+    return { success: true, data: { usdt, aed, idr } };
+  } catch (error: unknown) {
+    logger.error({ error, branchId }, 'Failed to overwrite branch cash balances');
+    return { success: false, error: error instanceof Error ? error.message : 'Overwrite failed' };
+  }
+}
 
 export async function updateBranchSettingsAction(
   branchId: string, 

@@ -12,6 +12,12 @@ export const btnSecondary =
 export const btnGhost =
   `inline-flex items-center justify-center gap-1.5 rounded-full border-0 bg-transparent px-2.5 py-1.5 text-xs font-bold text-slate-500 transition-[transform,colors,background-color] duration-300 ${easeSmooth} motion-safe:hover:bg-black/[0.05] motion-safe:hover:text-slate-900 motion-safe:active:scale-[0.99] motion-safe:active:duration-150 sm:text-sm`;
 
+export const btnDangerOutline =
+  'inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-600 transition-all hover:bg-red-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50';
+
+export const btnDangerSolid =
+  'inline-flex items-center justify-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50';
+
 export const btnSm = 'px-2.5 py-1 text-[11px] sm:text-xs';
 
 export const pageHeader =

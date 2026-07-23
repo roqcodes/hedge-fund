@@ -387,6 +387,18 @@ export async function deleteFundLedgerEntryAction(
     const user = await getSessionUser(branchSlug);
     if (!user) return { success: false, error: 'Not authenticated' };
 
+    const refType = String(row.reference_type) as FundReferenceType;
+    const linkedBlockMessages: Partial<Record<FundReferenceType, string>> = {
+      physical_buy: 'Delete the physical buy deal first. The ledger entry will be removed automatically.',
+      physical_sell: 'Delete the physical sell deal first. The ledger entry will be removed automatically.',
+      usdt_buy: 'Delete the USDT purchase first. The ledger entry will be removed automatically.',
+      usdt_sell: 'Delete the USDT sale first. The ledger entry will be removed automatically.',
+    };
+    const linkedBlock = linkedBlockMessages[refType];
+    if (linkedBlock) {
+      return { success: false, error: linkedBlock };
+    }
+
     if (String(row.reference_type) === 'settlement') {
       const debit = parseFloat(row.debit) || 0;
       const credit = parseFloat(row.credit) || 0;

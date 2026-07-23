@@ -2,8 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { pageHeader, pageTitle, pageSubtitle, btnPrimary, btnSecondary, kpiGrid, tableWrap, dataTable, formInput } from '@/lib/ui';
-import KPICard from '@/components/ui/KPICard';
+import { pageHeader, pageTitle, pageSubtitle, btnPrimary, btnSecondary, tableWrap, dataTable, formInput } from '@/lib/ui';
 import { PhysicalBuy, PhysicalSell } from '@/types';
 import { 
   dbDeletePhysicalSellAction,
@@ -21,6 +20,16 @@ import CustomerLink from '@/components/customers/CustomerLink';
 import PhysicalAmountDisplay, { PhysicalAmountKpiValue } from './PhysicalAmountDisplay';
 import { formatPhysicalIdr, formatPhysicalAed } from '@/lib/physicalCurrencyDisplay';
 import { useWriteAccess } from '@/context/RbacWriteContext';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { DeleteButton, DeleteIconButton } from '@/components/ui/DeleteActions';
+import {
+  DetailHero,
+  DetailBadge,
+  DetailSection,
+  DetailField,
+  DetailMetaRow,
+  DetailPartyCard,
+} from '@/components/ui/DealDetailLayout';
 
 type SortField = 'date' | 'id' | 'particulars' | 'grossWeight' | 'pureConversion' | 'pureGram' | 'idrGram' | 'idrToUsdt' | 'idrRate' | 'sellValue' | 'profit';
 type SortDirection = 'asc' | 'desc';
@@ -44,35 +53,51 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const { canWrite, buttonProps: wp } = useWriteAccess();
+  const { confirm, alert, setLoading, Dialog } = useConfirmDialog();
 
   const router = useRouter();
 
   const handleDeleteBuy = async () => {
     if (isDeleting) return;
     if (sells.length > 0) {
-      alert("Cannot delete buy with existing sells. Please delete the sells first.");
+      await alert({
+        title: 'Delete sells first',
+        message: 'This buy has linked sells. Delete all sells on this buy before deleting the buy.',
+      });
       return;
     }
-    if (!confirm('Are you sure you want to delete this sale?')) return;
+    const ok = await confirm({
+      title: 'Delete buy deal?',
+      message: 'This will reverse inventory, customer balance, and the linked fund ledger entry. This cannot be undone.',
+      confirmLabel: 'Delete buy',
+    });
+    if (!ok) return;
     setIsDeleting(true);
+    setLoading(true);
     const res = await dbDeletePhysicalBuyAction(buyId);
+    setLoading(false);
     if (res.success) {
       if (buy) removePhysicalBuyOptimistic(buy);
       router.push(basePath);
       void refetchData();
     } else {
-      alert(res.error);
+      await alert({ title: 'Delete failed', message: res.error ?? 'Could not delete buy.' });
       setIsDeleting(false);
     }
   };
 
   const handleDeleteSell = async (sellId: string) => {
-    if (!confirm('Are you sure you want to delete this sell?')) return;
+    const ok = await confirm({
+      title: 'Delete sell deal?',
+      message: 'This will restore buy volume, reverse customer balance, and remove the linked fund ledger entry.',
+      confirmLabel: 'Delete sell',
+    });
+    if (!ok) return;
     const res = await dbDeletePhysicalSellAction(sellId);
     if (res.success) {
       void refetchData();
     } else {
-      alert(res.error);
+      await alert({ title: 'Delete failed', message: res.error ?? 'Could not delete sell.' });
     }
   };
   const [sortField, setSortField] = useState<SortField>('date');
@@ -174,7 +199,9 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               </Link>
               <h2 className={pageTitle}>{buy.item || buy.particulars || 'Sale Details'}</h2>
             </div>
-            <p className={pageSubtitle}>Manage sells and track profits for this inventory</p>
+            <p className={pageSubtitle}>
+              {buy.txnId ? `#${buy.txnId}` : buy.id} · {new Date(buy.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
           </div>
           <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
             <button
@@ -190,17 +217,13 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
               </svg>
               Edit Deal
             </button>
-            <button
-              type="button"
+            <DeleteButton
               onClick={handleDeleteBuy}
+              label="Delete buy"
+              loading={isDeleting}
               disabled={isDeleting}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 transition-all hover:bg-red-100 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-4 sm:text-sm"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-              </svg>
-              {isDeleting ? 'Deleting…' : 'Delete Sale'}
-            </button>
+              className="w-full sm:w-auto rounded-full px-3.5 sm:px-4"
+            />
             <button
               type="button"
               onClick={() => setIsSellModalOpen(true)}
@@ -215,152 +238,100 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           </div>
         </div>
 
-        <div className={`${kpiGrid} grid-cols-2 md:grid-cols-4 mb-6`}>
-          <KPICard
-            label="Sell Value"
-            value={<PhysicalAmountKpiValue aedAmount={totalSellValue} />}
-            subValue="Total amount sold"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-              </svg>
-            }
-            color="var(--action)"
-            bgColor="var(--action-light)"
+        <div className="mb-6 space-y-5">
+          <DetailHero
+            eyebrow="Buy value"
+            title={<PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="lg" showUnit />}
+            subtitle={`${buy.remainingWeight.toFixed(3)} g remaining · ${buy.pureGram.toFixed(3)} g pure purchased`}
+            badge={<DetailBadge tone="info">Buy</DetailBadge>}
+            accent="indigo"
           />
-          <KPICard
-            label="P&L"
-            value={<PhysicalAmountKpiValue aedAmount={totalSaleProfit} showPlus profitTone="auto" />}
-            subValue="Total Profit/Loss"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-            }
-            color={totalSaleProfit >= 0 ? 'var(--profit)' : 'var(--loss)'}
-            bgColor={totalSaleProfit >= 0 ? 'var(--profit-light)' : 'var(--loss-light)'}
-            cardClassName={totalSaleProfit >= 0 ? 'bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-100' : 'bg-gradient-to-br from-rose-50/50 to-rose-100/30 border-rose-100'}
-          />
-          <KPICard
-            label="Stock Remaining"
-            value={buy.remainingWeight.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
-            subValue="Current inventory"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-            color="var(--warning)"
-            bgColor="var(--warning-light)"
-          />
-          <KPICard
-            label="Pure Gram"
-            value={buy.pureGram.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' g'}
-            subValue="Total purchased"
-            icon={
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-            }
-            color="var(--purple)"
-            bgColor="var(--purple-light)"
-          />
-        </div>
 
-        {/* Currency Breakdown + Trade Parameters */}
-        <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
-          {/* Currency Breakdown */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-surface-xs lg:col-span-3">
-            <h3 className="mb-4 text-sm font-bold text-slate-800">Currency Breakdown</h3>
-
-            {/* USDT — main */}
-            <div className="mb-5 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/60 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Total Value (USDT)</p>
-              <PhysicalAmountKpiValue usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} valueClassName="text-slate-900" />
-            </div>
-
-            {/* IDR + AED row */}
-            <div className="mb-5 grid grid-cols-2 gap-4">
-              <div className="rounded-lg border border-slate-100 bg-white p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">IDR Value</p>
-                <p className="font-mono text-base font-extrabold tracking-tight text-slate-900">
-                  {formatPhysicalIdr(buy.idrAmount ?? buy.idrGram * buy.pureGram)}
-                </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Sold value</p>
+              <div className="mt-1">
+                <PhysicalAmountKpiValue aedAmount={totalSellValue} />
               </div>
-              <div className="rounded-lg border border-slate-100 bg-white p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">AED Value</p>
-                <p className="font-mono text-base font-extrabold tracking-tight text-slate-900">
-                  {formatPhysicalAed(buy.aedAmount ?? buy.buyValue)}
-                </p>
+              <p className="mt-0.5 text-[10px] font-medium text-slate-400">{sells.length} sell{sells.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div className={`rounded-xl border p-4 ${totalSaleProfit >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-red-200 bg-red-50/60'}`}>
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">P&L from sells</p>
+              <div className="mt-1">
+                <PhysicalAmountKpiValue aedAmount={totalSaleProfit} showPlus profitTone="auto" />
               </div>
             </div>
-
-            {/* Conversion rates */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">IDR / Gram</p>
-                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.idrGram.toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">IDR / USDT</p>
-                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.idrToUsdt.toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">USDT / Gram</p>
-                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Cost / Gram (USDT)</p>
-                <PhysicalAmountDisplay usdtAmount={buy.totalUsdt != null && buy.pureGram > 0 ? buy.totalUsdt / buy.pureGram : undefined} aedAmount={buy.totalUsdt == null && buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0} size="sm" align="left" showUnit={false} className="!items-start !text-left" />
-              </div>
+            <div className="col-span-2 rounded-xl border border-amber-200 bg-amber-50/60 p-4 sm:col-span-1">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Stock remaining</p>
+              <p className="mt-1 font-mono text-xl font-black tabular-nums text-amber-900">
+                {buy.remainingWeight.toFixed(3)}<span className="ml-1 text-sm font-bold text-amber-600">g</span>
+              </p>
             </div>
           </div>
 
-          {/* Trade Parameters */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-surface-xs lg:col-span-2">
-            <h3 className="mb-4 text-sm font-bold text-slate-800">Trade Parameters</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">TXN ID</p>
-                <p className="font-semibold text-slate-800">{buy.txnId || buy.id.split('-')[1]?.toUpperCase()}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Buy ID</p>
-                <p className="font-semibold text-slate-800">{buy.id.split('-')[1].toUpperCase()}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Date</p>
-                <p className="font-semibold text-slate-800">{new Date(buy.date).toLocaleDateString()}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Customer</p>
-                <p className="font-semibold text-slate-800">
-                  <CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} />
-                </p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Item</p>
-                <p className="font-semibold text-slate-800">{buy.item || buy.particulars || '-'}</p>
-              </div>
-            </div>
+          <DetailPartyCard
+            label="Customer"
+            name={<CustomerLink slug={branchSlug} customerId={buy.customerId} customerName={buy.customerName} />}
+            sub={buy.item || buy.particulars || undefined}
+          />
 
-            <hr className="my-3 border-slate-100" />
+          <DetailMetaRow
+            items={[
+              {
+                label: 'Date',
+                value: new Date(buy.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+              },
+              { label: 'Txn ID', value: buy.txnId || '—', mono: true },
+              { label: 'Buy ID', value: buy.id.split('-')[1]?.toUpperCase() ?? buy.id, mono: true },
+              { label: 'Pure gram', value: `${buy.pureGram.toFixed(3)} g`, mono: true },
+            ]}
+          />
 
-            <div className="grid grid-cols-3 gap-x-4 gap-y-3 text-sm">
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Gross Wt</p>
-                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.grossWeight.toFixed(3)} g</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Pure Conv</p>
-                <p className="font-semibold text-slate-800 font-mono tabular-nums">{buy.pureConversion}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold mb-0.5">Pure Gram</p>
-                <p className="font-bold text-slate-900 font-mono tabular-nums">{buy.pureGram.toFixed(3)} g</p>
-              </div>
+          <DetailSection title="Commercial">
+            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-slate-50/80 p-4 sm:grid-cols-3">
+              <DetailField
+                label="Total value (USDT)"
+                value={<PhysicalAmountDisplay usdtAmount={buy.totalUsdt} aedAmount={buy.buyValue} size="sm" showUnit={false} />}
+                mono
+              />
+              <DetailField
+                label="IDR value"
+                value={formatPhysicalIdr(buy.idrAmount ?? buy.idrGram * buy.pureGram)}
+                mono
+              />
+              <DetailField
+                label="AED value"
+                value={formatPhysicalAed(buy.aedAmount ?? buy.buyValue)}
+                mono
+              />
+              <DetailField label="IDR / gram" value={buy.idrGram.toLocaleString()} mono />
+              <DetailField label="IDR / USDT" value={buy.idrToUsdt.toLocaleString()} mono />
+              <DetailField label="USDT / gram" value={buy.idrRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} mono />
+              <DetailField
+                label="Cost / gram"
+                value={
+                  <PhysicalAmountDisplay
+                    usdtAmount={buy.totalUsdt != null && buy.pureGram > 0 ? buy.totalUsdt / buy.pureGram : undefined}
+                    aedAmount={buy.totalUsdt == null && buy.pureGram > 0 ? buy.buyValue / buy.pureGram : 0}
+                    size="sm"
+                    align="left"
+                    showUnit={false}
+                    className="!items-start !text-left"
+                  />
+                }
+                mono
+              />
             </div>
-          </div>
+          </DetailSection>
+
+          <DetailSection title="Metal & inventory">
+            <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-100 bg-white p-4 sm:grid-cols-4">
+              <DetailField label="Gross wt" value={`${buy.grossWeight.toFixed(3)} g`} mono />
+              <DetailField label="Pure conv" value={buy.pureConversion} mono />
+              <DetailField label="Pure gram" value={`${buy.pureGram.toFixed(3)} g`} mono />
+              <DetailField label="Remaining" value={`${buy.remainingWeight.toFixed(3)} g`} mono />
+            </div>
+          </DetailSection>
         </div>
 
         <DateFilterBar
@@ -492,19 +463,13 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         <PhysicalAmountDisplay aedAmount={sell.profit} size="md" showPlus profitTone="auto" showUnit={false} />
                       </td>
                       <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
-                        <button
-                          type="button"
+                        <DeleteIconButton
                           onClick={e => {
                             e.stopPropagation();
-                            handleDeleteSell(sell.id);
+                            void handleDeleteSell(sell.id);
                           }}
-                          className="text-red-500 transition-colors hover:text-red-700"
-                          title="Delete Sell"
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
-                          </svg>
-                        </button>
+                          title="Delete sell"
+                        />
                       </td>
                     </tr>
                   ))}
@@ -533,11 +498,11 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
                         </div>
                       </div>
                       <div className="flex flex-col items-end">
-                        <button onClick={() => handleDeleteSell(sell.id)} className="text-red-500 hover:text-red-700 p-1 mb-1 transition-colors" title="Delete Sell">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
-                          </svg>
-                        </button>
+                        <DeleteIconButton
+                          onClick={() => void handleDeleteSell(sell.id)}
+                          title="Delete sell"
+                          className="mb-1"
+                        />
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell Value (USDT)</span>
                         <PhysicalAmountDisplay usdtAmount={sell.totalUsdt} aedAmount={sell.sellValue} size="md" align="right" showUnit={false} />
                       </div>
@@ -601,6 +566,7 @@ export default function PhysicalBuyDetailPage({ branchSlug, buyId }: Props) {
           onSaveDraft={saveDraftSell}
         />
       )}
+      <Dialog />
     </>
   );
 }
