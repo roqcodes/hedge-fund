@@ -323,7 +323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notifications: [],
     toasts: [],
     sidebarOpen: false,
-    sidebarCollapsed: false,
+    sidebarCollapsed: true,
     globalBranches: [],
     globalEntities: [],
     selectedBranchId: null,

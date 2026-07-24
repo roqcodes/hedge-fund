@@ -11,6 +11,7 @@ import JournalEntryModal, { type JournalEntryMode } from './JournalEntryModal';
 import EntityTransferModal from './EntityTransferModal';
 import ExpenseEntryModal from './ExpenseEntryModal';
 import EntryDetailModal from './EntryDetailModal';
+import FundExportModal from './FundExportModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import { useApp } from '@/context/AppContext';
 import { createBranchExpenseAction, deleteBranchExpenseAction } from '@/app/actions/fundActions';
@@ -52,6 +53,7 @@ export default function FundLedgerPage() {
   const [dateFilter, setDateFilter] = useState('all-time');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const fetchCapital = useCallback(async () => {
     if (!branchId) return;
@@ -147,6 +149,18 @@ export default function FundLedgerPage() {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={() => setShowExportModal(true)}
+            className={`${btnSecondary} w-full sm:w-auto`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export
+          </button>
           <button type="button" onClick={refreshAll} className={`${btnSecondary} w-full sm:w-auto`}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="23 4 23 10 17 10" />
@@ -268,6 +282,16 @@ export default function FundLedgerPage() {
         onDelete={handleDeleteEntry}
         onConvert={handleConvertEntry}
         canWrite={canWrite}
+      />
+
+      <FundExportModal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        entries={entries}
+        customers={customers}
+        dateFilter={dateFilter}
+        customStartDate={customStartDate}
+        customEndDate={customEndDate}
       />
 
       {!canWrite && writeBlockedReason && (

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -20,10 +20,21 @@ export default function Sidebar() {
     hideMainSidebar,
   } = useApp();
   const pathname = usePathname();
+  const [hovered, setHovered] = useState(false);
+
+  const handleMouseEnter = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
+      setHovered(true);
+    }
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setHovered(false);
+  }, []);
 
   if (hideMainSidebar) return null;
 
-  const effectivelyCollapsed = sidebarCollapsed;
+  const effectivelyCollapsed = sidebarCollapsed ? !hovered : false;
 
   const isBranchUser = user ? isBranchPortalRole(user.role) : false;
   const branch = isBranchUser && user?.branchId
@@ -53,6 +64,8 @@ export default function Sidebar() {
       />
       <aside
         data-collapsed={effectivelyCollapsed ? 'true' : 'false'}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         className={`fixed bottom-0 left-0 top-0 z-[100] flex w-[min(100vw-16px,240px)] max-w-[calc(100vw-8px)] flex-col border-r border-slate-200/90 bg-white shadow-dropdown transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:translate-x-0 ${sidebarOpen ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-[105%]'} ${effectivelyCollapsed ? 'lg:w-[80px]' : 'lg:w-[240px]'}`}
       >
         <AppLogo collapsed={effectivelyCollapsed} />

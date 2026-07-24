@@ -71,7 +71,6 @@ const PATH_SEGMENT_TO_PAGE_ID: Record<string, BranchPageId> = {
 /** Map legacy hidden page IDs stored in the database to current page IDs. */
 export function normalizeHiddenPageId(pageId: string): string {
   if (pageId === 'ic-transfer-branch') return 'ic-transfer';
-  if (pageId === 'ic-transfer') return 'ic-transfer-admin';
   return pageId;
 }
 
@@ -80,10 +79,31 @@ export function normalizeHiddenPages(hiddenPages?: string[] | null): string[] {
   return hiddenPages.map(normalizeHiddenPageId);
 }
 
+function isICTransferAdminHidden(hiddenPages?: string[] | null): boolean {
+  const raw = hiddenPages ?? [];
+  if (raw.includes('ic-transfer-admin')) return true;
+  // Legacy rows stored admin disable as `ic-transfer` before ic-transfer-admin existed.
+  if (raw.includes('ic-transfer') && !raw.includes('ic-transfer-admin')) return true;
+  return false;
+}
+
+function isICTransferBranchHidden(hiddenPages?: string[] | null): boolean {
+  return normalizeHiddenPages(hiddenPages).includes('ic-transfer');
+}
+
 export function isBranchPageEnabled(pageId: string, hiddenPages?: string[] | null): boolean {
   const page = BRANCH_NAV_PAGES.find(p => p.id === pageId);
   if (!page) return true;
   if (!page.hideable) return true;
+
+  if (pageId === 'ic-transfer-admin') {
+    return !isICTransferAdminHidden(hiddenPages);
+  }
+
+  if (pageId === 'ic-transfer') {
+    return !isICTransferBranchHidden(hiddenPages);
+  }
+
   const normalized = normalizeHiddenPages(hiddenPages);
   return !normalized.includes(pageId);
 }

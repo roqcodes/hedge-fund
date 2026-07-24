@@ -19,10 +19,35 @@ export default function BranchPageSettings({ branchId, hiddenPages }: Props) {
     setLocalHidden(hiddenPages);
   }, [hiddenPages]);
 
+  const hideablePages = BRANCH_NAV_PAGES.filter(p => HIDEABLE_BRANCH_PAGE_IDS.includes(p.id));
+
+  const isPageEnabled = (pageId: string) => {
+    if (pageId === 'ic-transfer-admin') {
+      return (
+        !localHidden.includes('ic-transfer-admin') &&
+        !localHidden.includes('ic-transfer')
+      );
+    }
+    if (pageId === 'ic-transfer') {
+      return !localHidden.includes('ic-transfer') && !localHidden.includes('ic-transfer-branch');
+    }
+    return !localHidden.includes(pageId);
+  };
+
   const togglePage = (pageId: string) => {
-    setLocalHidden(prev =>
-      prev.includes(pageId) ? prev.filter(id => id !== pageId) : [...prev, pageId],
-    );
+    setLocalHidden(prev => {
+      if (pageId === 'ic-transfer-admin') {
+        const disabling = !prev.includes('ic-transfer-admin') && !prev.includes('ic-transfer');
+        if (disabling) {
+          return [...prev.filter(id => id !== 'ic-transfer-admin' && id !== 'ic-transfer'), 'ic-transfer-admin'];
+        }
+        return prev.filter(id => id !== 'ic-transfer-admin' && id !== 'ic-transfer');
+      }
+
+      return prev.includes(pageId)
+        ? prev.filter(id => id !== pageId)
+        : [...prev, pageId];
+    });
   };
 
   const handleSave = async () => {
@@ -37,8 +62,6 @@ export default function BranchPageSettings({ branchId, hiddenPages }: Props) {
   const hasChanges =
     localHidden.length !== hiddenPages.length ||
     localHidden.some(id => !hiddenPages.includes(id));
-
-  const hideablePages = BRANCH_NAV_PAGES.filter(p => HIDEABLE_BRANCH_PAGE_IDS.includes(p.id));
 
   return (
     <div className="mt-8 md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface">
@@ -61,7 +84,7 @@ export default function BranchPageSettings({ branchId, hiddenPages }: Props) {
 
       <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
         {hideablePages.map(page => {
-          const enabled = !localHidden.includes(page.id);
+          const enabled = isPageEnabled(page.id);
           return (
             <label
               key={page.id}

@@ -14,7 +14,7 @@ import { txnTd, txnTdFromTo, txnTh, txnThSortable } from '@/lib/transactionTable
 
 export type FundLedgerTab = 'all' | 'entries' | 'expenses' | 'transfers' | 'entities';
 
-type EntitySubTab = 'active' | 'all';
+type EntitySubTab = 'all' | 'payable' | 'receivable';
 
 type SortField = 'date' | 'debit' | 'credit';
 type SortDir = 'asc' | 'desc';
@@ -271,7 +271,7 @@ export default function FundLedgerTable({
   canWrite,
 }: FundLedgerTableProps) {
   const [activeTab, setActiveTab] = useState<FundLedgerTab>('all');
-  const [entitySubTab, setEntitySubTab] = useState<EntitySubTab>('active');
+  const [entitySubTab, setEntitySubTab] = useState<EntitySubTab>('all');
   const [search, setSearch] = useState('');
   const [refFilter, setRefFilter] = useState('all');
   const [entitySearch, setEntitySearch] = useState('');
@@ -419,30 +419,66 @@ export default function FundLedgerTable({
     return { debit, credit, net: debit - credit };
   }, [journalRows]);
 
+  const lastActivityByCustomer = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of entries) {
+      const ts = e.createdAt || e.entryDate;
+      const existing = map.get(e.customerId);
+      if (!existing || ts > existing) map.set(e.customerId, ts);
+    }
+    return map;
+  }, [entries]);
+
   const filteredEntities = useMemo(() => {
     const balanceMap = new Map(balances.map(b => [b.customerId, b]));
-    const allRows: FundEntityBalance[] = customers
-      .map(c => {
-        const existing = balanceMap.get(c.id);
-        if (existing) return existing;
-        return {
-          customerId: c.id,
-          customerName: c.name,
-          totalDebit: 0,
-          totalCredit: 0,
-          net: 0,
-          netUsdt: 0,
-          netCustomer: 0,
-          customerCurrency: c.currency ?? 'AED',
-        };
-      })
-      .sort((a, b) => a.customerName.localeCompare(b.customerName));
+    const allRows: FundEntityBalance[] = customers.map(c => {
+      const existing = balanceMap.get(c.id);
+      if (existing) return existing;
+      return {
+        customerId: c.id,
+        customerName: c.name,
+        totalDebit: 0,
+        totalCredit: 0,
+        net: 0,
+        netUsdt: 0,
+        netCustomer: 0,
+        customerCurrency: c.currency ?? 'AED',
+      };
+    });
 
-    const source = entitySubTab === 'active' ? balances : allRows;
+    let source = allRows;
+    if (entitySubTab === 'payable') source = allRows.filter(b => b.net < 0);
+    else if (entitySubTab === 'receivable') source = allRows.filter(b => b.net > 0);
+
+    const sortByRecentActivity = (rows: FundEntityBalance[]) =>
+      [...rows].sort((a, b) => {
+        const aTime = lastActivityByCustomer.get(a.customerId) ?? '';
+        const bTime = lastActivityByCustomer.get(b.customerId) ?? '';
+        const cmp = bTime.localeCompare(aTime);
+        return cmp !== 0 ? cmp : a.customerName.localeCompare(b.customerName);
+      });
+
+    if (entitySubTab === 'all') {
+      source = [...source].sort((a, b) => {
+        const aUnsettled = a.net !== 0;
+        const bUnsettled = b.net !== 0;
+        if (aUnsettled !== bUnsettled) return aUnsettled ? -1 : 1;
+        if (aUnsettled) {
+          const aTime = lastActivityByCustomer.get(a.customerId) ?? '';
+          const bTime = lastActivityByCustomer.get(b.customerId) ?? '';
+          const cmp = bTime.localeCompare(aTime);
+          if (cmp !== 0) return cmp;
+        }
+        return a.customerName.localeCompare(b.customerName);
+      });
+    } else {
+      source = sortByRecentActivity(source);
+    }
+
     if (!entitySearch.trim()) return source;
     const q = entitySearch.toLowerCase();
     return source.filter(b => b.customerName.toLowerCase().includes(q));
-  }, [balances, customers, entitySearch, entitySubTab]);
+  }, [balances, customers, entitySearch, entitySubTab, lastActivityByCustomer]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -646,18 +682,22 @@ export default function FundLedgerTable({
           {activeTab === 'entities' ? (
             <>
               <div className="flex items-center gap-1 border-b border-slate-100 px-4 py-3 md:px-5">
-                {(['active', 'all'] as const).map(sub => (
+                {([
+                  { id: 'all', label: 'All' },
+                  { id: 'payable', label: 'Payable' },
+                  { id: 'receivable', label: 'Receivable' },
+                ] as const).map(sub => (
                   <button
-                    key={sub}
+                    key={sub.id}
                     type="button"
-                    onClick={() => setEntitySubTab(sub)}
+                    onClick={() => setEntitySubTab(sub.id)}
                     className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                      entitySubTab === sub
+                      entitySubTab === sub.id
                         ? 'bg-slate-900 text-white'
                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
                     }`}
                   >
-                    {sub === 'active' ? 'Active' : 'All entities'}
+                    {sub.label}
                   </button>
                 ))}
               </div>
@@ -677,7 +717,11 @@ export default function FundLedgerTable({
                     <tr><td colSpan={canWrite ? 5 : 4} className="px-4 py-12 text-center text-sm text-slate-400">Loading…</td></tr>
                   ) : filteredEntities.length === 0 ? (
                     <tr><td colSpan={canWrite ? 5 : 4} className="px-4 py-12 text-center text-sm text-slate-400">
-                      {entitySubTab === 'active' ? 'No entities with balances' : 'No entities found'}
+                      {entitySubTab === 'payable'
+                        ? 'No payables'
+                        : entitySubTab === 'receivable'
+                          ? 'No receivables'
+                          : 'No entities found'}
                     </td></tr>
                   ) : (
                     filteredEntities.map(b => {
