@@ -337,7 +337,6 @@ export default function USDTPage() {
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Currency Management</h2>
-            <p className={pageSubtitle}>Manage AED Capital, USDT Stock, IDR Conversions & Customer Currency System</p>
           </div>
           <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
             <button

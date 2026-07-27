@@ -6,6 +6,7 @@ import { adjustWarehouseStock, logWarehouseStockTransaction } from '@/lib/wareho
 import { getSessionUser } from '@/lib/auth';
 import { createCognitoUserAction, deleteCognitoUserAction } from './cognitoActions';
 import { logger } from '@/lib/logger';
+import { syncICSaleFundLedger } from '@/lib/icTransfer/fundLedgerSync';
 import {
   createDeliveryAgentSchema,
   updateDeliveryAgentSchema,
@@ -591,6 +592,9 @@ export async function completeDeliveryWithUnits(
       }
 
       await client.query('COMMIT');
+      if (finalOrderStatus === 'completed') {
+        await syncICSaleFundLedger(parsed.orderId);
+      }
       const awaitingAdmin = finalOrderStatus === 'delivery_pending_admin';
       return {
         success: true,

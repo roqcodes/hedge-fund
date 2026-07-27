@@ -15,6 +15,7 @@ import {
   Deal,
   InvestorRiskProfile,
   DealTransaction,
+  DealTransactionBuy,
   PhysicalBalance,
   PhysicalBuy,
   PhysicalBulkSell,
@@ -53,6 +54,9 @@ import {
   dbAddDealTransactionAction,
   dbUpdateDealTransactionAction,
   dbDeleteDealTransactionAction,
+  dbAddDealTransactionBuyAction,
+  dbUpdateDealTransactionBuyAction,
+  dbDeleteDealTransactionBuyAction,
   dbAddEntityAction,
   dbUpdateEntityAction,
   dbDeleteEntityAction,
@@ -212,6 +216,9 @@ interface AppContextType extends AppState {
   addDealTransaction: (txn: DealTransaction) => Promise<boolean>;
   updateDealTransaction: (txn: DealTransaction) => Promise<boolean>;
   deleteDealTransaction: (id: string, dealId: string) => Promise<boolean>;
+  addDealTransactionBuy: (buy: DealTransactionBuy, groupType?: 'gold' | 'currency') => Promise<boolean>;
+  updateDealTransactionBuy: (buy: DealTransactionBuy, groupType?: 'gold' | 'currency') => Promise<boolean>;
+  deleteDealTransactionBuy: (buyId: string, dealTransactionId: string, groupType?: 'gold' | 'currency') => Promise<boolean>;
   getTotalCapital: () => number;
   getNetPL: () => number;
   setActiveCurrency: (c: CurrencyCode) => void;
@@ -858,6 +865,101 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('DB deleteDealTransaction failed', e);
       showToast('Failed to delete deal transaction', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const applyDealTransactionAggregates = (
+    txn: DealTransaction,
+    aggregates: import('@/lib/dealCalculations').DealBuyAggregates,
+    buys: DealTransactionBuy[],
+  ): DealTransaction => ({
+    ...txn,
+    weight: aggregates.totalWeight,
+    pureCostAed: aggregates.totalCost,
+    currencyAmount: aggregates.totalCurrencyAmount,
+    purchaseRate: aggregates.avgPurchaseRate ?? undefined,
+    buys,
+  });
+
+  const addDealTransactionBuy = useCallback(async (
+    buy: DealTransactionBuy,
+    groupType: 'gold' | 'currency' = 'gold',
+  ) => {
+    try {
+      const dbRes = await dbAddDealTransactionBuyAction(buy, groupType);
+      if (dbRes.success && dbRes.data) {
+        setState(s => ({
+          ...s,
+          dealTransactions: s.dealTransactions.map(t => {
+            if (t.id !== buy.dealTransactionId) return t;
+            const buys = [...(t.buys || []), buy];
+            return applyDealTransactionAggregates(t, dbRes.data!.aggregates, buys);
+          }),
+        }));
+        showToast('Buy added successfully');
+        return true;
+      }
+      showToast(dbRes.error || 'Failed to add buy', 'error');
+      return false;
+    } catch (e) {
+      console.error('DB addDealTransactionBuy failed', e);
+      showToast('Failed to add buy', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateDealTransactionBuy = useCallback(async (
+    buy: DealTransactionBuy,
+    groupType: 'gold' | 'currency' = 'gold',
+  ) => {
+    try {
+      const dbRes = await dbUpdateDealTransactionBuyAction(buy, groupType);
+      if (dbRes.success && dbRes.data) {
+        setState(s => ({
+          ...s,
+          dealTransactions: s.dealTransactions.map(t => {
+            if (t.id !== buy.dealTransactionId) return t;
+            const buys = (t.buys || []).map(b => b.id === buy.id ? buy : b);
+            return applyDealTransactionAggregates(t, dbRes.data!.aggregates, buys);
+          }),
+        }));
+        showToast('Buy updated successfully');
+        return true;
+      }
+      showToast(dbRes.error || 'Failed to update buy', 'error');
+      return false;
+    } catch (e) {
+      console.error('DB updateDealTransactionBuy failed', e);
+      showToast('Failed to update buy', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const deleteDealTransactionBuy = useCallback(async (
+    buyId: string,
+    dealTransactionId: string,
+    groupType: 'gold' | 'currency' = 'gold',
+  ) => {
+    try {
+      const dbRes = await dbDeleteDealTransactionBuyAction(buyId, dealTransactionId, groupType);
+      if (dbRes.success && dbRes.data) {
+        setState(s => ({
+          ...s,
+          dealTransactions: s.dealTransactions.map(t => {
+            if (t.id !== dealTransactionId) return t;
+            const buys = (t.buys || []).filter(b => b.id !== buyId);
+            return applyDealTransactionAggregates(t, dbRes.data!.aggregates, buys);
+          }),
+        }));
+        showToast('Buy deleted successfully');
+        return true;
+      }
+      showToast(dbRes.error || 'Failed to delete buy', 'error');
+      return false;
+    } catch (e) {
+      console.error('DB deleteDealTransactionBuy failed', e);
+      showToast('Failed to delete buy', 'error');
       return false;
     }
   }, [showToast]);
@@ -2055,12 +2157,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       enabledCurrencies,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic,
+      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
       addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;

@@ -17,6 +17,14 @@ const LINKED_SOURCE_RULES: Partial<Record<FundReferenceType, { label: string; hi
     label: 'USDT sale',
     hint: 'Delete the sale from the USDT page first.',
   },
+  ic_sale: {
+    label: 'IC Transfer sale',
+    hint: 'Reopen or delete the order from IC Transfer Admin first.',
+  },
+  ic_purchase: {
+    label: 'IC Transfer purchase',
+    hint: 'Delete the purchase from IC Transfer Admin first.',
+  },
 };
 
 export function getLinkedSourceDeleteMessage(referenceType: FundReferenceType): string | null {

@@ -45,6 +45,12 @@ import { transactionTypeRequiresBank } from '@/lib/icTransfer/transactionTypes';
 import { normalizePricingConfig, validatePricingConfig } from '@/lib/icTransfer/ratePricing';
 import { logger } from '@/lib/logger';
 import {
+  syncICSaleFundLedger,
+  syncICPurchaseFundLedger,
+  removeICSaleFundLedger,
+  removeICPurchaseFundLedger,
+} from '@/lib/icTransfer/fundLedgerSync';
+import {
   addRegionSchema,
   updateRegionSchema,
   addSupplierSchema,
@@ -730,6 +736,7 @@ export async function dbAddICPurchaseAction(
       }
 
       await client.query('COMMIT');
+      await syncICPurchaseFundLedger(res.rows[0].id);
       return { success: true, data: mapICPurchaseRow(res.rows[0]) };
     } catch (error: unknown) {
       await client.query('ROLLBACK');
@@ -924,6 +931,7 @@ export async function dbUpdateICPurchaseAction(
         values
       );
       if (res.rows.length === 0) return { success: false, error: 'Purchase not found' };
+      await syncICPurchaseFundLedger(parsedId);
       return { success: true, data: mapICPurchaseRow(res.rows[0]) };
     } catch (error: unknown) {
       logger.error({ error, id, updates }, 'Error in dbUpdateICPurchaseAction');
@@ -978,6 +986,7 @@ export async function dbUpdateICSaleAction(
         values
       );
       if (res.rows.length === 0) return { success: false, error: 'Sale not found' };
+      await syncICSaleFundLedger(parsedId);
       return { success: true, data: mapICSaleRow(res.rows[0]) };
     } catch (error: unknown) {
       logger.error({ error, id, updates }, 'Error in dbUpdateICSaleAction');
@@ -1020,6 +1029,7 @@ export async function dbDeleteICPurchaseAction(id: string): Promise<DbActionResu
       await client.query('DELETE FROM ic_purchases WHERE id = $1', [parsedId]);
 
       await client.query('COMMIT');
+      await removeICPurchaseFundLedger(parsedId);
       return { success: true, data: null };
     } catch (error: unknown) {
       await client.query('ROLLBACK');
@@ -1065,6 +1075,7 @@ export async function dbDeleteICSaleAction(id: string): Promise<DbActionResult<n
         [parsedId]
       );
 
+      await removeICSaleFundLedger(parsedId);
       await client.query('DELETE FROM ic_sales WHERE id = $1', [parsedId]);
       await client.query('COMMIT');
       return { success: true, data: null };
@@ -1737,6 +1748,7 @@ export async function branchDeleteICSaleAction(
       if (res.rowCount === 0) {
         return { success: false, error: 'Order not found or no longer pending' };
       }
+      await removeICSaleFundLedger(parsedId);
       return { success: true, data: null };
     } catch (error: unknown) {
       logger.error({ error, id }, 'Error in branchDeleteICSaleAction execution');
@@ -2043,6 +2055,7 @@ export async function adminVerifyDeliveryAction(id: string, branchSlug?: string)
     if (res.rowCount === 0) {
       return { success: false, error: 'Order not found or not awaiting delivery verification' };
     }
+    await syncICSaleFundLedger(parsedId);
     const updated = await fetchICSaleById(parsedId);
     return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
@@ -2075,6 +2088,9 @@ export async function adminBulkVerifyDeliveryAction(
     );
     const verifiedCount = res.rowCount ?? 0;
     const failedCount = uniqueIds.length - verifiedCount;
+    for (const row of res.rows) {
+      await syncICSaleFundLedger(String(row.id));
+    }
     return { success: true, data: { verifiedCount, failedCount } };
   } catch (err: unknown) {
     logger.error({ err, ids }, 'Validation error in adminBulkVerifyDeliveryAction');
@@ -2113,6 +2129,7 @@ export async function adminCompleteByHandOrderAction(id: string, branchSlug?: st
     if (res.rowCount === 0) {
       return { success: false, error: 'Order could not be completed' };
     }
+    await syncICSaleFundLedger(parsedId);
     const updated = await fetchICSaleById(parsedId);
     return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
@@ -2152,6 +2169,7 @@ export async function adminReopenByHandOrderAction(id: string, branchSlug?: stri
     if (res.rowCount === 0) {
       return { success: false, error: 'Order could not be reopened' };
     }
+    await removeICSaleFundLedger(parsedId);
     const updated = await fetchICSaleById(parsedId);
     return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
@@ -2326,6 +2344,7 @@ export async function branchCompleteHandledOrderAction(
     if (res.rowCount === 0) {
       return { success: false, error: 'Order could not be completed' };
     }
+    await syncICSaleFundLedger(parsedId);
     const updated = await fetchICSaleById(parsedId);
     return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
@@ -2363,6 +2382,7 @@ export async function branchReopenHandledOrderAction(
     if (res.rowCount === 0) {
       return { success: false, error: 'Order could not be reopened' };
     }
+    await removeICSaleFundLedger(parsedId);
     const updated = await fetchICSaleById(parsedId);
     return updated ? { success: true, data: updated } : { success: false, error: 'Order not found' };
   } catch (err: unknown) {
@@ -2435,6 +2455,9 @@ export async function autoCompleteByHandOrdersCronAction(): Promise<DbActionResu
          AND warehouse_id IS NOT NULL
        RETURNING id`,
     );
+    for (const row of res.rows) {
+      await syncICSaleFundLedger(String(row.id));
+    }
     return { success: true, data: { completedCount: res.rowCount ?? 0 } };
   } catch (error: unknown) {
     logger.error({ error }, 'Error in autoCompleteByHandOrdersCronAction');

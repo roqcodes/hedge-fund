@@ -35,6 +35,7 @@ import {
   stripAdminRatesFromSale,
 } from '@/lib/icTransfer/customerPortalScope';
 import { logger } from '@/lib/logger';
+import { computeDealBuyAggregates, type DealBuyAggregates } from '@/lib/dealCalculations';
 
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
 import { normalizeHiddenPages } from '@/lib/branchPages';
@@ -49,6 +50,7 @@ import {
   Investor,
   Deal,
   DealTransaction,
+  DealTransactionBuy,
   DealTransactionExpense,
   Entity,
   PhysicalBalance,
@@ -507,7 +509,25 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
           ), '[]'::json)
          FROM deal_transaction_expenses dte 
          WHERE dte.deal_transaction_id = dt.id
-        ) as expenses_details
+        ) as expenses_details,
+        (SELECT COALESCE(json_agg(
+            json_build_object(
+              'id', dtb.id,
+              'dealTransactionId', dtb.deal_transaction_id,
+              'txnId', dtb.txn_id,
+              'date', dtb.date,
+              'time', dtb.time,
+              'weight', dtb.weight,
+              'purity', dtb.purity,
+              'pureCostAed', dtb.pure_cost_aed,
+              'currencyAmount', dtb.currency_amount,
+              'purchaseRate', dtb.purchase_rate,
+              'createdAt', dtb.created_at
+            ) ORDER BY dtb.created_at ASC
+          ), '[]'::json)
+         FROM deal_transaction_buys dtb
+         WHERE dtb.deal_transaction_id = dt.id
+        ) as buys
       FROM deal_transactions dt
       ORDER BY dt.date DESC
     `);
@@ -520,6 +540,10 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       weight: parseFloat(r.weight),
       rate: parseFloat(r.rate),
       pureCostAed: parseFloat(r.pure_cost_aed),
+      currencyAmount: r.currency_amount != null ? parseFloat(r.currency_amount) : undefined,
+      purchaseRate: r.purchase_rate != null ? parseFloat(r.purchase_rate) : undefined,
+      conversionRate: r.conversion_rate != null ? parseFloat(r.conversion_rate) : undefined,
+      avgPurity: r.avg_purity != null ? parseFloat(r.avg_purity) : undefined,
       liveSellRate: parseFloat(r.live_sell_rate || '0'),
       sellPremiumDiscount: parseFloat(r.sell_premium_discount || '0'),
       salesAed: parseFloat(r.sales_aed || '0'),
@@ -530,6 +554,19 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       fixOrUnfix: r.fix_or_unfix,
       marginDeposit: parseFloat(r.margin_deposit || '0'),
       premiumDiscount: parseFloat(r.premium_discount || '0'),
+      buys: ((r.buys as Array<any>) || []).map((b: any) => ({
+        id: b.id,
+        dealTransactionId: b.dealTransactionId,
+        txnId: b.txnId,
+        date: b.date ? new Date(b.date).toISOString().slice(0, 10) : '',
+        time: b.time || undefined,
+        weight: parseFloat(b.weight || '0'),
+        purity: b.purity != null ? parseFloat(b.purity) : undefined,
+        pureCostAed: parseFloat(b.pureCostAed || '0'),
+        currencyAmount: b.currencyAmount != null ? parseFloat(b.currencyAmount) : undefined,
+        purchaseRate: b.purchaseRate != null ? parseFloat(b.purchaseRate) : undefined,
+        createdAt: b.createdAt,
+      })),
       payouts: (r.payouts as Array<any>).map((p: any) => ({
         id: p.id,
         dealTransactionId: p.dealTransactionId,
@@ -1400,6 +1437,54 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
 }
 
 /**
+ * Recomputes aggregated buy totals on the parent deal_transaction row.
+ */
+async function syncDealTransactionAggregatesFromBuys(
+  client: import('pg').PoolClient,
+  dealTransactionId: string,
+  groupType: 'gold' | 'currency' = 'gold',
+): Promise<DealBuyAggregates> {
+  const buysRes = await client.query(
+    `SELECT id, deal_transaction_id, txn_id, date, time, weight, purity, pure_cost_aed, currency_amount, purchase_rate, created_at
+     FROM deal_transaction_buys WHERE deal_transaction_id = $1 ORDER BY created_at ASC`,
+    [dealTransactionId],
+  );
+  const buys: DealTransactionBuy[] = buysRes.rows.map((r) => ({
+    id: r.id,
+    dealTransactionId: r.deal_transaction_id,
+    txnId: r.txn_id,
+    date: r.date ? new Date(r.date).toISOString().slice(0, 10) : '',
+    time: r.time || undefined,
+    weight: parseFloat(r.weight || '0'),
+    purity: r.purity != null ? parseFloat(r.purity) : undefined,
+    pureCostAed: parseFloat(r.pure_cost_aed || '0'),
+    currencyAmount: r.currency_amount != null ? parseFloat(r.currency_amount) : undefined,
+    purchaseRate: r.purchase_rate != null ? parseFloat(r.purchase_rate) : undefined,
+    createdAt: r.created_at,
+  }));
+
+  const agg = computeDealBuyAggregates(buys, groupType);
+
+  await client.query(
+    `UPDATE deal_transactions SET
+      weight = $1,
+      pure_cost_aed = $2,
+      currency_amount = $3,
+      purchase_rate = $4
+     WHERE id = $5`,
+    [
+      agg.totalWeight,
+      agg.totalCost,
+      agg.totalCurrencyAmount,
+      agg.avgPurchaseRate ?? 0,
+      dealTransactionId,
+    ],
+  );
+
+  return agg;
+}
+
+/**
  * Creates a new deal transaction record in the database.
  */
 export async function dbAddDealTransactionAction(
@@ -1411,31 +1496,34 @@ export async function dbAddDealTransactionAction(
   try {
     await client.query('BEGIN');
 
-    // Insert deal transaction
+    // Insert deal shell (buy legs added separately)
     await client.query(
       `INSERT INTO deal_transactions (
-        id, deal_number, date, time, deal_id, weight, rate, pure_cost_aed, live_sell_rate, sell_premium_discount, sales_aed, expenses, 
+        id, deal_number, date, time, deal_id, weight, rate, pure_cost_aed, currency_amount, purchase_rate,
+        live_sell_rate, sell_premium_discount, sales_aed, expenses,
         gross_profit, net_profit_per_gram, management_profit, fix_or_unfix, margin_deposit, premium_discount
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
       [
         txn.id,
         txn.deal,
         txn.date,
         txn.time || null,
         txn.dealId,
-        txn.weight,
-        txn.rate,
-        txn.pureCostAed,
-        txn.liveSellRate,
-        txn.sellPremiumDiscount,
-        txn.salesAed,
-        txn.expenses,
-        txn.grossProfit,
-        txn.netProfitPerGram,
-        txn.managementProfit,
-        txn.fixOrUnfix,
-        txn.marginDeposit,
-        txn.premiumDiscount,
+        txn.weight ?? 0,
+        txn.rate ?? 0,
+        txn.pureCostAed ?? 0,
+        txn.currencyAmount ?? 0,
+        txn.purchaseRate ?? 0,
+        txn.liveSellRate ?? 0,
+        txn.sellPremiumDiscount ?? 0,
+        txn.salesAed ?? 0,
+        txn.expenses ?? 0,
+        txn.grossProfit ?? 0,
+        txn.netProfitPerGram ?? 0,
+        txn.managementProfit ?? 0,
+        txn.fixOrUnfix ?? 'unfixed',
+        txn.marginDeposit ?? 0,
+        txn.premiumDiscount ?? 0,
       ]
     );
 
@@ -1477,10 +1565,12 @@ export async function dbUpdateDealTransactionAction(
 
     await client.query(
       `UPDATE deal_transactions SET
-        deal_number = $1, date = $2, time = $3, weight = $4, rate = $5, pure_cost_aed = $6, live_sell_rate = $7, sell_premium_discount = $8,
-        sales_aed = $9, expenses = $10, gross_profit = $11, net_profit_per_gram = $12, management_profit = $13,
-        fix_or_unfix = $14, margin_deposit = $15, premium_discount = $16
-      WHERE id = $17 AND deal_id = $18`,
+        deal_number = $1, date = $2, time = $3, weight = $4, rate = $5, pure_cost_aed = $6,
+        currency_amount = $7, purchase_rate = $8, conversion_rate = $9, avg_purity = $10,
+        live_sell_rate = $11, sell_premium_discount = $12,
+        sales_aed = $13, expenses = $14, gross_profit = $15, net_profit_per_gram = $16, management_profit = $17,
+        fix_or_unfix = $18, margin_deposit = $19, premium_discount = $20
+      WHERE id = $21 AND deal_id = $22`,
       [
         txn.deal,
         txn.date,
@@ -1488,6 +1578,10 @@ export async function dbUpdateDealTransactionAction(
         txn.weight,
         txn.rate,
         txn.pureCostAed,
+        txn.currencyAmount ?? 0,
+        txn.purchaseRate ?? 0,
+        txn.conversionRate ?? 0,
+        txn.avgPurity ?? null,
         txn.liveSellRate,
         txn.sellPremiumDiscount,
         txn.salesAed,
@@ -1580,6 +1674,171 @@ export async function dbDeleteDealTransactionAction(
     await client.query('ROLLBACK');
     const message = formatPgError(error);
     logger.error({ error, id, dealId }, 'Error deleting deal transaction');
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Adds a buy leg to an unfixed deal transaction and syncs parent aggregates.
+ */
+export async function dbAddDealTransactionBuyAction(
+  buy: DealTransactionBuy,
+  groupType: 'gold' | 'currency' = 'gold',
+): Promise<DbActionResult<{ buy: DealTransactionBuy; aggregates: DealBuyAggregates }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const parentRes = await client.query(
+      `SELECT fix_or_unfix FROM deal_transactions WHERE id = $1`,
+      [buy.dealTransactionId],
+    );
+    if (parentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Deal not found.' };
+    }
+    if (parentRes.rows[0].fix_or_unfix === 'fixed') {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Cannot add buys to a settled deal.' };
+    }
+
+    await client.query(
+      `INSERT INTO deal_transaction_buys (
+        id, deal_transaction_id, txn_id, date, time, weight, purity, pure_cost_aed, currency_amount, purchase_rate
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        buy.id,
+        buy.dealTransactionId,
+        buy.txnId,
+        buy.date,
+        buy.time || null,
+        buy.weight ?? 0,
+        buy.purity ?? null,
+        buy.pureCostAed,
+        buy.currencyAmount ?? 0,
+        buy.purchaseRate ?? 0,
+      ],
+    );
+
+    const aggregates = await syncDealTransactionAggregatesFromBuys(client, buy.dealTransactionId, groupType);
+
+    await client.query('COMMIT');
+    return { success: true, data: { buy, aggregates } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = formatPgError(error);
+    logger.error({ error, buy }, 'Error adding deal transaction buy');
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Updates a buy leg on an unfixed deal transaction and syncs parent aggregates.
+ */
+export async function dbUpdateDealTransactionBuyAction(
+  buy: DealTransactionBuy,
+  groupType: 'gold' | 'currency' = 'gold',
+): Promise<DbActionResult<{ buy: DealTransactionBuy; aggregates: DealBuyAggregates }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const parentRes = await client.query(
+      `SELECT dt.fix_or_unfix FROM deal_transactions dt
+       JOIN deal_transaction_buys dtb ON dtb.deal_transaction_id = dt.id
+       WHERE dtb.id = $1`,
+      [buy.id],
+    );
+    if (parentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Buy not found.' };
+    }
+    if (parentRes.rows[0].fix_or_unfix === 'fixed') {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Cannot edit buys on a settled deal.' };
+    }
+
+    await client.query(
+      `UPDATE deal_transaction_buys SET
+        txn_id = $1, date = $2, time = $3, weight = $4, purity = $5,
+        pure_cost_aed = $6, currency_amount = $7, purchase_rate = $8
+       WHERE id = $9 AND deal_transaction_id = $10`,
+      [
+        buy.txnId,
+        buy.date,
+        buy.time || null,
+        buy.weight ?? 0,
+        buy.purity ?? null,
+        buy.pureCostAed,
+        buy.currencyAmount ?? 0,
+        buy.purchaseRate ?? 0,
+        buy.id,
+        buy.dealTransactionId,
+      ],
+    );
+
+    const aggregates = await syncDealTransactionAggregatesFromBuys(client, buy.dealTransactionId, groupType);
+
+    await client.query('COMMIT');
+    return { success: true, data: { buy, aggregates } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = formatPgError(error);
+    logger.error({ error, buy }, 'Error updating deal transaction buy');
+    return { success: false, error: message };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Deletes a buy leg from an unfixed deal transaction and syncs parent aggregates.
+ */
+export async function dbDeleteDealTransactionBuyAction(
+  buyId: string,
+  dealTransactionId: string,
+  groupType: 'gold' | 'currency' = 'gold',
+): Promise<DbActionResult<{ aggregates: DealBuyAggregates }>> {
+  if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const parentRes = await client.query(
+      `SELECT fix_or_unfix FROM deal_transactions WHERE id = $1`,
+      [dealTransactionId],
+    );
+    if (parentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Deal not found.' };
+    }
+    if (parentRes.rows[0].fix_or_unfix === 'fixed') {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Cannot delete buys from a settled deal.' };
+    }
+
+    await client.query(
+      `DELETE FROM deal_transaction_buys WHERE id = $1 AND deal_transaction_id = $2`,
+      [buyId, dealTransactionId],
+    );
+
+    const aggregates = await syncDealTransactionAggregatesFromBuys(client, dealTransactionId, groupType);
+
+    await client.query('COMMIT');
+    return { success: true, data: { aggregates } };
+  } catch (error: unknown) {
+    await client.query('ROLLBACK');
+    const message = formatPgError(error);
+    logger.error({ error, buyId, dealTransactionId }, 'Error deleting deal transaction buy');
     return { success: false, error: message };
   } finally {
     client.release();

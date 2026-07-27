@@ -393,6 +393,8 @@ export async function deleteFundLedgerEntryAction(
       physical_sell: 'Delete the physical sell deal first. The ledger entry will be removed automatically.',
       usdt_buy: 'Delete the USDT purchase first. The ledger entry will be removed automatically.',
       usdt_sell: 'Delete the USDT sale first. The ledger entry will be removed automatically.',
+      ic_sale: 'Reopen or delete the IC Transfer sale first. The ledger entry will be removed automatically.',
+      ic_purchase: 'Delete the IC Transfer purchase first. The ledger entry will be removed automatically.',
     };
     const linkedBlock = linkedBlockMessages[refType];
     if (linkedBlock) {
@@ -532,6 +534,115 @@ export async function convertFundLedgerEntryAction(params: {
 }
 
 /**
+ * Auto-create a ledger entry from another module (physical, usdt, IC transfer, etc.)
+ * Uses direct DB insert — no session required (safe for cron / system posting).
+ */
+export async function insertAutoFundLedgerEntry(params: {
+  branchId: string;
+  customerId: string;
+  direction: FundEntryDirection;
+  amount: number;
+  referenceType: FundReferenceType;
+  referenceId: string;
+  description?: string;
+  customerCurrency?: string;
+  customerCurrencyRate?: number;
+  settlementCurrency?: string;
+  inputSide?: AmountInputSide;
+  entryDate?: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdByUserId?: string;
+}): Promise<string | null> {
+  try {
+    const {
+      branchId, customerId, direction, amount, referenceType, referenceId,
+      description, customerCurrency, customerCurrencyRate, settlementCurrency,
+      inputSide, entryDate, createdBy, createdByName, createdByUserId,
+    } = params;
+
+    if (!customerId || !amount || amount <= 0) return null;
+
+    const custRes = await query(
+      'SELECT id, currency FROM customers WHERE id = $1 AND branch_id = $2',
+      [customerId, branchId],
+    );
+    if (custRes.rows.length === 0) return null;
+
+    const profileCurrency = String(custRes.rows[0].currency || 'USDT');
+    const displayCurrency = customerCurrency ?? profileCurrency;
+    const usdtRate = customerCurrencyRate ?? (displayCurrency === 'USDT' ? 1 : 0);
+
+    if (displayCurrency !== 'USDT' && (!usdtRate || usdtRate <= 0)) {
+      // Pending fiat entry — store provisional USDT amount until converted on Funds page.
+      const id = `FL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const now = entryDate ?? new Date().toISOString();
+      await query(
+        `INSERT INTO fund_entity_ledger (
+          id, branch_id, customer_id, entry_date, description, debit, credit,
+          reference_type, reference_id, created_by, created_by_name, created_by_user_id, created_at,
+          customer_currency, customer_currency_rate, settlement_currency, settlement_amount
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        [
+          id, branchId, customerId, now,
+          description?.trim() || `${direction === 'debit' ? 'Receivable' : 'Payable'} from ${referenceType}`,
+          direction === 'debit' ? roundTo14(amount) : 0,
+          direction === 'credit' ? roundTo14(amount) : 0,
+          referenceType, referenceId,
+          createdBy ?? 'system', createdByName ?? 'System', createdByUserId ?? null, now,
+          'USDT', 1, settlementCurrency ?? 'USDT', null,
+        ],
+      );
+      return id;
+    }
+
+    const side: AmountInputSide = inputSide
+      ?? (displayCurrency === 'USDT' ? 'usdt' : 'customer');
+
+    const resolved = resolveJournalAmounts({
+      inputSide: side,
+      usdtAmount: side === 'usdt' ? amount : 0,
+      customerAmount: side === 'customer' ? amount : 0,
+      customerCurrency: displayCurrency,
+      customerCurrencyRate: roundTo14(usdtRate),
+    });
+    if (!resolved) return null;
+
+    const usdtAmount = resolved.usdtAmount;
+    if (usdtAmount <= 0) return null;
+
+    const id = `FL-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const now = entryDate ?? new Date().toISOString();
+    const settleCurrency = settlementCurrency ?? displayCurrency;
+
+    await query(
+      `INSERT INTO fund_entity_ledger (
+        id, branch_id, customer_id, entry_date, description, debit, credit,
+        reference_type, reference_id, created_by, created_by_name, created_by_user_id, created_at,
+        customer_currency, customer_currency_rate, settlement_currency, settlement_amount
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [
+        id, branchId, customerId, now,
+        description?.trim() || `${direction === 'debit' ? 'Receivable' : 'Payable'} from ${referenceType}`,
+        direction === 'debit' ? roundTo14(usdtAmount) : 0,
+        direction === 'credit' ? roundTo14(usdtAmount) : 0,
+        referenceType, referenceId,
+        createdBy ?? 'system', createdByName ?? 'System', createdByUserId ?? null, now,
+        displayCurrency === 'USDT' && profileCurrency !== 'USDT' ? 'USDT' : displayCurrency,
+        displayCurrency === 'USDT' ? 1 : roundTo14(usdtRate),
+        settleCurrency,
+        null,
+      ],
+    );
+
+    return id;
+  } catch (err) {
+    logger.error({ err, referenceType: params.referenceType, referenceId: params.referenceId }, 'Failed to insert auto fund ledger entry');
+    return null;
+  }
+}
+
+/**
  * Auto-create a ledger entry from another module (physical, usdt, etc.)
  * Returns the entry ID.
  */
@@ -550,23 +661,25 @@ export async function createAutoLedgerEntry(params: {
   entryDate?: string;
 }): Promise<string | null> {
   try {
-    const result = await createFundLedgerEntryAction({
+    const inputSide: AmountInputSide =
+      params.customerCurrency && params.customerCurrency !== 'USDT' && params.customerCurrencyRate
+        ? 'customer'
+        : 'usdt';
+
+    return await insertAutoFundLedgerEntry({
       branchId: params.branchId,
       customerId: params.customerId,
       direction: params.direction,
       amount: params.amount,
-      description: params.description ?? `${params.direction === 'debit' ? 'Receivable' : 'Payable'} from ${params.referenceType}`,
       referenceType: params.referenceType,
       referenceId: params.referenceId,
+      description: params.description,
       customerCurrency: params.customerCurrency,
-      customerCurrencyRate: params.customerCurrencyRate,
+      customerCurrencyRate: params.customerCurrencyRate ?? params.settlementUsdtRate,
       settlementCurrency: params.settlementCurrency,
-      settlementUsdtRate: params.settlementUsdtRate,
+      inputSide,
       entryDate: params.entryDate,
     });
-
-    if (result.success) return result.entryId;
-    return null;
   } catch (err) {
     logger.error({ err }, 'Failed to create auto ledger entry');
     return null;

@@ -252,6 +252,46 @@ CREATE TABLE IF NOT EXISTS deal_transaction_payouts (
 
 CREATE INDEX IF NOT EXISTS idx_dtp_deal_transaction_id ON deal_transaction_payouts(deal_transaction_id);
 
+-- 13b. Deal Transaction Buys (individual buy legs under a deal shell)
+CREATE TABLE IF NOT EXISTS deal_transaction_buys (
+    id VARCHAR(50) PRIMARY KEY,
+    deal_transaction_id VARCHAR(50) NOT NULL REFERENCES deal_transactions(id) ON DELETE CASCADE,
+    txn_id VARCHAR(50) NOT NULL,
+    date DATE NOT NULL,
+    time VARCHAR(5) DEFAULT NULL,
+    weight DECIMAL(15, 2) DEFAULT 0.00,
+    purity DECIMAL(15, 7) DEFAULT NULL,
+    pure_cost_aed DECIMAL(15, 2) NOT NULL,
+    currency_amount DECIMAL(15, 2) DEFAULT 0.00,
+    purchase_rate DECIMAL(15, 6) DEFAULT 0.000000,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dtb_deal_transaction_id ON deal_transaction_buys(deal_transaction_id);
+
+ALTER TABLE deal_transactions ADD COLUMN IF NOT EXISTS avg_purity DECIMAL(15, 7) DEFAULT NULL;
+
+-- Migrate existing deal_transactions into one buy leg each (idempotent)
+INSERT INTO deal_transaction_buys (
+    id, deal_transaction_id, txn_id, date, time, weight, purity, pure_cost_aed, currency_amount, purchase_rate
+)
+SELECT
+    'buy-' || dt.id,
+    dt.id,
+    'LEG-' || UPPER(SUBSTRING(REPLACE(dt.id, '-', '') FROM 1 FOR 8)),
+    dt.date,
+    dt.time,
+    dt.weight,
+    NULL,
+    dt.pure_cost_aed,
+    COALESCE(dt.currency_amount, 0),
+    COALESCE(dt.purchase_rate, 0)
+FROM deal_transactions dt
+WHERE NOT EXISTS (
+    SELECT 1 FROM deal_transaction_buys dtb WHERE dtb.deal_transaction_id = dt.id
+)
+AND (dt.weight > 0 OR dt.pure_cost_aed > 0 OR COALESCE(dt.currency_amount, 0) > 0);
+
 -- 14. Physical Balances
 CREATE TABLE IF NOT EXISTS physical_balances (
     branch_id VARCHAR(50) PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,

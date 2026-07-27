@@ -210,7 +210,6 @@ export default function PhysicalSellModal({ open, slug, buy, onClose, onSuccess,
 
   const previewRow = buildSellPreviewRow(form, calc);
 
-  if (!open) return null;
 
   return (
     <Modal open={open} onClose={onClose} title="New Gold Sell" maxWidth="max-w-[1200px] w-[96vw]">

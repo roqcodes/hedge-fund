@@ -3,12 +3,14 @@
 import React, { useMemo, useState } from 'react';
 import SellDealModal from './SellDealModal';
 import ExpensesModal from './ExpensesModal';
-import Link from 'next/link';
+import AddDealBuyModal from './AddDealBuyModal';
 import { useRouter, useParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAED } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
-import { pageHeader, pageTitle, pageSubtitle, tableWrap, dataTable } from '@/lib/ui';
+import { computeDealBuyAggregates } from '@/lib/dealCalculations';
+import { DealTransactionBuy } from '@/types';
+import { pageTitle, pageSubtitle, tableWrap, dataTable, btnPrimary } from '@/lib/ui';
 
 function KPICard({ label, value, colorClass, icon, cardClassName }: { label: string; value: React.ReactNode; colorClass: string; icon: React.ReactNode; cardClassName?: string }) {
   return (
@@ -32,9 +34,18 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
   const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
   const [showSellModal, setShowSellModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
+  const [showAddBuy, setShowAddBuy] = useState(false);
+  const [selectedBuy, setSelectedBuy] = useState<DealTransactionBuy | null>(null);
 
   const deal = deals.find(d => d.id === dealId);
   const txn = dealTransactions.find(t => t.id === txnId);
+  const groupType = deal?.groupType === 'currency' ? 'currency' : 'gold';
+  const buys = txn?.buys || [];
+  const aggregates = useMemo(
+    () => computeDealBuyAggregates(buys, groupType),
+    [buys, groupType],
+  );
+  const hasBuys = aggregates.buyCount > 0;
 
   // Calculate the remaining profit and investor distributions
   const distributions = useMemo(() => {
@@ -113,9 +124,18 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           </div>
           <p className={pageSubtitle}>Date: {txn.date} &bull; Group: {deal.groupName || deal.name}</p>
         </div>
-        {/* Buttons — on mobile: col, Expenses above Sell; on sm+: row */}
-        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-          {/* Expenses button — always visible */}
+        {/* Buttons: Buy → Expenses → Sell */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          {txn.fixOrUnfix === 'unfixed' && (
+            <button
+              type="button"
+              className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm sm:text-xs font-bold text-emerald-700 hover:bg-emerald-100 gap-1.5 transition-all"
+              onClick={() => { setSelectedBuy(null); setShowAddBuy(true); }}
+            >
+              <span>Add Buy</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm sm:text-xs font-bold text-rose-600 hover:bg-rose-100 active:scale-[0.99] gap-1.5 transition-all"
@@ -128,12 +148,13 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             <span>Expenses</span>
           </button>
 
-          {/* Sell button — only for unfixed deals */}
           {txn.fixOrUnfix === 'unfixed' && (
             <button
               type="button"
-              className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm sm:text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] gap-1.5 transition-all"
+              className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm sm:text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] gap-1.5 transition-all disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => setShowSellModal(true)}
+              disabled={!hasBuys}
+              title={!hasBuys ? 'Add at least one buy before selling' : undefined}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -149,9 +170,9 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
       {/* Top Row of KPI Cards */}
       <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <KPICard
-          label={deal.groupType === 'currency' ? "Currency Amount" : "Purchase Volume"}
-          value={deal.groupType === 'currency' ? `${txn.currencyAmount?.toLocaleString()}` : `${txn.weight.toLocaleString()} g`}
-          colorClass={deal.groupType === 'currency' ? "bg-indigo-100 text-indigo-600" : "bg-amber-100 text-amber-600"}
+          label={deal.groupType === 'currency' ? 'Currency Amount' : 'Total Weight'}
+          value={deal.groupType === 'currency' ? `${aggregates.totalCurrencyAmount.toLocaleString()}` : `${aggregates.totalWeight.toLocaleString()} g`}
+          colorClass={deal.groupType === 'currency' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'}
           icon={deal.groupType === 'currency' ? (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="6" width="20" height="12" rx="2" />
@@ -165,9 +186,31 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </svg>
           )}
         />
+        {deal.groupType !== 'currency' && (
+          <KPICard
+            label="Avg Purity"
+            value={aggregates.avgPurity != null ? aggregates.avgPurity.toFixed(4) : '—'}
+            colorClass="bg-violet-100 text-violet-600"
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6z" />
+              </svg>
+            }
+          />
+        )}
+        <KPICard
+          label="Buy Legs"
+          value={aggregates.buyCount}
+          colorClass="bg-slate-100 text-slate-600"
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 6h16M4 12h16M4 18h10" />
+            </svg>
+          }
+        />
         <KPICard
           label="Purchase Cost Total"
-          value={formatAED(txn.pureCostAed)}
+          value={formatAED(aggregates.totalCost)}
           colorClass="bg-slate-900 text-white"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -213,6 +256,73 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         />
       </div>
 
+      {/* Buy legs table */}
+      <div className="mb-8 md:rounded-3xl md:border md:border-slate-100 md:bg-white md:p-6 md:shadow-surface">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Buy Legs</h3>
+            <p className="text-xs text-slate-500">Multiple buys aggregated when selling</p>
+          </div>
+          {txn.fixOrUnfix === 'unfixed' && (
+            <button type="button" className={btnPrimary} onClick={() => { setSelectedBuy(null); setShowAddBuy(true); }}>
+              Add Buy
+            </button>
+          )}
+        </div>
+        <div className={tableWrap}>
+          <table className={`${dataTable} min-w-[640px]`}>
+            <thead>
+              <tr>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Txn ID</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Date</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {deal.groupType === 'currency' ? 'Amount' : 'Weight'}
+                </th>
+                {deal.groupType !== 'currency' && (
+                  <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Purity</th>
+                )}
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Cost (AED)</th>
+                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {buys.length > 0 ? buys.map(buy => (
+                <tr key={buy.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-mono text-sm font-bold text-slate-900">{buy.txnId}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600">{buy.date}{buy.time ? ` ${buy.time}` : ''}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-slate-700">
+                    {deal.groupType === 'currency'
+                      ? buy.currencyAmount?.toLocaleString()
+                      : `${buy.weight.toLocaleString()} g`}
+                  </td>
+                  {deal.groupType !== 'currency' && (
+                    <td className="px-4 py-3 font-mono text-sm text-slate-600">{buy.purity?.toFixed(4) ?? '—'}</td>
+                  )}
+                  <td className="px-4 py-3 font-mono text-sm font-bold text-slate-900">{formatAED(buy.pureCostAed)}</td>
+                  <td className="px-4 py-3 text-right">
+                    {txn.fixOrUnfix === 'unfixed' && (
+                      <button
+                        type="button"
+                        className="text-xs font-bold text-accent hover:underline"
+                        onClick={() => { setSelectedBuy(buy); setShowAddBuy(true); }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={deal.groupType === 'currency' ? 5 : 6} className="px-4 py-10 text-center text-sm text-slate-500">
+                    No buys yet. Add a buy leg to record purchase details.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* 1 to 1 Horizontal Layout */}
       <div className="mb-8 flex flex-col-reverse gap-6 lg:grid lg:grid-cols-2">
         {/* Left side: Trade Execution Details */}
@@ -229,11 +339,17 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] text-slate-400 font-medium">{deal.groupType === 'currency' ? 'Currency Amount' : 'Weight'}</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{deal.groupType === 'currency' ? txn.currencyAmount?.toLocaleString() : `${txn.weight.toLocaleString()} g`}</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{deal.groupType === 'currency' ? aggregates.totalCurrencyAmount.toLocaleString() : `${aggregates.totalWeight.toLocaleString()} g`}</p>
                 </div>
+                {deal.groupType !== 'currency' && aggregates.avgPurity != null && (
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-medium">Avg Purity</p>
+                    <p className="font-mono text-sm font-bold text-slate-900">{aggregates.avgPurity.toFixed(4)}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-[10px] text-slate-400 font-medium">Purchase Cost (AED)</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{formatAED(txn.pureCostAed)}</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">{formatAED(aggregates.totalCost)}</p>
                 </div>
               </div>
             </div>
@@ -373,6 +489,14 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         onClose={() => setShowSellModal(false)}
         deal={deal}
         transaction={txn}
+        aggregates={aggregates}
+      />
+      <AddDealBuyModal
+        open={showAddBuy}
+        onClose={() => { setShowAddBuy(false); setSelectedBuy(null); }}
+        deal={deal}
+        transaction={txn}
+        editBuy={selectedBuy || undefined}
       />
       <ExpensesModal
         open={showExpensesModal}

@@ -268,7 +268,6 @@ export default function PhysicalPage() {
         <div className={pageHeader}>
           <div>
             <h2 className={pageTitle}>Physical Deals</h2>
-            <p className={pageSubtitle}>Vault inventory, bullion tracking, and gold buys</p>
           </div>
           <div className="mt-4 flex flex-col items-center gap-3 sm:mt-0 sm:flex-row">
             <button
@@ -764,7 +763,7 @@ export default function PhysicalPage() {
       </div>
 
       {/* Modals */}
-      {isDealModalOpen && branchSlug && branchId && (
+      {branchSlug && branchId ? (
         <PhysicalDealModal
           open={isDealModalOpen}
           slug={branchSlug}
@@ -775,7 +774,7 @@ export default function PhysicalPage() {
           onSaveDraftBuy={saveDraftBuy}
           onSaveDraftSell={saveDraftSell}
         />
-      )}
+      ) : null}
 
       {editingBuy && branchSlug ? (
         <PhysicalBuyEditModal
@@ -799,18 +798,16 @@ export default function PhysicalPage() {
         />
       ) : null}
 
-      {isExportModalOpen && (
-        <PhysicalExportModal
-          open={isExportModalOpen}
-          onClose={() => setIsExportModalOpen(false)}
-          buys={filteredBuys}
-          sells={physicalSells}
-          initialCapital={balance?.initialCapital || 0}
-          initialVolume={balance?.initialVolume || 0}
-        />
-      )}
+      <PhysicalExportModal
+        open={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        buys={filteredBuys}
+        sells={physicalSells}
+        initialCapital={balance?.initialCapital || 0}
+        initialVolume={balance?.initialVolume || 0}
+      />
 
-      {isBulkSellModalOpen && branchSlug && branchId && (
+      {branchSlug && branchId ? (
         <PhysicalBulkSellModal
           open={isBulkSellModalOpen}
           slug={branchSlug}
@@ -819,7 +816,7 @@ export default function PhysicalPage() {
           onClose={() => setIsBulkSellModalOpen(false)}
           onSuccess={refetchData}
         />
-      )}
+      ) : null}
 
       {selectedBulkSell && branchSlug && (
         <PhysicalBulkSellDetailModal

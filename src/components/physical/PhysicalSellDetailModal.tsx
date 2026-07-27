@@ -65,8 +65,6 @@ export default function PhysicalSellDetailModal({
     onClose();
   };
 
-  if (!open) return null;
-
   const profitPositive = sell.profit > 0;
   const profitNegative = sell.profit < 0;
   const plTone = profitPositive ? 'profit' : profitNegative ? 'loss' : 'neutral';

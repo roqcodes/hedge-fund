@@ -269,7 +269,12 @@ export default function DealTransactionsTable({
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">
-                      {groupType === 'currency' ? row.currencyAmount?.toLocaleString() : row.weight.toLocaleString()}
+                      <div className="flex flex-col">
+                        <span>{groupType === 'currency' ? row.currencyAmount?.toLocaleString() : row.weight.toLocaleString()}</span>
+                        {(row.buys?.length ?? 0) > 0 && (
+                          <span className="text-[10px] text-slate-400">{row.buys!.length} buy{row.buys!.length !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.pureCostAed)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.expenses)}</td>

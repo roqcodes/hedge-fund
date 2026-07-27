@@ -263,6 +263,20 @@ export interface DealTransactionExpense {
   createdAt?: string;
 }
 
+export interface DealTransactionBuy {
+  id: string;
+  dealTransactionId: string;
+  txnId: string;
+  date: string;
+  time?: string;
+  weight: number;
+  purity?: number;
+  pureCostAed: number;
+  currencyAmount?: number;
+  purchaseRate?: number;
+  createdAt?: string;
+}
+
 export interface DealTransaction {
   id: string;
   date: string;
@@ -274,6 +288,7 @@ export interface DealTransaction {
   currencyAmount?: number;
   purchaseRate?: number;
   conversionRate?: number;
+  avgPurity?: number;
   liveSellRate: number;        // Renamed from salesValueInr
   sellPremiumDiscount: number; // Renamed from rvRate
   salesAed: number;
@@ -285,6 +300,7 @@ export interface DealTransaction {
   marginDeposit: number;
   premiumDiscount: number;
   dealId?: string; // Foreign key linking to deals(id)
+  buys?: DealTransactionBuy[];
   payouts?: DealTransactionPayout[]; // Snapshot of investor payouts at settlement
   expensesDetails?: DealTransactionExpense[]; // Snapshot of detailed expenses
 }
@@ -483,7 +499,16 @@ export interface UsdtIdrConversion {
 }
 
 export type FundEntryDirection = 'debit' | 'credit';
-export type FundReferenceType = 'manual' | 'settlement' | 'entity_transfer' | 'physical_buy' | 'physical_sell' | 'usdt_buy' | 'usdt_sell';
+export type FundReferenceType =
+  | 'manual'
+  | 'settlement'
+  | 'entity_transfer'
+  | 'physical_buy'
+  | 'physical_sell'
+  | 'usdt_buy'
+  | 'usdt_sell'
+  | 'ic_sale'
+  | 'ic_purchase';
 
 export interface FundEntityBalance {
   customerId: string;

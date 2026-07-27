@@ -7,7 +7,7 @@ import { badgeClass } from '@/lib/badgeClass';
 import KPICard from '@/components/ui/KPICard';
 import EditDealModal from './EditDealModal';
 import DealTransactionsTable from './DealTransactionsTable';
-import CreateDealTransactionModal from './CreateDealTransactionModal';
+import CreateDealShellModal from './CreateDealShellModal';
 import { useDateFilter } from '@/hooks/useDateFilter';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import Modal from '@/components/ui/Modal';
@@ -447,10 +447,10 @@ export default function DealDetails({ dealId }: { dealId: string }) {
         />
       </div>
       <EditDealModal open={showEdit} onClose={() => setShowEdit(false)} deal={deal} />
-      <CreateDealTransactionModal open={showAddTxn} onClose={() => setShowAddTxn(false)} deal={deal} />
+      <CreateDealShellModal open={showAddTxn} onClose={() => setShowAddTxn(false)} deal={deal} />
 
       {selectedTxn && (
-        <CreateDealTransactionModal
+        <CreateDealShellModal
           open={!!selectedTxn}
           onClose={() => setSelectedTxn(null)}
           deal={deal}

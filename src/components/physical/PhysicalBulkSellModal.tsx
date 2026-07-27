@@ -288,7 +288,6 @@ export default function PhysicalBulkSellModal({
   const formattedCalculatedIdr = fmtBulkRate(weighted.avgIdrGram);
   const formattedCalculatedUsdt = fmtBulkRate(weighted.avgIdrToUsdt);
 
-  if (!open) return null;
 
   return (
     <Modal

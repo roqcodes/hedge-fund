@@ -37,8 +37,6 @@ export default function PhysicalDealModal({
     }
   }, [open]);
 
-  if (!open) return null;
-
   return (
     <Modal
       open={open}

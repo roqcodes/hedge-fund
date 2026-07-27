@@ -119,7 +119,6 @@ export default function PhysicalBuyEditModal({ open, slug, buy, onClose, onSucce
     }
   };
 
-  if (!open) return null;
 
   return (
     <Modal open={open} onClose={onClose} title="Edit Buy Deal" maxWidth="max-w-[900px] w-[96vw]">

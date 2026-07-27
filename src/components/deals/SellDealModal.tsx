@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { Deal, DealTransaction, DealTransactionExpense } from '@/types';
 import { formatAEDStr, getGlobalCurrency } from '@/data/mockData';
 import { dbFetchDealExpensesAction } from '@/app/actions/dbActions';
+import type { DealBuyAggregates } from '@/lib/dealCalculations';
 import {
   btnPrimary,
   btnSecondary,
@@ -21,11 +22,13 @@ export default function SellDealModal({
   onClose,
   deal,
   transaction,
+  aggregates,
 }: {
   open: boolean;
   onClose: () => void;
   deal: Deal;
   transaction: DealTransaction;
+  aggregates?: DealBuyAggregates;
 }) {
   const { updateDealTransaction } = useApp();
 
@@ -71,10 +74,11 @@ export default function SellDealModal({
   const conversionRateInput = parseSafeNumber(conversionRateStr);
   const sellPremiumDiscount = parseSafeNumber(sellPremiumDiscountStr); // Sell premium/discount (per troy oz)
   const expenses = parseSafeNumber(expensesStr);
-  const weight = transaction.weight;
-  const pureCostAed = transaction.pureCostAed;
+  const weight = aggregates?.totalWeight ?? transaction.weight;
+  const pureCostAed = aggregates?.totalCost ?? transaction.pureCostAed;
+  const currencyAmount = (aggregates?.totalCurrencyAmount ?? transaction.currencyAmount) || 0;
+  const avgPurity = aggregates?.avgPurity ?? transaction.avgPurity;
   const managerShare = deal.managerShare ?? 20;
-  const currencyAmount = transaction.currencyAmount || 0;
 
   const calculations = useMemo(() => {
     let salesAed = 0;
@@ -173,6 +177,10 @@ export default function SellDealModal({
 
     const updatedTxn: DealTransaction = {
       ...transaction,
+      weight,
+      pureCostAed,
+      currencyAmount: deal.groupType === 'currency' ? currencyAmount : transaction.currencyAmount,
+      avgPurity: avgPurity ?? undefined,
       conversionRate: deal.groupType === 'currency' ? conversionRateInput : undefined,
       liveSellRate: deal.groupType === 'currency' ? 0 : Number(calculations.salesAed.toFixed(7)),
       sellPremiumDiscount: 0,
@@ -227,15 +235,28 @@ export default function SellDealModal({
             <span className="text-slate-900">{currencyAmount.toLocaleString()} Currency</span>
           </div>
         ) : (
-          <div>
-            <span className="text-slate-400">Deal Weight:</span>{' '}
-            <span className="text-slate-900">{weight.toLocaleString()} g</span>
-          </div>
+          <>
+            <div>
+              <span className="text-slate-400">Total Weight:</span>{' '}
+              <span className="text-slate-900">{weight.toLocaleString()} g</span>
+            </div>
+            {avgPurity != null && (
+              <div>
+                <span className="text-slate-400">Avg Purity:</span>{' '}
+                <span className="text-slate-900 font-mono">{avgPurity.toFixed(4)}</span>
+              </div>
+            )}
+          </>
         )}
         <div>
           <span className="text-slate-400">Purchase Cost:</span>{' '}
           <span className="text-slate-900">{formatCost(pureCostAed)} AED</span>
         </div>
+        {aggregates && aggregates.buyCount > 1 && (
+          <div className="col-span-2 text-[10px] text-slate-400">
+            Averaged across {aggregates.buyCount} buy legs
+          </div>
+        )}
       </div>
 
       <div className={formRow}>
