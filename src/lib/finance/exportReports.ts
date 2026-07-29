@@ -1,6 +1,9 @@
+import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
 export type CsvRow = Record<string, string | number | null | undefined>;
+
+export type ExportColumn = { key: string; label: string; align?: 'left' | 'right' };
 
 function escapeCsvCell(value: string | number | null | undefined): string {
   const str = value == null ? '' : String(value);
@@ -82,4 +85,35 @@ export function buildKpiHtml(items: { label: string; value: string }[]): string 
     )
     .join('');
   return `<div class="kpi-grid">${cards}</div>`;
+}
+
+export async function downloadExcel(
+  filename: string,
+  sheetName: string,
+  columns: ExportColumn[],
+  rows: CsvRow[],
+): Promise<void> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet(sheetName.slice(0, 31));
+
+  sheet.addRow(columns.map(c => c.label));
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6EAF8' } };
+
+  rows.forEach(row => {
+    sheet.addRow(columns.map(c => row[c.key] ?? ''));
+  });
+
+  columns.forEach((col, i) => {
+    const column = sheet.getColumn(i + 1);
+    column.width = Math.max(col.label.length + 2, 14);
+    if (col.align === 'right') column.alignment = { horizontal: 'right' };
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  saveAs(blob, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
 }

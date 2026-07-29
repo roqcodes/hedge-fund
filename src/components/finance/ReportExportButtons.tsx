@@ -1,10 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { btnSecondary } from '@/lib/ui';
-import { downloadCsv, downloadPdfReport, buildTableHtml, type CsvRow } from '@/lib/finance/exportReports';
-
-type ExportColumn = { key: string; label: string; align?: 'left' | 'right' };
+import {
+  downloadCsv,
+  downloadPdfReport,
+  downloadExcel,
+  buildTableHtml,
+  type CsvRow,
+  type ExportColumn,
+} from '@/lib/finance/exportReports';
 
 type Props = {
   filename: string;
@@ -24,6 +29,7 @@ export default function ReportExportButtons({
   kpiItems,
 }: Props) {
   const disabled = rows.length === 0;
+  const [exporting, setExporting] = useState(false);
 
   const handleCsv = () => {
     const csvRows = rows.map(row => {
@@ -44,8 +50,25 @@ export default function ReportExportButtons({
     downloadPdfReport(pdfTitle, pdfSubtitle, kpiHtml + tableHtml);
   };
 
+  const handleExcel = async () => {
+    setExporting(true);
+    try {
+      await downloadExcel(filename, pdfTitle, columns, rows);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        className={`${btnSecondary} text-xs !py-1.5 !px-3`}
+        disabled={disabled || exporting}
+        onClick={handleExcel}
+      >
+        {exporting ? 'Exporting…' : 'Export Excel'}
+      </button>
       <button
         type="button"
         className={`${btnSecondary} text-xs !py-1.5 !px-3`}

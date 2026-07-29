@@ -18,10 +18,11 @@ const poolConfig = {
     env.DATABASE_URL.includes('127.0.0.1')
       ? false
       : { rejectUnauthorized: false },
-  // Production pool tuning
-  max: 20,                  // max simultaneous connections
-  idleTimeoutMillis: 30_000, // close idle clients after 30s
-  connectionTimeoutMillis: 10_000, // fail if connection takes > 10s
+  max: 20,
+  idleTimeoutMillis: 30_000,
+  // Remote RDS (e.g. us-east-1 from Asia) can take 5–8s to establish TLS; 10s was too tight.
+  connectionTimeoutMillis: 30_000,
+  keepAlive: true,
 };
 
 if (process.env.NODE_ENV === 'production') {

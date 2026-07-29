@@ -56,13 +56,13 @@ export default function ReportSection({
       id={id}
       className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-surface transition-[box-shadow] duration-300"
     >
-      <button
-        type="button"
-        className="flex w-full items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 text-left sm:px-8 sm:py-6"
-        onClick={() => setOpen(v => !v)}
-        aria-expanded={open}
-      >
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex w-full items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-8 sm:py-6">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          onClick={() => setOpen(v => !v)}
+          aria-expanded={open}
+        >
           {icon && (
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-light text-accent">
               {icon}
@@ -72,35 +72,34 @@ export default function ReportSection({
             <h3 className="text-base font-bold text-slate-900 sm:text-lg">{title}</h3>
             {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
           </div>
-        </div>
+        </button>
         <div className="flex shrink-0 items-center gap-3">
-          {exportSlot && open && (
-            <div className="hidden sm:block" onClick={e => e.stopPropagation()}>
-              {exportSlot}
-            </div>
-          )}
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
-            aria-hidden
+          {exportSlot && open && <div className="hidden sm:block">{exportSlot}</div>}
+          <button
+            type="button"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+            onClick={() => setOpen(v => !v)}
+            aria-label={open ? 'Collapse section' : 'Expand section'}
           >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`transition-transform ${open ? 'rotate-180' : ''}`}
+              aria-hidden
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="space-y-6 px-5 py-5 sm:px-8 sm:pb-8">
-          {exportSlot && (
-            <div className="sm:hidden" onClick={e => e.stopPropagation()}>
-              {exportSlot}
-            </div>
-          )}
+          {exportSlot && <div className="sm:hidden">{exportSlot}</div>}
           {children}
         </div>
       )}
