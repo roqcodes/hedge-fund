@@ -41,23 +41,30 @@ type Props = {
 };
 
 export default function ICTransferPurchase({ portalMode = 'admin', branchId }: Props) {
-  const { icPurchases, icSuppliers, icWarehouses } = useApp();
-  const isBranchPortal = portalMode === 'branch' && !!branchId;
+  const { icPurchases, icSuppliers, icWarehouses, user } = useApp();
+  // Branch managers (including on admin routes) may only use their branch warehouses/suppliers.
+  const scopedBranchId =
+    portalMode === 'branch' && branchId
+      ? branchId
+      : user?.role === 'branch_manager'
+        ? user.branchId
+        : undefined;
+  const isBranchScoped = !!scopedBranchId;
 
   const scopedWarehouses = useMemo(() => {
-    if (!isBranchPortal) return filterWarehousesForAdminPortal(icWarehouses);
-    return filterWarehousesForBranchPortal(icWarehouses, branchId!);
-  }, [icWarehouses, isBranchPortal, branchId]);
+    if (!isBranchScoped) return filterWarehousesForAdminPortal(icWarehouses);
+    return filterWarehousesForBranchPortal(icWarehouses, scopedBranchId);
+  }, [icWarehouses, isBranchScoped, scopedBranchId]);
 
   const scopedPurchases = useMemo(() => {
-    if (!isBranchPortal) return icPurchases;
-    return filterPurchasesForBranchPortal(icPurchases, icWarehouses, branchId!);
-  }, [icPurchases, icWarehouses, isBranchPortal, branchId]);
+    if (!isBranchScoped) return icPurchases;
+    return filterPurchasesForBranchPortal(icPurchases, icWarehouses, scopedBranchId);
+  }, [icPurchases, icWarehouses, isBranchScoped, scopedBranchId]);
 
   const scopedSuppliers = useMemo(() => {
-    if (isBranchPortal) return filterSuppliersForBranchPortal(icSuppliers, branchId!);
+    if (isBranchScoped) return filterSuppliersForBranchPortal(icSuppliers, scopedBranchId);
     return filterSuppliersForAdminPortal(icSuppliers);
-  }, [icSuppliers, isBranchPortal, branchId]);
+  }, [icSuppliers, isBranchScoped, scopedBranchId]);
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -126,7 +133,7 @@ export default function ICTransferPurchase({ portalMode = 'admin', branchId }: P
       <PageHeader
         title="Purchase"
         subtitle={
-          isBranchPortal
+          isBranchScoped
             ? 'Record stock purchases into your branch warehouses'
             : 'Track purchase orders across suppliers'
         }
@@ -294,8 +301,8 @@ export default function ICTransferPurchase({ portalMode = 'admin', branchId }: P
         open={modalOpen} 
         onClose={() => { setModalOpen(false); setSelectedPurchase(null); }} 
         initialData={selectedPurchase || undefined}
-        branchId={isBranchPortal ? branchId : undefined}
-        warehouses={isBranchPortal ? scopedWarehouses : undefined}
+        branchId={scopedBranchId}
+        warehouses={isBranchScoped ? scopedWarehouses : undefined}
       />
       <ViewPurchaseModal
         open={viewModalOpen}

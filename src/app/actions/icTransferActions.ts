@@ -1348,20 +1348,41 @@ async function assertSupplierMutationAllowed(
   return null;
 }
 
+async function resolveBranchManagerBranchId(
+  branchSlug?: string,
+): Promise<{ branchId: string } | { error: string } | null> {
+  const user = await resolveICTransferAdminUser(branchSlug);
+  if (!user || user.role !== 'branch_manager' || !user.branchId) {
+    return null;
+  }
+
+  const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
+  if (slug) {
+    const branchRes = await query(`SELECT id FROM branches WHERE slug = $1 LIMIT 1`, [slug]);
+    if (branchRes.rows.length === 0) return { error: 'Branch not found' };
+    const branchId = String(branchRes.rows[0].id);
+    if (String(user.branchId) !== branchId) {
+      return { error: 'You are not authorized for this branch' };
+    }
+    return { branchId };
+  }
+
+  return { branchId: String(user.branchId) };
+}
+
 async function assertBranchManagerPurchaseSupplier(
   supplierId: string | null | undefined,
   branchSlug?: string,
 ): Promise<{ error: string } | null> {
   if (!supplierId) return null;
 
-  const user = await resolveICTransferAdminUser(branchSlug);
-  if (!user || user.role !== 'branch_manager' || !user.branchId) {
-    return null;
-  }
+  const resolved = await resolveBranchManagerBranchId(branchSlug);
+  if (!resolved) return null;
+  if ('error' in resolved) return { error: resolved.error };
 
   const res = await query(`SELECT branch_id FROM ic_suppliers WHERE id = $1 LIMIT 1`, [supplierId]);
   if (res.rows.length === 0) return { error: 'Supplier not found' };
-  if (!res.rows[0].branch_id || String(res.rows[0].branch_id) !== String(user.branchId)) {
+  if (!res.rows[0].branch_id || String(res.rows[0].branch_id) !== resolved.branchId) {
     return { error: 'Supplier must belong to your branch' };
   }
 
@@ -1372,22 +1393,21 @@ async function assertBranchManagerPurchaseWarehouse(
   warehouseId: string | null | undefined,
   branchSlug?: string,
 ): Promise<{ error: string } | null> {
-  const user = await resolveICTransferAdminUser(branchSlug);
-  if (!user || user.role !== 'branch_manager' || !user.branchId) {
-    return null;
-  }
+  const resolved = await resolveBranchManagerBranchId(branchSlug);
+  if (!resolved) return null;
+  if ('error' in resolved) return { error: resolved.error };
   if (!warehouseId) return { error: 'Warehouse is required' };
-  return assertBranchWarehouseForBranch(warehouseId, user.branchId);
+  return assertBranchWarehouseForBranch(warehouseId, resolved.branchId);
 }
 
 async function assertBranchManagerCanModifyPurchase(
   purchaseId: string,
   branchSlug?: string,
 ): Promise<{ error: string } | null> {
-  const user = await resolveICTransferAdminUser(branchSlug);
-  if (!user || user.role !== 'branch_manager' || !user.branchId) {
-    return null;
-  }
+  const resolved = await resolveBranchManagerBranchId(branchSlug);
+  if (!resolved) return null;
+  if ('error' in resolved) return { error: resolved.error };
+
   const res = await query(
     `SELECT w.branch_id
      FROM ic_purchases p
@@ -1396,7 +1416,7 @@ async function assertBranchManagerCanModifyPurchase(
     [purchaseId],
   );
   if (res.rows.length === 0) return { error: 'Purchase not found' };
-  if (String(res.rows[0].branch_id) !== String(user.branchId)) {
+  if (String(res.rows[0].branch_id) !== resolved.branchId) {
     return { error: 'Unauthorized' };
   }
   return null;
