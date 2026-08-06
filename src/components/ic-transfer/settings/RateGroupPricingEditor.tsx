@@ -4,33 +4,26 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { formInput, formLabel } from '@/lib/ui';
 import { useLinkedRateFields } from '@/lib/icTransfer/useLinkedRateFields';
 import {
-  IC_SALE_TRANSACTION_TYPE_OPTIONS,
+  IC_SALE_TRANSACTION_TYPES,
   type ICSaleTransactionType,
 } from '@/lib/icTransfer/transactionTypes';
 import {
-  autofillTransactionPricing,
-  buildPerTypePricing,
   createDefaultPricingConfig,
-  createDefaultSlabPricing,
   createEmptySlabPricing,
+  finalizePerTypePricingConfig,
   flatForNormalize,
   getFlatRateFromGroup,
-  getPricingKind,
-  getPricingScope,
+  getTransactionTypePricingMode,
+  hydratePricingEditorFromGroup,
+  isTransactionPricingConfigured,
   normalizePricingConfig,
   remapPricingConfigToConversion,
-  type RatePricingKind,
-  type RatePricingScope,
 } from '@/lib/icTransfer/ratePricing';
 import type { NullableFlatRate } from '@/lib/icTransfer/rateFieldInput';
-import {
-  formatRateFieldDisplay,
-  parseRateFieldInput,
-  isIncompleteDecimalInput,
-} from '@/lib/icTransfer/rateFieldInput';
 import { formatRateInputValue, getCurrencyUnitRate } from '@/lib/icTransfer/rateCalculations';
 import type { ICRateGroup, ICRateGroupPricingConfig, ICRateTransactionPricing } from '@/types';
-import RateSlabTable, { slabsFromEditable, slabsToEditable } from './RateSlabTable';
+import FlatRateFields from './FlatRateFields';
+import RatePricingTypeSplitPanel, { type RatePricingTab } from './RatePricingTypeSplitPanel';
 
 export type RatePricingEditorValue = {
   flat: NullableFlatRate;
@@ -56,241 +49,6 @@ type Props = {
   onChange: (value: RatePricingEditorValue) => void;
 };
 
-type PricingModeKey = 'flat_all' | 'flat_per' | 'slab_all' | 'slab_per';
-
-const GUIDED_MODES: ReadonlyArray<{
-  key: PricingModeKey;
-  scope: RatePricingScope;
-  kind: RatePricingKind;
-  title: string;
-  description: string;
-}> = [
-  {
-    key: 'flat_all',
-    scope: 'all_types',
-    kind: 'flat',
-    title: 'One flat rate',
-    description: 'Same rate for Transfer, CDM, By Hand, and NRE',
-  },
-  {
-    key: 'flat_per',
-    scope: 'per_type',
-    kind: 'flat',
-    title: 'Flat per type',
-    description: 'Set a different flat rate for each transaction type',
-  },
-  {
-    key: 'slab_all',
-    scope: 'all_types',
-    kind: 'slab',
-    title: 'Volume slabs',
-    description: 'Shared volume tiers for every transaction type',
-  },
-  {
-    key: 'slab_per',
-    scope: 'per_type',
-    kind: 'slab',
-    title: 'Slabs per type',
-    description: 'Separate volume tiers for each transaction type',
-  },
-];
-
-function modeKeyFromState(scope: RatePricingScope, kind: RatePricingKind): PricingModeKey {
-  if (scope === 'all_types' && kind === 'flat') return 'flat_all';
-  if (scope === 'per_type' && kind === 'flat') return 'flat_per';
-  if (scope === 'all_types' && kind === 'slab') return 'slab_all';
-  return 'slab_per';
-}
-
-function SegmentButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-        active
-          ? 'bg-accent text-white shadow-sm'
-          : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function FlatRateFields({
-  pricing,
-  currency,
-  convertedRateOnly,
-  lockedConversionRate,
-  onChange,
-}: {
-  pricing: ICRateTransactionPricing;
-  currency: string;
-  convertedRateOnly?: boolean;
-  /** Branch portal: force this conversion when deriving AED from local rate. */
-  lockedConversionRate?: number;
-  onChange: (next: ICRateTransactionPricing) => void;
-}) {
-  const sale = pricing.saleRate ?? null;
-  const conversion =
-    lockedConversionRate != null && lockedConversionRate > 0
-      ? lockedConversionRate
-      : (pricing.conversionRate ?? null);
-  const converted =
-    sale != null && conversion != null && conversion > 0
-      ? getCurrencyUnitRate(sale, conversion)
-      : null;
-
-  const [saleText, setSaleText] = useState(() => formatRateFieldDisplay(sale));
-  const [conversionText, setConversionText] = useState(() => formatRateFieldDisplay(conversion));
-  const [convertedText, setConvertedText] = useState(() => formatRateFieldDisplay(converted));
-
-  useEffect(() => {
-    setSaleText(formatRateFieldDisplay(sale));
-    setConversionText(formatRateFieldDisplay(conversion));
-    setConvertedText(formatRateFieldDisplay(converted));
-  }, [sale, conversion, converted]);
-
-  const commitFlat = (nextSale: number | null, nextConversion: number | null) => {
-    const conv =
-      lockedConversionRate != null && lockedConversionRate > 0
-        ? lockedConversionRate
-        : nextConversion;
-    onChange({
-      mode: 'flat',
-      saleRate: nextSale ?? undefined,
-      conversionRate: conv ?? undefined,
-    });
-  };
-
-  if (convertedRateOnly) {
-    return (
-      <div className="max-w-[220px]">
-        <label className={formLabel}>Rate ({currency})</label>
-        <input
-          type="text"
-          inputMode="decimal"
-          className={`${formInput} tabular-nums`}
-          value={convertedText}
-          placeholder="—"
-          onChange={e => {
-            const raw = e.target.value;
-            if (raw !== '' && !/^-?\d*\.?\d*$/u.test(raw)) return;
-            setConvertedText(raw);
-            if (raw.trim() === '' || isIncompleteDecimalInput(raw)) {
-              if (raw.trim() === '') commitFlat(null, conversion);
-              return;
-            }
-            const nextConverted = parseRateFieldInput(raw);
-            if (nextConverted == null) {
-              commitFlat(null, conversion);
-              return;
-            }
-            const conv =
-              lockedConversionRate != null && lockedConversionRate > 0
-                ? lockedConversionRate
-                : conversion != null && conversion > 0
-                  ? conversion
-                  : 1;
-            commitFlat(nextConverted / conv, conv);
-          }}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap gap-3">
-      <div className="w-full max-w-[140px]">
-        <label className={formLabel}>AED rate</label>
-        <input
-          type="text"
-          inputMode="decimal"
-          className={`${formInput} tabular-nums`}
-          value={saleText}
-          placeholder="—"
-          onChange={e => {
-            const raw = e.target.value;
-            if (raw !== '' && !/^-?\d*\.?\d*$/u.test(raw)) return;
-            setSaleText(raw);
-            if (raw.trim() === '' || isIncompleteDecimalInput(raw)) {
-              if (raw.trim() === '') commitFlat(null, conversion);
-              return;
-            }
-            // AED changed — keep this row's conversion; converted recalculates.
-            commitFlat(parseRateFieldInput(raw), conversion);
-          }}
-        />
-      </div>
-      {lockedConversionRate == null ? (
-        <div className="w-full max-w-[140px]">
-          <label className={formLabel}>Conversion</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            className={`${formInput} tabular-nums`}
-            value={conversionText}
-            placeholder="—"
-            onChange={e => {
-              const raw = e.target.value;
-              if (raw !== '' && !/^-?\d*\.?\d*$/u.test(raw)) return;
-              setConversionText(raw);
-              if (raw.trim() === '' || isIncompleteDecimalInput(raw)) {
-                if (raw.trim() === '') commitFlat(sale, null);
-                return;
-              }
-              const nextConv = parseRateFieldInput(raw);
-              if (nextConv == null || nextConv <= 0) {
-                commitFlat(sale, null);
-                return;
-              }
-              // AED fixed → converted = AED × conversion
-              commitFlat(sale, nextConv);
-            }}
-          />
-        </div>
-      ) : null}
-      <div className="w-full max-w-[140px]">
-        <label className={formLabel}>Rate ({currency})</label>
-        <input
-          type="text"
-          inputMode="decimal"
-          className={`${formInput} tabular-nums`}
-          value={convertedText}
-          placeholder="—"
-          onChange={e => {
-            const raw = e.target.value;
-            if (raw !== '' && !/^-?\d*\.?\d*$/u.test(raw)) return;
-            setConvertedText(raw);
-            if (raw.trim() === '' || isIncompleteDecimalInput(raw)) return;
-            const nextConverted = parseRateFieldInput(raw);
-            if (nextConverted == null || nextConverted <= 0) return;
-
-            // AED fixed → conversion = converted ÷ AED
-            if (sale != null && sale > 0) {
-              commitFlat(sale, nextConverted / sale);
-              return;
-            }
-            // No AED yet — derive AED if conversion exists.
-            if (conversion != null && conversion > 0) {
-              commitFlat(nextConverted / conversion, conversion);
-            }
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
 export default function RateGroupPricingEditor({
   group,
   currency,
@@ -304,6 +62,7 @@ export default function RateGroupPricingEditor({
 }: Props) {
   const isGuided = variant === 'guided';
   const [expanded, setExpanded] = useState(defaultExpanded || isGuided);
+  const useSplitPanel = isGuided || expanded;
   const effectiveLockedConversion =
     lockedConversionRate != null && lockedConversionRate > 0
       ? lockedConversionRate
@@ -328,74 +87,57 @@ export default function RateGroupPricingEditor({
     setSaleSilent,
   } = useLinkedRateFields();
 
-  const [scope, setScope] = useState<RatePricingScope>(
-    getPricingScope(group?.pricingConfig),
+  const initialNullableFlat = useMemo(
+    () => ({
+      saleRate: baseFlat.saleRate > 0 ? baseFlat.saleRate : null,
+      conversionRate: baseFlat.conversionRate > 0 ? baseFlat.conversionRate : null,
+    }),
+    [baseFlat.saleRate, baseFlat.conversionRate],
   );
-  const [kind, setKind] = useState<RatePricingKind>(getPricingKind(group?.pricingConfig));
-  const [commonPricing, setCommonPricing] = useState<ICRateTransactionPricing>(() => {
-    const nullableFlat = {
-      saleRate: baseFlat.saleRate > 0 ? baseFlat.saleRate : null,
-      conversionRate: baseFlat.conversionRate > 0 ? baseFlat.conversionRate : null,
-    };
-    const normalizedFlat = flatForNormalize(nullableFlat);
-    return autofillTransactionPricing(
-      normalizedFlat,
-      group?.pricingConfig?.common ??
-        (group?.pricingConfig?.kind === 'slab' ? createDefaultSlabPricing(normalizedFlat) : null),
-    );
-  });
-  const [perTypePricing, setPerTypePricing] = useState<
-    NonNullable<ICRateGroupPricingConfig['byTransactionType']>
-  >(() => {
-    const nullableFlat = {
-      saleRate: baseFlat.saleRate > 0 ? baseFlat.saleRate : null,
-      conversionRate: baseFlat.conversionRate > 0 ? baseFlat.conversionRate : null,
-    };
-    return buildPerTypePricing(flatForNormalize(nullableFlat), kind, group?.pricingConfig?.byTransactionType);
-  });
 
-  const [activeType, setActiveType] = useState<ICSaleTransactionType>('transfer');
+  const initialHydration = useMemo(
+    () => hydratePricingEditorFromGroup(group),
+    [group?.id],
+  );
+
+  const [perTypePricing, setPerTypePricing] = useState<
+    Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>>
+  >(() => initialHydration.perTypePricing);
+  const [selectedTypes, setSelectedTypes] = useState<ICSaleTransactionType[]>(
+    () => initialHydration.selectedTypes,
+  );
+  const [rateTab, setRateTab] = useState<RatePricingTab>(() => initialHydration.rateTab);
   /** Admin-only seed value — prefills empty row conversions; does not lock or hide fields. */
   const [defaultConversionText, setDefaultConversionText] = useState(() =>
     baseFlat.conversionRate > 0 ? formatRateInputValue(baseFlat.conversionRate) : '',
   );
 
   useEffect(() => {
-    if (!group) return;
     lastEmitKeyRef.current = null;
-    const groupFlat = getFlatRateFromGroup(group);
-    onSaleChange(groupFlat.saleRate > 0 ? String(groupFlat.saleRate) : '');
-    onConversionChange(groupFlat.conversionRate > 0 ? String(groupFlat.conversionRate) : '');
-    onConvertedChange(
-      groupFlat.saleRate > 0 && groupFlat.conversionRate > 0
-        ? String(getCurrencyUnitRate(groupFlat.saleRate, groupFlat.conversionRate))
-        : '',
-    );
-    setScope(getPricingScope(group.pricingConfig));
-    setKind(getPricingKind(group.pricingConfig));
-    setCommonPricing(
-      autofillTransactionPricing(
-        flatForNormalize({
-          saleRate: groupFlat.saleRate > 0 ? groupFlat.saleRate : null,
-          conversionRate: groupFlat.conversionRate > 0 ? groupFlat.conversionRate : null,
-        }),
-        group.pricingConfig?.common ??
-          (group.pricingConfig?.kind === 'slab' ? createDefaultSlabPricing(groupFlat) : null),
-      ),
-    );
-    setPerTypePricing(
-      buildPerTypePricing(
-        flatForNormalize({
-          saleRate: groupFlat.saleRate > 0 ? groupFlat.saleRate : null,
-          conversionRate: groupFlat.conversionRate > 0 ? groupFlat.conversionRate : null,
-        }),
-        getPricingKind(group.pricingConfig),
-        group.pricingConfig?.byTransactionType,
-      ),
-    );
-    setDefaultConversionText(
-      groupFlat.conversionRate > 0 ? formatRateInputValue(groupFlat.conversionRate) : '',
-    );
+    const hydration = hydratePricingEditorFromGroup(group);
+
+    if (group) {
+      const groupFlat = getFlatRateFromGroup(group);
+      onSaleChange(groupFlat.saleRate > 0 ? String(groupFlat.saleRate) : '');
+      onConversionChange(groupFlat.conversionRate > 0 ? String(groupFlat.conversionRate) : '');
+      onConvertedChange(
+        groupFlat.saleRate > 0 && groupFlat.conversionRate > 0
+          ? String(getCurrencyUnitRate(groupFlat.saleRate, groupFlat.conversionRate))
+          : '',
+      );
+      setDefaultConversionText(
+        groupFlat.conversionRate > 0 ? formatRateInputValue(groupFlat.conversionRate) : '',
+      );
+    } else {
+      onSaleChange('');
+      onConversionChange('');
+      onConvertedChange('');
+      setDefaultConversionText('');
+    }
+
+    setPerTypePricing(hydration.perTypePricing);
+    setRateTab(hydration.rateTab);
+    setSelectedTypes(hydration.selectedTypes);
   }, [group?.id]);
 
   const flat: NullableFlatRate = useMemo(
@@ -407,14 +149,13 @@ export default function RateGroupPricingEditor({
   );
 
   const pricingConfig = useMemo(() => {
-    const draft: ICRateGroupPricingConfig = {
-      scope,
-      kind,
-      ...(scope === 'all_types' && kind === 'slab' ? { common: commonPricing } : {}),
-      ...(scope === 'per_type' ? { byTransactionType: perTypePricing } : {}),
-    };
-    return normalizePricingConfig(draft, flatForNormalize(flat));
-  }, [scope, kind, commonPricing, perTypePricing, flat.saleRate, flat.conversionRate]);
+    if (useSplitPanel) {
+      return finalizePerTypePricingConfig(perTypePricing, flatForNormalize(flat), {
+        fillMissing: false,
+      });
+    }
+    return normalizePricingConfig(createDefaultPricingConfig(), flatForNormalize(flat));
+  }, [useSplitPanel, perTypePricing, flat.saleRate, flat.conversionRate]);
 
   const emitKey = useMemo(
     () =>
@@ -423,7 +164,7 @@ export default function RateGroupPricingEditor({
         convertedRate: convertedRateNum,
         pricingConfig,
       }),
-    [flat.saleRate, flat.conversionRate, convertedRateNum, scope, kind, commonPricing, perTypePricing],
+    [flat.saleRate, flat.conversionRate, convertedRateNum, pricingConfig, perTypePricing, selectedTypes, rateTab],
   );
 
   useEffect(() => {
@@ -432,56 +173,60 @@ export default function RateGroupPricingEditor({
     onChange({ flat, convertedRate: convertedRateNum, pricingConfig });
   }, [emitKey, flat, convertedRateNum, pricingConfig, onChange]);
 
-  const handleScopeChange = (next: RatePricingScope) => {
-    setScope(next);
-    if (next === 'per_type') {
-      setPerTypePricing(buildPerTypePricing(flatForNormalize(flat), kind, perTypePricing));
-    }
+  const applyPricingToSelected = (pricing: ICRateTransactionPricing) => {
+    if (selectedTypes.length === 0) return;
+    setPerTypePricing(prev => {
+      const next = { ...prev };
+      for (const type of selectedTypes) {
+        next[type] =
+          rateTab === 'slab'
+            ? {
+                mode: 'slab',
+                slabs: (pricing.slabs ?? []).map(tier => ({ ...tier })),
+              }
+            : {
+                mode: 'flat',
+                saleRate: pricing.saleRate,
+                conversionRate: pricing.conversionRate,
+              };
+      }
+      return next;
+    });
   };
 
-  const handleKindChange = (next: RatePricingKind) => {
-    setKind(next);
-    const normalizedFlat = flatForNormalize(flat);
-    const seed = Number(defaultConversionText);
-    const seedConv = Number.isFinite(seed) && seed > 0 ? seed : null;
+  const handleSelectedTypesChange = (types: ICSaleTransactionType[]) => {
+    setSelectedTypes(types);
+    setPerTypePricing(prev => {
+      const next = { ...prev };
+      const prevSelected = new Set(selectedTypes);
 
-    const withSeed = (pricing: ICRateTransactionPricing): ICRateTransactionPricing => {
-      if (!seedConv) return pricing;
-      if (pricing.mode === 'flat') {
-        if (pricing.conversionRate && pricing.conversionRate > 0) return pricing;
-        return { ...pricing, conversionRate: seedConv };
+      for (const type of IC_SALE_TRANSACTION_TYPES) {
+        if (prevSelected.has(type) && !types.includes(type) && !isTransactionPricingConfigured(prev[type])) {
+          delete next[type];
+        }
       }
-      return {
-        mode: 'slab',
-        slabs: (pricing.slabs ?? []).map(tier => ({
-          ...tier,
-          conversionRate: tier.conversionRate > 0 ? tier.conversionRate : seedConv,
-        })),
-      };
-    };
 
-    if (next === 'slab') {
-      const hasFlat = flat.saleRate != null && flat.conversionRate != null;
-      setCommonPricing(
-        withSeed(hasFlat ? createDefaultSlabPricing(normalizedFlat) : createEmptySlabPricing()),
-      );
-      setPerTypePricing(
-        Object.fromEntries(
-          Object.entries(buildPerTypePricing(normalizedFlat, 'slab', perTypePricing)).map(
-            ([type, pricing]) => [type, withSeed(pricing)],
-          ),
-        ) as NonNullable<ICRateGroupPricingConfig['byTransactionType']>,
-      );
-    } else {
-      setCommonPricing(withSeed(autofillTransactionPricing(normalizedFlat, null)));
-      setPerTypePricing(
-        Object.fromEntries(
-          Object.entries(buildPerTypePricing(normalizedFlat, 'flat', perTypePricing)).map(
-            ([type, pricing]) => [type, withSeed(pricing)],
-          ),
-        ) as NonNullable<ICRateGroupPricingConfig['byTransactionType']>,
-      );
-    }
+      for (const type of types) {
+        const existing = prev[type];
+        if (existing?.mode === rateTab) {
+          next[type] = existing;
+          continue;
+        }
+        next[type] = rateTab === 'slab' ? createEmptySlabPricing() : { mode: 'flat' };
+      }
+
+      return next;
+    });
+  };
+
+  const handleRateTabChange = (tab: RatePricingTab) => {
+    setRateTab(tab);
+    setSelectedTypes(prev =>
+      prev.filter(type => {
+        const mode = getTransactionTypePricingMode(perTypePricing[type]);
+        return mode == null || mode === tab;
+      }),
+    );
   };
 
   const handleConvertedInput = (value: string) => {
@@ -519,7 +264,6 @@ export default function RateGroupPricingEditor({
   const prefillConversion = (next: number) => {
     if (!Number.isFinite(next) || next <= 0) return;
 
-    // Seed base conversion if empty.
     if (conversionRateNum == null || conversionRateNum <= 0) {
       setConversionSilent(formatRateInputValue(next));
       if (saleRateNum != null && saleRateNum > 0) {
@@ -541,18 +285,15 @@ export default function RateGroupPricingEditor({
       };
     };
 
-    if (scope === 'all_types' && kind === 'slab') {
-      setCommonPricing(prev => stampEmpty(prev));
-    }
-    if (scope === 'per_type') {
-      setPerTypePricing(prev => {
-        const nextMap = { ...prev };
-        for (const type of Object.keys(nextMap) as ICSaleTransactionType[]) {
-          if (nextMap[type]) nextMap[type] = stampEmpty(nextMap[type]!);
-        }
-        return nextMap;
-      });
-    }
+    if (!useSplitPanel) return;
+
+    setPerTypePricing(prev => {
+      const nextMap = { ...prev };
+      for (const type of selectedTypes) {
+        if (nextMap[type]) nextMap[type] = stampEmpty(nextMap[type]!);
+      }
+      return nextMap;
+    });
   };
 
   const handleDefaultConversionChange = (raw: string) => {
@@ -586,15 +327,9 @@ export default function RateGroupPricingEditor({
 
     // Keep local (sale × conversion) amounts stable when the lock changes.
     const remapped = remapPricingConfigToConversion(
-      {
-        scope,
-        kind,
-        ...(scope === 'all_types' && kind === 'slab' ? { common: commonPricing } : {}),
-        ...(scope === 'per_type' ? { byTransactionType: perTypePricing } : {}),
-      },
+      finalizePerTypePricingConfig(perTypePricing, flatForNormalize(flat)),
       effectiveLockedConversion,
     );
-    if (remapped?.common) setCommonPricing(remapped.common);
     if (remapped?.byTransactionType) setPerTypePricing(remapped.byTransactionType);
 
     if (saleRateNum != null && saleRateNum > 0) {
@@ -608,40 +343,12 @@ export default function RateGroupPricingEditor({
     }
   }, [effectiveLockedConversion]);
 
-  const activeTypePricing =
-    perTypePricing[activeType] ?? autofillTransactionPricing(flatForNormalize(flat), null);
-
-  const handleGuidedMode = (key: PricingModeKey) => {
-    const mode = GUIDED_MODES.find(m => m.key === key);
-    if (!mode) return;
-
-    if (mode.kind !== kind) {
-      handleKindChange(mode.kind);
-    }
-    if (mode.scope !== scope) {
-      setScope(mode.scope);
-      if (mode.scope === 'per_type') {
-        setPerTypePricing(
-          buildPerTypePricing(flatForNormalize(flat), mode.kind, perTypePricing),
-        );
-      }
-    }
-    // When entering flat_per with a filled base rate, seed every type from it.
-    if (mode.key === 'flat_per' && flat.saleRate != null && flat.saleRate > 0) {
-      setPerTypePricing(buildPerTypePricing(flatForNormalize(flat), 'flat', undefined));
-    }
-    setExpanded(true);
-  };
-
-  const activeModeKey = modeKeyFromState(scope, kind);
-  // One rate surface per mode: flat_per uses per-type fields only (no duplicate base row).
-  const showBaseRateFields =
-    activeModeKey === 'flat_all' ||
-    activeModeKey === 'slab_all' ||
-    activeModeKey === 'slab_per';
-  const showAdvancedPanel = isGuided
-    ? activeModeKey !== 'flat_all'
-    : expanded;
+  const defaultConversionNum = useMemo(() => {
+    const trimmed = defaultConversionText.trim();
+    if (!trimmed || /^-?\d+\.$/u.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [defaultConversionText]);
 
   const baseRateFields = (
     <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
@@ -736,81 +443,15 @@ export default function RateGroupPricingEditor({
       </div>
     ) : null;
 
-  const typeTabs = (
-    <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-2">
-      {IC_SALE_TRANSACTION_TYPE_OPTIONS.map(opt => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => setActiveType(opt.value)}
-          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-            activeType === opt.value
-              ? 'bg-white text-accent shadow-sm ring-1 ring-accent/30'
-              : 'text-slate-500 hover:bg-white/80 hover:text-slate-700'
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-
   return (
     <div className="space-y-4">
-      {defaultConversionField}
+      {useSplitPanel && defaultConversionField}
 
-      {isGuided ? (
+      {!useSplitPanel ? (
         <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Pricing mode
+          <p className="text-xs text-slate-500">
+            Default flat rate for all transaction types. Expand for per-type flat or slab pricing.
           </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {GUIDED_MODES.map(mode => {
-              const active = activeModeKey === mode.key;
-              return (
-                <button
-                  key={mode.key}
-                  type="button"
-                  onClick={() => handleGuidedMode(mode.key)}
-                  className={`rounded-xl border px-3.5 py-3 text-left transition-colors ${
-                    active
-                      ? 'border-accent/40 bg-accent/[0.04] ring-1 ring-accent/20'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80'
-                  }`}
-                >
-                  <span className="flex items-start gap-2.5">
-                    <span
-                      className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
-                        active ? 'border-accent bg-accent' : 'border-slate-300 bg-white'
-                      }`}
-                      aria-hidden
-                    >
-                      {active ? <span className="size-1.5 rounded-full bg-white" /> : null}
-                    </span>
-                    <span className="min-w-0">
-                      <span className={`block text-sm font-bold ${active ? 'text-accent' : 'text-slate-900'}`}>
-                        {mode.title}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                        {mode.description}
-                      </span>
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Base rate — only when this mode uses it as the primary or seed input */}
-      {showBaseRateFields ? (
-        <div className="space-y-2">
-          {isGuided && (activeModeKey === 'slab_all' || activeModeKey === 'slab_per') ? (
-            <p className="text-xs text-slate-500">
-              Optional default rate — empty slab cells inherit this when you save.
-            </p>
-          ) : null}
           {baseRateFields}
         </div>
       ) : null}
@@ -834,118 +475,28 @@ export default function RateGroupPricingEditor({
           >
             <path d="M9 18l6-6-6-6" />
           </svg>
-          {expanded ? 'Hide transaction-type pricing' : 'Advanced pricing by transaction type'}
+          {expanded ? 'Hide per-type pricing' : 'Per-type pricing (flat or slab)'}
         </button>
       ) : null}
 
-      {showAdvancedPanel ? (
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-          {!isGuided ? (
-            <>
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Applies to
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <SegmentButton
-                    active={scope === 'all_types'}
-                    label="Same for all types"
-                    onClick={() => handleScopeChange('all_types')}
-                  />
-                  <SegmentButton
-                    active={scope === 'per_type'}
-                    label="Per transaction type"
-                    onClick={() => handleScopeChange('per_type')}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Pricing method
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <SegmentButton
-                    active={kind === 'flat'}
-                    label="Flat rate"
-                    onClick={() => handleKindChange('flat')}
-                  />
-                  <SegmentButton
-                    active={kind === 'slab'}
-                    label="Volume slabs"
-                    onClick={() => handleKindChange('slab')}
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Volume slabs charge different rates by order size. Empty tiers inherit the flat rate above.
-                </p>
-              </div>
-            </>
-          ) : null}
-
-          {scope === 'all_types' ? (
-            <div className="space-y-3">
-              {kind === 'flat' ? (
-                <p className="text-xs text-slate-500">
-                  All transaction types use the flat rate fields above.
-                </p>
-              ) : (
-                <RateSlabTable
-                  slabs={slabsToEditable(
-                    commonPricing.slabs ??
-                      (flat.saleRate != null
-                        ? createDefaultSlabPricing(flatForNormalize(flat)).slabs!
-                        : createEmptySlabPricing().slabs!),
-                  )}
-                  currency={currency}
-                  convertedRateOnly={convertedRateOnly}
-                  lockedConversionRate={effectiveLockedConversion}
-                  onChange={slabs =>
-                    setCommonPricing({ mode: 'slab', slabs: slabsFromEditable(slabs) })
-                  }
-                />
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {isGuided && kind === 'flat' ? (
-                <p className="text-xs text-slate-500">
-                  Set a rate for each transaction type. Switch tabs below.
-                </p>
-              ) : null}
-              {typeTabs}
-
-              {kind === 'flat' ? (
-                <FlatRateFields
-                  pricing={activeTypePricing}
-                  currency={currency}
-                  convertedRateOnly={convertedRateOnly}
-                  lockedConversionRate={effectiveLockedConversion}
-                  onChange={next =>
-                    setPerTypePricing(prev => ({ ...prev, [activeType]: next }))
-                  }
-                />
-              ) : (
-                <RateSlabTable
-                  slabs={slabsToEditable(
-                    activeTypePricing.slabs ??
-                      (flat.saleRate != null
-                        ? createDefaultSlabPricing(flatForNormalize(flat)).slabs!
-                        : createEmptySlabPricing().slabs!),
-                  )}
-                  currency={currency}
-                  convertedRateOnly={convertedRateOnly}
-                  lockedConversionRate={effectiveLockedConversion}
-                  onChange={slabs =>
-                    setPerTypePricing(prev => ({
-                      ...prev,
-                      [activeType]: { mode: 'slab', slabs: slabsFromEditable(slabs) },
-                    }))
-                  }
-                />
-              )}
-            </div>
-          )}
+      {useSplitPanel ? (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Pricing mode
+          </p>
+          <RatePricingTypeSplitPanel
+            selectedTypes={selectedTypes}
+            onSelectedTypesChange={handleSelectedTypesChange}
+            rateTab={rateTab}
+            onRateTabChange={handleRateTabChange}
+            perTypePricing={perTypePricing}
+            onApplyToSelected={applyPricingToSelected}
+            flatSeed={flat}
+            currency={currency}
+            convertedRateOnly={convertedRateOnly}
+            lockedConversionRate={effectiveLockedConversion}
+            defaultConversionRate={defaultConversionNum}
+          />
         </div>
       ) : null}
     </div>
@@ -962,14 +513,8 @@ export function getInitialPricingEditorValue(group?: ICRateGroup): RatePricingEd
     flat.saleRate != null && flat.conversionRate != null
       ? getCurrencyUnitRate(flat.saleRate, flat.conversionRate)
       : null;
-  return {
-    flat,
-    convertedRate,
-    pricingConfig: normalizePricingConfig(
-      group?.pricingConfig ?? createDefaultPricingConfig(),
-      flatForNormalize(flat),
-    ),
-  };
+  const { pricingConfig } = hydratePricingEditorFromGroup(group);
+  return { flat, convertedRate, pricingConfig };
 }
 
 export function serializePricingEditorValue(value: RatePricingEditorValue): string {

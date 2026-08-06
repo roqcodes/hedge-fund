@@ -13,12 +13,13 @@ import {
 } from '@/app/actions/warehouseActions';
 import { formatDateTime } from '@/data/mockData';
 import AssignDeliveryAgentModal from './AssignDeliveryAgentModal';
+import WarehouseAcceptOrderModal from './WarehouseAcceptOrderModal';
 import OrderDetailsModal from './OrderDetailsModal';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import { PriorityBadge, SkeletonRows } from '@/components/warehouse/shared';
 import { WarehouseOrderStatusCard, WarehouseOrderWorkflowActions, WarehouseAgentNameCell } from '@/components/warehouse/WarehouseOrderStatusCell';
 import RejectRemarkModal from '@/components/ic-transfer/shared/RejectRemarkModal';
-import { isWarehouseRejected } from '@/lib/icTransfer/orderStatus';
+import { isWarehouseRejected, isWarehouseDirectDeliverOrder } from '@/lib/icTransfer/orderStatus';
 import { comparePriority, highPriorityRowClass, highPriorityCardClass } from '@/lib/icTransfer/orderPriority';
 import { formatUnits, getDeliveredUnits, getRemainingUnits, isSaleCompleted } from '@/lib/icTransfer/saleUnits';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
@@ -29,7 +30,7 @@ import { resolveDateRange } from '@/lib/warehouseDateUtils';
 
 import type { WarehouseOrder, DeliveryAgent } from '@/types/warehouse';
 
-type TabKey = 'Pending' | 'AwaitingAdmin' | 'Completed' | 'Rejected';
+type TabKey = 'Pending' | 'Deliver' | 'AwaitingAdmin' | 'Completed' | 'Rejected';
 
 type SortField =
   | 'Date'
@@ -66,8 +67,10 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Modals
+  const [acceptModalOpen,  setAcceptModalOpen]  = useState(false);
   const [assignModalOpen,  setAssignModalOpen]  = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [detailsEditable,  setDetailsEditable]  = useState(false);
   const [selectedOrder,    setSelectedOrder]    = useState<WarehouseOrder | null>(null);
   const [rejectOrder,      setRejectOrder]      = useState<WarehouseOrder | null>(null);
   const [rejectLoading,    setRejectLoading]    = useState(false);
@@ -109,9 +112,20 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
     loadData();
   }, [loadData]);
 
+  const openAcceptModal = (order: WarehouseOrder) => {
+    setSelectedOrder(order);
+    setAcceptModalOpen(true);
+  };
+
   const openAssignModal = (order: WarehouseOrder) => {
     setSelectedOrder(order);
     setAssignModalOpen(true);
+  };
+
+  const openDetailsModal = (order: WarehouseOrder, editable = false) => {
+    setSelectedOrder(order);
+    setDetailsEditable(editable);
+    setDetailsModalOpen(true);
   };
 
   const handleWarehouseReject = async (remarks: string) => {
@@ -140,10 +154,18 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
   const filteredOrders = useMemo<WarehouseOrder[]>(() => {
     return orders
       .filter(o => {
+        const directDeliver = isWarehouseDirectDeliverOrder({
+          orderStatus: o.order_status ?? undefined,
+          deliveryAgentId: o.delivery_agent_id ?? undefined,
+        });
         if (tab === 'Pending') {
           return !isSaleCompleted(o.order_status)
             && o.order_status !== 'delivery_pending_admin'
-            && !isWarehouseRejected(o.order_status);
+            && !isWarehouseRejected(o.order_status)
+            && !directDeliver;
+        }
+        if (tab === 'Deliver') {
+          return directDeliver;
         }
         if (tab === 'AwaitingAdmin') {
           return o.order_status === 'delivery_pending_admin';
@@ -189,10 +211,21 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [filteredOrders, sortField, sortOrder, branches]);
-  const pendingCount = orders.filter(
-    o => !isSaleCompleted(o.order_status)
+  const pendingCount = orders.filter(o => {
+    const directDeliver = isWarehouseDirectDeliverOrder({
+      orderStatus: o.order_status ?? undefined,
+      deliveryAgentId: o.delivery_agent_id ?? undefined,
+    });
+    return !isSaleCompleted(o.order_status)
       && o.order_status !== 'delivery_pending_admin'
-      && !isWarehouseRejected(o.order_status),
+      && !isWarehouseRejected(o.order_status)
+      && !directDeliver;
+  }).length;
+  const deliverCount = orders.filter(o =>
+    isWarehouseDirectDeliverOrder({
+      orderStatus: o.order_status ?? undefined,
+      deliveryAgentId: o.delivery_agent_id ?? undefined,
+    }),
   ).length;
   const awaitingAdminCount = orders.filter(o => o.order_status === 'delivery_pending_admin').length;
   const completedCount = orders.filter(o => isSaleCompleted(o.order_status)).length;
@@ -201,11 +234,13 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
   const tabEmptyLabel =
     tab === 'Pending'
       ? 'pending'
-      : tab === 'AwaitingAdmin'
-        ? 'awaiting admin verification'
-        : tab === 'Completed'
-          ? 'completed'
-          : 'rejected';
+      : tab === 'Deliver'
+        ? 'direct delivery'
+        : tab === 'AwaitingAdmin'
+          ? 'awaiting admin verification'
+          : tab === 'Completed'
+            ? 'completed'
+            : 'rejected';
 
   const COLS: { label: SortField; align: 'left' | 'right' | 'center' }[] = [
     { label: 'Date',       align: 'left'   },
@@ -252,6 +287,12 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
             Pending Orders
             <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">
               {pendingCount}
+            </span>
+          </button>
+          <button onClick={() => setTab('Deliver')} className={tab === 'Deliver' ? tabBtnActive : tabBtn}>
+            Deliver
+            <span className="ml-1.5 rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-bold">
+              {deliverCount}
             </span>
           </button>
           <button onClick={() => setTab('Rejected')} className={tab === 'Rejected' ? tabBtnActive : tabBtn}>
@@ -339,7 +380,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                     return (
                       <tr
                         key={order.id}
-                        onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }}
+                        onClick={() => openDetailsModal(order, tab === 'Deliver')}
                         className={`cursor-pointer transition-colors ${highPriorityRowClass(order.priority)}`}
                         data-interactive-row
                       >
@@ -364,8 +405,11 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                           <WarehouseOrderWorkflowActions
                             order={order}
                             canAssignAgents={canAssignAgents}
+                            context={tab === 'Deliver' ? 'deliver' : 'pending'}
                             onReject={e => { e.stopPropagation(); setRejectOrder(order); }}
+                            onAccept={e => { e.stopPropagation(); openAcceptModal(order); }}
                             onAssign={e => { e.stopPropagation(); openAssignModal(order); }}
+                            onRecordDelivery={e => { e.stopPropagation(); openDetailsModal(order, true); }}
                           />
                         </td>
                       </tr>
@@ -393,7 +437,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                 return (
                   <div
                     key={order.id}
-                    onClick={() => { setSelectedOrder(order); setDetailsModalOpen(true); }}
+                    onClick={() => openDetailsModal(order, tab === 'Deliver')}
                     className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)] cursor-pointer hover:bg-slate-50 transition-colors ${highPriorityCardClass(order.priority)}`}
                   >
                     <div className="flex justify-between items-start">
@@ -417,8 +461,11 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                       <WarehouseOrderWorkflowActions
                         order={order}
                         canAssignAgents={canAssignAgents}
+                        context={tab === 'Deliver' ? 'deliver' : 'pending'}
                         onReject={e => { e.stopPropagation(); setRejectOrder(order); }}
+                        onAccept={e => { e.stopPropagation(); openAcceptModal(order); }}
                         onAssign={e => { e.stopPropagation(); openAssignModal(order); }}
+                        onRecordDelivery={e => { e.stopPropagation(); openDetailsModal(order, true); }}
                       />
                     </div>
                     <div className="flex items-center justify-between gap-3 border-t border-slate-50 pt-2">
@@ -427,7 +474,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
                       </div>
                       <button
                         type="button"
-                        onClick={e => { e.stopPropagation(); setSelectedOrder(order); setDetailsModalOpen(true); }}
+                        onClick={e => { e.stopPropagation(); openDetailsModal(order, tab === 'Deliver'); }}
                         className="shrink-0 text-xs font-bold text-slate-500 hover:text-slate-700"
                       >
                         View Details
@@ -442,6 +489,18 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
       </div>
 
       {/* Modals */}
+      {acceptModalOpen && selectedOrder && (
+        <WarehouseAcceptOrderModal
+          order={selectedOrder}
+          agents={agents}
+          onClose={() => setAcceptModalOpen(false)}
+          onSuccess={route => {
+            setAcceptModalOpen(false);
+            if (route === 'direct') setTab('Deliver');
+            loadData();
+          }}
+        />
+      )}
       {assignModalOpen && selectedOrder && (
         <AssignDeliveryAgentModal
           order={selectedOrder}
@@ -454,6 +513,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
         <OrderDetailsModal
           order={selectedOrder}
           isDeliveryView={isDeliveryRole ?? false}
+          isWarehouseDirectDeliver={detailsEditable}
           onClose={() => setDetailsModalOpen(false)}
           onSuccess={() => { setDetailsModalOpen(false); loadData(); refetchData(); }}
         />

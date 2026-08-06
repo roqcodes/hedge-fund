@@ -344,6 +344,33 @@ export async function assignOrderToAgent(orderId: string, agentId: string | null
   }
 }
 
+/** Warehouse manager accepts order for direct in-house delivery (no agent). */
+export async function warehouseAcceptDirectDeliver(orderId: string, updatedBy: string) {
+  try {
+    const parsed = warehouseActionSchema.parse({ orderId, updatedBy });
+    const res = await query(
+      `UPDATE ic_sales
+       SET order_status = 'wh_processing',
+           delivery_agent_id = NULL,
+           rejection_remarks = NULL,
+           status_updated_at = CURRENT_TIMESTAMP,
+           status_updated_by = $1
+       WHERE id = $2
+         AND order_status IN ('accepted', 'da_rejected')
+         AND transaction_type IS DISTINCT FROM 'by_hand'
+       RETURNING id`,
+      [parsed.updatedBy, parsed.orderId],
+    );
+    if (res.rowCount === 0) {
+      return { success: false, error: 'Order not found or not awaiting warehouse action' };
+    }
+    return { success: true };
+  } catch (error: unknown) {
+    logger.error({ error, orderId, updatedBy }, 'Error in warehouseAcceptDirectDeliver');
+    return { success: false, error: error instanceof Error ? error.message : 'Database error' };
+  }
+}
+
 /** Warehouse manager accepts order and assigns a delivery agent. */
 export async function warehouseAcceptOrder(orderId: string, agentId: string, updatedBy: string) {
   try {
@@ -604,7 +631,7 @@ export async function completeDeliveryWithUnits(
             ? `Delivered ${delivered} units. Remaining ${remaining} units assigned to you as a new order.${
                 awaitingAdmin ? ' Awaiting admin verification.' : ''
               }`
-            : `Delivered ${delivered} units. Remaining ${remaining} units created as a new order.${
+            : `Delivered ${delivered} units. Remaining ${remaining} units moved to Pending for assign or direct deliver.${
                 awaitingAdmin ? ' Awaiting admin verification.' : ''
               }`
           : awaitingAdmin

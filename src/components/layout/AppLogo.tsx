@@ -15,6 +15,7 @@ export default function AppLogo({ variant = 'sidebar', collapsed = false, href }
   const { user, branches, currentSlug } = useApp();
 
   const isBranchUser = user ? isBranchPortalRole(user.role) : false;
+  const isCustomer = isCustomerRole(user?.role);
   const branch = isBranchUser && user?.branchId
     ? branches.find(b => b.id === user.branchId)
     : currentSlug !== 'superadmin'
@@ -22,16 +23,23 @@ export default function AppLogo({ variant = 'sidebar', collapsed = false, href }
       : null;
 
   const logoSrc = isBranchUser && branch?.logo_url ? branch.logo_url : '/logo.png';
-  const brandName = isBranchUser && branch ? branch.name : 'AIBAK';
-  const tagline = isBranchUser
-    ? isCustomerRole(user?.role)
-      ? 'Customer Portal'
-      : user?.role === 'staff'
-        ? 'Staff Portal'
-        : user?.role?.startsWith('delivery') || user?.role?.startsWith('warehouse_')
-          ? 'Warehouse Portal'
-          : 'Branch Portal'
-    : 'Capital Management';
+  const brandName =
+    isCustomer && user?.name?.trim()
+      ? user.name.trim()
+      : isBranchUser && branch
+        ? branch.name
+        : 'AIBAK';
+  const tagline = isCustomer && branch?.name
+    ? branch.name
+    : isBranchUser
+      ? isCustomerRole(user?.role)
+        ? 'Customer Portal'
+        : user?.role === 'staff'
+          ? 'Staff Portal'
+          : user?.role?.startsWith('delivery') || user?.role?.startsWith('warehouse_')
+            ? 'Warehouse Portal'
+            : 'Branch Portal'
+      : 'Capital Management';
 
   const isHeader = variant === 'header';
 

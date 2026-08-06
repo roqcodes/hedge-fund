@@ -1508,6 +1508,8 @@ export async function adminAcceptICSaleAction(
     if ('error' in auth) return { success: false, error: auth.error };
     const modCheck = await assertAdminCanModifySale(parsed.id);
     if ('error' in modCheck) return { success: false, error: modCheck.error };
+    const whCheck = await assertBranchManagerPurchaseWarehouse(parsed.warehouseId, branchSlug);
+    if (whCheck) return { success: false, error: whCheck.error };
     try {
       const res = await query(
         `UPDATE ic_sales
@@ -1592,6 +1594,8 @@ export async function adminReassignICSaleWarehouseAction(
     if ('error' in auth) return { success: false, error: auth.error };
     const modCheck = await assertAdminCanModifySale(parsed.id);
     if ('error' in modCheck) return { success: false, error: modCheck.error };
+    const whCheck = await assertBranchManagerPurchaseWarehouse(parsed.warehouseId, branchSlug);
+    if (whCheck) return { success: false, error: whCheck.error };
     try {
       const res = await query(
         `UPDATE ic_sales

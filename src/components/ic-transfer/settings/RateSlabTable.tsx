@@ -5,8 +5,13 @@ import { formInput } from '@/lib/ui';
 import { getCurrencyUnitRate } from '@/lib/icTransfer/rateCalculations';
 import {
   formatRateFieldDisplay,
+  formatUnitFieldDisplay,
   isIncompleteDecimalInput,
+  nextUnitTierMin,
   parseRateFieldInput,
+  parseUnitFieldInput,
+  snapDecimal,
+  UNIT_MAX_FRACTION_DIGITS,
 } from '@/lib/icTransfer/rateFieldInput';
 import type { ICRateSlabTier } from '@/types';
 
@@ -22,6 +27,8 @@ type Props = {
   currency: string;
   convertedRateOnly?: boolean;
   lockedConversionRate?: number;
+  /** Admin seed — used when a tier has no conversion yet. */
+  defaultConversionRate?: number | null;
   onChange: (slabs: EditableSlabTier[]) => void;
 };
 
@@ -36,8 +43,11 @@ function emptyTier(): EditableSlabTier {
 
 export function slabsToEditable(slabs: ICRateSlabTier[]): EditableSlabTier[] {
   return slabs.map(tier => ({
-    minUnits: tier.minUnits,
-    maxUnits: tier.maxUnits,
+    minUnits: snapDecimal(tier.minUnits, UNIT_MAX_FRACTION_DIGITS),
+    maxUnits:
+      tier.maxUnits == null
+        ? null
+        : snapDecimal(tier.maxUnits, UNIT_MAX_FRACTION_DIGITS),
     saleRate: tier.saleRate > 0 ? tier.saleRate : null,
     conversionRate: tier.conversionRate > 0 ? tier.conversionRate : null,
   }));
@@ -94,11 +104,58 @@ function DecimalInput({
   );
 }
 
+function UnitInput({
+  value,
+  onCommit,
+  className,
+  disabled,
+  keepZero,
+}: {
+  value: number | null;
+  onCommit: (next: number | null) => void;
+  className?: string;
+  disabled?: boolean;
+  keepZero?: boolean;
+}) {
+  const [text, setText] = useState(() => formatUnitFieldDisplay(value, { keepZero }));
+
+  useEffect(() => {
+    setText(formatUnitFieldDisplay(value, { keepZero }));
+  }, [value, keepZero]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      disabled={disabled}
+      className={className}
+      value={text}
+      placeholder="—"
+      onChange={e => {
+        const raw = e.target.value;
+        if (raw !== '' && !/^-?\d*\.?\d*$/u.test(raw)) return;
+        setText(raw);
+        if (raw.trim() === '') {
+          onCommit(null);
+          return;
+        }
+        if (isIncompleteDecimalInput(raw)) return;
+        onCommit(parseUnitFieldInput(raw));
+      }}
+    />
+  );
+}
+
+const slabCell = 'px-1 py-1.5';
+const slabHead = `${slabCell} py-2 text-left font-semibold text-slate-500`;
+const slabInput = `${formInput} !px-2 !py-1.5 min-w-0 text-sm tabular-nums`;
+
 export default function RateSlabTable({
   slabs,
   currency,
   convertedRateOnly = false,
   lockedConversionRate,
+  defaultConversionRate,
   onChange,
 }: Props) {
   const updateTier = (index: number, patch: Partial<EditableSlabTier>) => {
@@ -107,11 +164,19 @@ export default function RateSlabTable({
         ? { ...patch, conversionRate: patch.conversionRate ?? lockedConversionRate }
         : patch;
 
-    const next = slabs.map((tier, i) => (i === index ? { ...tier, ...withLocked } : tier));
+    const normalized: Partial<EditableSlabTier> = { ...withLocked };
+    if (normalized.minUnits != null && Number.isFinite(normalized.minUnits)) {
+      normalized.minUnits = snapDecimal(normalized.minUnits, UNIT_MAX_FRACTION_DIGITS);
+    }
+    if (normalized.maxUnits != null && Number.isFinite(normalized.maxUnits)) {
+      normalized.maxUnits = snapDecimal(normalized.maxUnits, UNIT_MAX_FRACTION_DIGITS);
+    }
 
-    // Keep contiguous inclusive ranges: when To changes, next From becomes To + 1.
-    if (patch.maxUnits != null && Number.isFinite(patch.maxUnits) && index + 1 < next.length) {
-      next[index + 1] = { ...next[index + 1], minUnits: Number(patch.maxUnits) + 1 };
+    const next = slabs.map((tier, i) => (i === index ? { ...tier, ...normalized } : tier));
+
+    const closedMax = next[index]?.maxUnits;
+    if (closedMax != null && Number.isFinite(closedMax) && index + 1 < next.length) {
+      next[index + 1] = { ...next[index + 1], minUnits: nextUnitTierMin(closedMax) };
     }
 
     onChange(next);
@@ -122,9 +187,9 @@ export default function RateSlabTable({
     const template = last ?? emptyTier();
     const closedMax =
       last?.maxUnits != null
-        ? last.maxUnits
-        : (last ? last.minUnits + 99 : 99);
-    const nextMin = closedMax + 1;
+        ? snapDecimal(last.maxUnits, UNIT_MAX_FRACTION_DIGITS)
+        : snapDecimal(last ? last.minUnits + 99 : 99, UNIT_MAX_FRACTION_DIGITS);
+    const nextMin = nextUnitTierMin(closedMax);
     const newSlabs = slabs.map((tier, i) =>
       i === slabs.length - 1 && tier.maxUnits == null
         ? { ...tier, maxUnits: closedMax }
@@ -153,21 +218,33 @@ export default function RateSlabTable({
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full min-w-[520px] text-xs">
+        <table className="w-full table-fixed min-w-[480px] text-xs">
+          <colgroup>
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            {!convertedRateOnly ? (
+              <>
+                <col className="w-[18%]" />
+                <col className="w-[16%]" />
+              </>
+            ) : null}
+            <col className={convertedRateOnly ? 'w-[72%]' : 'w-[18%]'} />
+            <col className="w-8" />
+          </colgroup>
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50/80">
-              <th className="px-3 py-2.5 text-left font-semibold text-slate-500">From (units)</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-slate-500">To (units)</th>
+              <th className={slabHead}>From (units)</th>
+              <th className={slabHead}>To (units)</th>
               {!convertedRateOnly ? (
                 <>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500">AED rate</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-slate-500">Conversion</th>
+                  <th className={slabHead}>AED rate</th>
+                  <th className={slabHead}>Conversion</th>
                 </>
               ) : null}
-              <th className="px-3 py-2.5 text-left font-semibold text-slate-500">
+              <th className={slabHead}>
                 Rate ({currency})
               </th>
-              <th className="px-3 py-2.5 text-center font-semibold text-slate-500 w-10" />
+              <th className={`${slabHead} text-center`} />
             </tr>
           </thead>
           <tbody>
@@ -177,7 +254,9 @@ export default function RateSlabTable({
                   ? lockedConversionRate
                   : tier.conversionRate != null && tier.conversionRate > 0
                     ? tier.conversionRate
-                    : null;
+                    : defaultConversionRate != null && defaultConversionRate > 0
+                      ? defaultConversionRate
+                      : null;
               const converted =
                 tier.saleRate != null && tierConv != null
                   ? getCurrencyUnitRate(tier.saleRate, tierConv)
@@ -186,33 +265,33 @@ export default function RateSlabTable({
 
               return (
                 <tr key={index} className="border-b border-slate-50 last:border-0">
-                  <td className="px-3 py-2">
-                    <DecimalInput
+                  <td className={slabCell}>
+                    <UnitInput
                       value={tier.minUnits}
                       keepZero
                       disabled={index === 0}
-                      className={`${formInput} tabular-nums`}
+                      className={slabInput}
                       onCommit={next => updateTier(index, { minUnits: next ?? 0 })}
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={slabCell}>
                     {isLast ? (
-                      <span className="inline-flex h-10 items-center px-2 text-slate-400">∞</span>
+                      <span className="inline-flex h-[34px] w-full items-center px-2 text-slate-400">∞</span>
                     ) : (
-                      <DecimalInput
+                      <UnitInput
                         value={tier.maxUnits}
                         keepZero
-                        className={`${formInput} tabular-nums`}
+                        className={slabInput}
                         onCommit={next => updateTier(index, { maxUnits: next })}
                       />
                     )}
                   </td>
                   {!convertedRateOnly ? (
                     <>
-                      <td className="px-3 py-2">
+                      <td className={slabCell}>
                         <DecimalInput
                           value={tier.saleRate}
-                          className={`${formInput} tabular-nums`}
+                          className={slabInput}
                           onCommit={next => {
                             // AED changed — keep this tier's conversion; converted recalculates.
                             updateTier(index, {
@@ -222,15 +301,15 @@ export default function RateSlabTable({
                           }}
                         />
                       </td>
-                      <td className="px-3 py-2">
+                      <td className={slabCell}>
                         {lockedConversionRate != null && lockedConversionRate > 0 ? (
-                          <span className="inline-flex h-10 items-center tabular-nums text-slate-500">
+                          <span className="inline-flex h-[34px] w-full items-center px-2 tabular-nums text-slate-500">
                             {formatRateFieldDisplay(lockedConversionRate)}
                           </span>
                         ) : (
                           <DecimalInput
                             value={tier.conversionRate}
-                            className={`${formInput} tabular-nums`}
+                            className={slabInput}
                             onCommit={next => {
                               // AED fixed — converted = AED × conversion
                               updateTier(index, { conversionRate: next });
@@ -240,10 +319,10 @@ export default function RateSlabTable({
                       </td>
                     </>
                   ) : null}
-                  <td className="px-3 py-2">
+                  <td className={slabCell}>
                     <DecimalInput
                       value={converted}
-                      className={`${formInput} tabular-nums`}
+                      className={slabInput}
                       onCommit={next => {
                         if (next == null) return;
 
@@ -265,7 +344,7 @@ export default function RateSlabTable({
                           return;
                         }
 
-                        // No AED yet — derive AED if conversion exists.
+                        // No AED yet — derive AED from conversion (tier or default seed).
                         if (tierConv != null && tierConv > 0) {
                           updateTier(index, {
                             saleRate: next / tierConv,
@@ -275,12 +354,12 @@ export default function RateSlabTable({
                       }}
                     />
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className={`${slabCell} text-center`}>
                     {slabs.length > 1 ? (
                       <button
                         type="button"
                         aria-label="Remove tier"
-                        className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="inline-flex size-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                         onClick={() => removeTier(index)}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -305,8 +384,8 @@ export default function RateSlabTable({
         </div>
       </div>
       <p className="text-[11px] leading-snug text-slate-500">
-        Ranges are inclusive and must be contiguous — e.g. 0–100, then 101–200, then 201+ (open).
-        Next From must be previous To + 1 (no overlap, no gaps).
+        Ranges are inclusive and contiguous (1 unit = 1000 INR — e.g. 1.999 = 1999).
+        Next From = previous To + step (24→25, or 1.999→2). Last tier stays open-ended.
       </p>
     </div>
   );

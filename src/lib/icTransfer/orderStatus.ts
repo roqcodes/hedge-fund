@@ -262,6 +262,19 @@ export function canDeliveryAgentAct(status?: string | null): boolean {
   return normalizeOrderStatus(status) === 'wh_processing';
 }
 
+/** Warehouse will deliver directly — no delivery agent assigned. */
+export function isWarehouseDirectDeliverOrder(
+  order: Pick<ICSale, 'orderStatus' | 'deliveryAgentId'>,
+): boolean {
+  return normalizeOrderStatus(order.orderStatus) === 'wh_processing' && !order.deliveryAgentId;
+}
+
+export function canWarehouseRecordDelivery(
+  order: Pick<ICSale, 'orderStatus' | 'deliveryAgentId'>,
+): boolean {
+  return isWarehouseDirectDeliverOrder(order);
+}
+
 export function isDeliveryAgentRejected(status?: string | null): boolean {
   return normalizeOrderStatus(status) === 'da_rejected';
 }

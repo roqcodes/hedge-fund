@@ -3,6 +3,23 @@ import {
   getAdminAssignedBranchRateGroup,
   resolveBranchCustomerOrderRate,
 } from '@/lib/icTransfer/branchRateScope';
+import { getBranchPortalDisplayName } from '@/lib/icTransfer/branchPortalScope';
+
+/** Page header on customer IC Transfer — name first, branch second. */
+export function getCustomerPortalDisplayName(
+  customerName: string | null | undefined,
+  branch: { name?: string | null; country?: string | null; location?: string | null } | null | undefined,
+): { title: string; subtitle?: string } {
+  const name = customerName?.trim();
+  const branchName = branch?.name?.trim();
+  if (name) {
+    return {
+      title: name,
+      subtitle: branchName || undefined,
+    };
+  }
+  return getBranchPortalDisplayName(branch);
+}
 
 /** Strip HQ admin rate fields from sales returned to customer sessions. */
 export function stripAdminRatesFromSale(sale: ICSale): ICSale {

@@ -11,9 +11,11 @@ import RateGroupPricingEditor, {
 import { getCurrencyUnitRate, formatRateAmount } from '@/lib/icTransfer/rateCalculations';
 import {
   ensurePricingConversions,
+  finalizePerTypePricingConfig,
   getPricingSummaryLabel,
   hasAdvancedPricing,
   normalizePricingConfig,
+  resolveEditorSeedFlat,
   seedFlatRateForSave,
   validatePricingEditorForSave,
 } from '@/lib/icTransfer/ratePricing';
@@ -62,6 +64,7 @@ export default function RateGroupBulkUpdateBar({
   const [editorValue, setEditorValue] = useState<RatePricingEditorValue>(() =>
     getInitialPricingEditorValue(),
   );
+  const [loadedGroupId, setLoadedGroupId] = useState<string | null>(null);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -106,6 +109,11 @@ export default function RateGroupBulkUpdateBar({
   const allFilteredSelected =
     filteredGroups.length > 0 && filteredGroups.every(g => selectedGroupIds.includes(g.id));
 
+  const loadedGroup = useMemo(
+    () => (loadedGroupId ? groups.find(g => g.id === loadedGroupId) : undefined),
+    [loadedGroupId, groups],
+  );
+
   const toggleGroup = (id: string) => {
     setSelectedGroupIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
@@ -130,10 +138,18 @@ export default function RateGroupBulkUpdateBar({
     setEditorValue(prev => (arePricingEditorValuesEqual(prev, value) ? prev : value));
   }, []);
 
+  const loadGroupData = (group: ICRateGroup) => {
+    setLoadedGroupId(group.id);
+    setEditorValue(getInitialPricingEditorValue(group));
+    setEditorKey(k => k + 1);
+    setSubmitError(null);
+  };
+
   const resetForm = () => {
     setSelectedGroupIds([]);
     setGroupSearch('');
     setSubmitError(null);
+    setLoadedGroupId(null);
     setEditorValue(getInitialPricingEditorValue());
     setEditorKey(k => k + 1);
   };
@@ -155,25 +171,31 @@ export default function RateGroupBulkUpdateBar({
       return;
     }
 
-    const conversionForSave =
-      lockedConversion ??
-      (editorValue.flat.conversionRate != null && editorValue.flat.conversionRate > 0
-        ? editorValue.flat.conversionRate
-        : 1);
-
-    const preparedConfig = ensurePricingConversions(
-      editorValue.pricingConfig,
-      conversionForSave,
-    );
-
-    const validationError = validatePricingEditorForSave(editorValue.flat, preparedConfig, {
+    const seedFlat = resolveEditorSeedFlat(editorValue.flat, {
       lockedConversionRate: lockedConversion,
+      convertedRate: editorValue.convertedRate,
+    });
+
+    const validationError = validatePricingEditorForSave(editorValue.flat, editorValue.pricingConfig, {
+      lockedConversionRate: lockedConversion,
+      convertedRate: editorValue.convertedRate,
     });
     if (validationError) {
       setSubmitError(validationError);
       showToast(validationError, 'error');
       return;
     }
+
+    const conversionForSave =
+      lockedConversion ??
+      (seedFlat.conversionRate > 0 ? seedFlat.conversionRate : 1);
+
+    const preparedConfig = ensurePricingConversions(
+      editorValue.pricingConfig.scope === 'per_type' && editorValue.pricingConfig.byTransactionType
+        ? finalizePerTypePricingConfig(editorValue.pricingConfig.byTransactionType, seedFlat)
+        : normalizePricingConfig(editorValue.pricingConfig, seedFlat),
+      conversionForSave,
+    );
 
     const flat = seedFlatRateForSave(editorValue.flat, preparedConfig, {
       lockedConversionRate: lockedConversion,
@@ -247,7 +269,7 @@ export default function RateGroupBulkUpdateBar({
         <div>
           <h3 className="text-sm font-bold text-slate-900 sm:text-base">Bulk rate update</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            Pick groups, set a rate, apply once — optional per-type or volume pricing.
+            Pick groups, set a rate, apply once — use Load previous data to copy an existing setup.
           </p>
         </div>
         {selectedCount > 0 ? (
@@ -258,10 +280,10 @@ export default function RateGroupBulkUpdateBar({
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12">
+      <div className="flex flex-col lg:flex-row lg:items-stretch">
         {/* Step 1 — Groups */}
-        <aside className="flex flex-col border-b border-slate-100 lg:col-span-4 lg:border-b-0 lg:border-r">
-          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 md:px-5">
+        <aside className="flex w-full flex-col border-b border-slate-100 lg:w-[220px] lg:shrink-0 lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Step 1
@@ -277,7 +299,7 @@ export default function RateGroupBulkUpdateBar({
             </button>
           </div>
 
-          <div className="border-b border-slate-100 px-4 py-2.5 md:px-5">
+          <div className="border-b border-slate-100 px-3 py-2">
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <IconSearch />
@@ -300,39 +322,59 @@ export default function RateGroupBulkUpdateBar({
               <ul className="space-y-0.5">
                 {filteredGroups.map(group => {
                   const checked = selectedGroupIds.includes(group.id);
+                  const isLoaded = loadedGroupId === group.id;
                   return (
                     <li key={group.id}>
-                      <button
-                        type="button"
-                        onClick={() => toggleGroup(group.id)}
-                        className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                      <div
+                        className={`flex items-center gap-1 rounded-xl transition-colors ${
                           checked
                             ? 'bg-accent/[0.06] ring-1 ring-inset ring-accent/20'
                             : 'hover:bg-slate-50'
                         }`}
                       >
-                        <span
-                          className={`flex size-4 shrink-0 items-center justify-center rounded border ${
-                            checked
-                              ? 'border-accent bg-accent text-white'
-                              : 'border-slate-300 bg-white'
-                          }`}
-                          aria-hidden
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(group.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
                         >
-                          {checked ? <IconCheck /> : null}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold text-slate-900">
-                            {group.name}
+                          <span
+                            className={`flex size-4 shrink-0 items-center justify-center rounded border ${
+                              checked
+                                ? 'border-accent bg-accent text-white'
+                                : 'border-slate-300 bg-white'
+                            }`}
+                            aria-hidden
+                          >
+                            {checked ? <IconCheck /> : null}
                           </span>
-                          <span className="block truncate text-[11px] text-slate-400">
-                            {group.country} · {group.currency}
-                            {group.saleRate > 0
-                              ? ` · ${formatRateAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1))}`
-                              : ''}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-slate-900">
+                              {group.name}
+                            </span>
+                            <span className="block truncate text-[10px] text-slate-400">
+                              {group.country} · {group.currency}
+                              {group.saleRate > 0
+                                ? ` · ${formatRateAmount(getCurrencyUnitRate(group.saleRate, group.conversionRate ?? 1))}`
+                                : ''}
+                            </span>
                           </span>
-                        </span>
-                      </button>
+                        </button>
+                        <button
+                          type="button"
+                          title={`Load previous data from ${group.name}`}
+                          onClick={e => {
+                            e.stopPropagation();
+                            loadGroupData(group);
+                          }}
+                          className={`mr-1 shrink-0 rounded-md px-1.5 py-1 text-[10px] font-semibold leading-tight transition-colors ${
+                            isLoaded
+                              ? 'bg-accent/15 text-accent'
+                              : 'text-slate-400 hover:bg-white hover:text-accent'
+                          }`}
+                        >
+                          Load
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -341,7 +383,7 @@ export default function RateGroupBulkUpdateBar({
           </div>
 
           {selectedGroups.length > 0 ? (
-            <div className="mt-auto border-t border-slate-100 px-4 py-3 md:px-5">
+            <div className="mt-auto border-t border-slate-100 px-3 py-2.5">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Applying to
               </p>
@@ -373,23 +415,25 @@ export default function RateGroupBulkUpdateBar({
         </aside>
 
         {/* Step 2 — Rate */}
-        <div className="flex flex-col lg:col-span-8">
-          <div className="border-b border-slate-100 px-4 py-3 md:px-6">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="border-b border-slate-100 px-3 py-3 lg:pl-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Step 2
             </p>
             <p className="text-sm font-bold text-slate-900">Set the rate</p>
             <p className="mt-0.5 text-xs text-slate-500">
               {convertedRateOnly
-                ? `Choose a pricing mode, then enter ${currency} rates. Conversion is locked to your branch rate.`
-                : 'Choose a pricing mode, then enter rates. One flat rate is the default.'}
+                ? `Select types on the left, then set ${currency} flat or slab rates on the right.`
+                : loadedGroup
+                  ? `Editing from "${loadedGroup.name}" — select types and set flat or slab rates.`
+                  : 'Select transaction types, then set flat or slab rates on the right.'}
             </p>
           </div>
 
-          <div className="flex-1 space-y-5 px-4 py-4 md:px-6 md:py-5">
+          <div className="flex-1 space-y-5 px-3 py-4 lg:pl-4 lg:pr-4">
             <RateGroupPricingEditor
               key={editorKey}
-              group={undefined}
+              group={loadedGroup}
               currency={currency}
               convertedRateOnly={convertedRateOnly}
               lockedConversionRate={lockedConversion}
@@ -400,7 +444,7 @@ export default function RateGroupBulkUpdateBar({
             />
           </div>
 
-          <div className="mt-auto flex flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-6">
+          <div className="mt-auto flex flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between lg:pl-4 lg:pr-4">
             <div className="min-w-0 text-xs text-slate-500">
               {submitError ? (
                 <span className="font-medium text-red-600">{submitError}</span>

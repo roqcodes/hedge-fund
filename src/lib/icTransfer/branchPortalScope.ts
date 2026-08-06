@@ -51,6 +51,22 @@ export function filterWarehousesForAdminPortal(
   return warehouses.filter(w => !w.branchId);
 }
 
+type AssignableWarehouseUser = {
+  role?: string;
+  branchId?: string;
+};
+
+/** Warehouses available when assigning on admin workflows (accept / reassign / edit sale). */
+export function filterWarehousesForAssignableUser(
+  warehouses: ICWarehouse[],
+  user?: AssignableWarehouseUser | null,
+): ICWarehouse[] {
+  if (user?.role === 'branch_manager' && user.branchId) {
+    return filterWarehousesForBranchPortal(warehouses, user.branchId);
+  }
+  return filterWarehousesForAdminPortal(warehouses);
+}
+
 export function filterSuppliersForBranchPortal(
   suppliers: ICSupplier[],
   branchId: string,

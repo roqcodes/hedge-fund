@@ -31,7 +31,7 @@ import { ConfirmModal } from '@/components/warehouse/shared';
 import { customerOwnsSale, getBranchPortalOrderCustomerName, saleBelongsToBranchPortal, saleMatchesDateFilter } from '@/lib/icTransfer/branchOrderOwnership';
 import { resolveDateFilterRange } from '@/lib/dateFilterRange';
 import { canEditOrder } from '@/lib/icTransfer/customerOrderReview';
-import { getCustomerPortalSubCustomerName } from '@/lib/icTransfer/customerPortalScope';
+import { getCustomerPortalSubCustomerName, getCustomerPortalDisplayName } from '@/lib/icTransfer/customerPortalScope';
 import { getBranchPortalDisplayName } from '@/lib/icTransfer/branchPortalScope';
 import { getAdminAssignedBranchRateGroup } from '@/lib/icTransfer/branchRateScope';
 import { formatBranchProfit, resolveSaleBranchProfit } from '@/lib/icTransfer/branchSaleProfit';
@@ -88,6 +88,9 @@ export default function ICTransferBranch() {
   const currentBranch = branches.find(b => b.slug === currentSlug) ?? branches.find(b => b.id === user?.branchId);
   const branchName = currentBranch?.name || currentSlug || 'Branch Customer';
   const branchPortalDisplay = getBranchPortalDisplayName(currentBranch);
+  const pageDisplay = isCustomer
+    ? getCustomerPortalDisplayName(user?.name, currentBranch)
+    : branchPortalDisplay;
   const currentBranchId = currentBranch?.id ?? user?.branchId;
   const isBranchManager = user?.role === 'branch_manager';
   const showBranchProfit = isBranchManager;
@@ -278,9 +281,9 @@ export default function ICTransferBranch() {
   return (
     <PageShell>
       <PageHeader
-        title={branchPortalDisplay.title}
+        title={pageDisplay.title}
         subtitle={
-          branchPortalDisplay.subtitle ??
+          pageDisplay.subtitle ??
           (isCustomer
             ? 'Submit and track your transfer orders'
             : 'Submit and track transfer orders from your branch')

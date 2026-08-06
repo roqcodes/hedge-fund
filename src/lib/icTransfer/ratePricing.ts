@@ -4,7 +4,7 @@ import {
   IC_SALE_TRANSACTION_TYPE_OPTIONS,
 } from './transactionTypes';
 import type { ICRateGroup, ICRateGroupPricingConfig, ICRateSlabTier, ICRateTransactionPricing } from '@/types';
-import { coerceFlatRate, type NullableFlatRate } from './rateFieldInput';
+import { coerceFlatRate, nextUnitTierMin, type NullableFlatRate } from './rateFieldInput';
 
 function transactionTypeLabel(type: ICSaleTransactionType | string): string {
   return IC_SALE_TRANSACTION_TYPE_OPTIONS.find(opt => opt.value === type)?.label ?? String(type);
@@ -64,32 +64,97 @@ export function flatForNormalize(flat: NullableFlatRate): FlatRateValues {
   };
 }
 
+export function resolveEditorSeedFlat(
+  flat: NullableFlatRate,
+  options?: { lockedConversionRate?: number; convertedRate?: number | null },
+): FlatRateValues {
+  const locked =
+    options?.lockedConversionRate != null && options.lockedConversionRate > 0
+      ? options.lockedConversionRate
+      : null;
+  const coerced = coerceFlatRate(flat);
+  if (coerced) return coerced;
+
+  const conv =
+    locked ??
+    (flat.conversionRate != null && flat.conversionRate > 0 ? flat.conversionRate : 1);
+
+  if (options?.convertedRate != null && options.convertedRate > 0 && conv > 0) {
+    return { saleRate: options.convertedRate / conv, conversionRate: conv };
+  }
+
+  return {
+    saleRate: flat.saleRate ?? 0,
+    conversionRate: conv,
+  };
+}
+
+export function isTransactionPricingConfigured(
+  pricing: ICRateTransactionPricing | null | undefined,
+): boolean {
+  if (!pricing) return false;
+  if (pricing.mode === 'flat') {
+    return (
+      pricing.saleRate != null &&
+      pricing.saleRate > 0 &&
+      pricing.conversionRate != null &&
+      pricing.conversionRate > 0
+    );
+  }
+  if (!pricing.slabs?.length) return false;
+  return pricing.slabs.some(tier => tier.saleRate > 0 && tier.conversionRate > 0);
+}
+
+export function validatePartialPerTypePricing(
+  byTransactionType: Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>>,
+): string | null {
+  const unconfigured = IC_SALE_TRANSACTION_TYPES.filter(
+    type => !isTransactionPricingConfigured(byTransactionType[type]),
+  );
+  if (unconfigured.length > 0) {
+    const labels = unconfigured.map(type => transactionTypeLabel(type)).join(', ');
+    return `Still need rates for: ${labels}.`;
+  }
+
+  for (const type of IC_SALE_TRANSACTION_TYPES) {
+    const pricing = byTransactionType[type];
+    if (!pricing) continue;
+    const err = validateTransactionPricing(pricing, transactionTypeLabel(type));
+    if (err) return err;
+  }
+
+  return null;
+}
+
 export function validatePricingEditorForSave(
   flat: NullableFlatRate,
   config: ICRateGroupPricingConfig,
-  options?: { lockedConversionRate?: number },
+  options?: { lockedConversionRate?: number; convertedRate?: number | null },
 ): string | null {
   const scope = config.scope ?? 'all_types';
   const kind = config.kind ?? 'flat';
+  const seed = resolveEditorSeedFlat(flat, options);
 
   // Simple flat: only the base rate matters.
   if (scope === 'all_types' && kind === 'flat') {
-    const coerced = coerceFlatRate(flat);
-    if (!coerced) return 'Enter a valid rate before saving.';
+    if (seed.saleRate <= 0 || seed.conversionRate <= 0) {
+      return 'Enter a valid rate before saving.';
+    }
     return null;
+  }
+
+  if (config.scope === 'per_type' && config.byTransactionType) {
+    return validatePartialPerTypePricing(config.byTransactionType);
   }
 
   const locked =
     options?.lockedConversionRate != null && options.lockedConversionRate > 0
       ? options.lockedConversionRate
       : null;
-  const seed = coerceFlatRate(flat) ?? {
-    saleRate: 0,
-    conversionRate: locked ?? 1,
-  };
+  const conversionForSave = locked ?? (seed.conversionRate > 0 ? seed.conversionRate : 1);
   const prepared = ensurePricingConversions(
-    config,
-    locked ?? (seed.conversionRate > 0 ? seed.conversionRate : 1),
+    normalizePricingConfig(config, seed),
+    conversionForSave,
   );
   return validatePricingConfig(prepared, seed);
 }
@@ -263,6 +328,158 @@ export function remapPricingConfigToConversion(
   return config;
 }
 
+export function getTransactionTypePricingMode(
+  pricing: ICRateTransactionPricing | null | undefined,
+): RatePricingKind | null {
+  if (!pricing?.mode) return null;
+  return pricing.mode;
+}
+
+export function typesAssignableToTab(
+  perType: Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>>,
+  tab: RatePricingKind,
+): ICSaleTransactionType[] {
+  return IC_SALE_TRANSACTION_TYPES.filter(type => {
+    const mode = getTransactionTypePricingMode(perType[type]);
+    return mode == null || mode === tab;
+  });
+}
+
+export function inferRateTabFromConfig(config?: ICRateGroupPricingConfig | null): 'flat' | 'slab' {
+  if (!config) return 'flat';
+  if (config.scope === 'all_types') return config.kind === 'slab' ? 'slab' : 'flat';
+  const modes = IC_SALE_TRANSACTION_TYPES.map(type => config.byTransactionType?.[type]?.mode);
+  if (modes.length > 0 && modes.every(mode => mode === 'slab')) return 'slab';
+  return 'flat';
+}
+
+/** Load stored per-type pricing for the editor — preserves mixed flat/slab, no autofill of missing types. */
+export function loadPerTypePricingFromGroup(
+  config: ICRateGroupPricingConfig | null | undefined,
+  flat: FlatRateValues,
+): Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>> {
+  if (!config) {
+    if (flat.saleRate <= 0) return {};
+    const shared = createFlatPricing(flat);
+    return Object.fromEntries(
+      IC_SALE_TRANSACTION_TYPES.map(type => [type, { ...shared }]),
+    ) as NonNullable<ICRateGroupPricingConfig['byTransactionType']>;
+  }
+
+  if (config.scope === 'per_type' && config.byTransactionType) {
+    const result: Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>> = {};
+    for (const type of IC_SALE_TRANSACTION_TYPES) {
+      const stored = config.byTransactionType[type];
+      if (stored) {
+        result[type] = autofillTransactionPricing(flat, stored);
+      }
+    }
+    return result;
+  }
+
+  if (config.scope === 'all_types' && config.kind === 'slab' && config.common) {
+    const shared = autofillTransactionPricing(flat, config.common);
+    return Object.fromEntries(
+      IC_SALE_TRANSACTION_TYPES.map(type => [
+        type,
+        JSON.parse(JSON.stringify(shared)) as ICRateTransactionPricing,
+      ]),
+    ) as NonNullable<ICRateGroupPricingConfig['byTransactionType']>;
+  }
+
+  if (flat.saleRate <= 0) return {};
+  const shared = createFlatPricing(flat);
+  return Object.fromEntries(
+    IC_SALE_TRANSACTION_TYPES.map(type => [type, { ...shared }]),
+  ) as NonNullable<ICRateGroupPricingConfig['byTransactionType']>;
+}
+
+export function inferInitialSelectedTypes(
+  perTypePricing: Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>>,
+  tab: RatePricingKind,
+): ICSaleTransactionType[] {
+  return IC_SALE_TRANSACTION_TYPES.filter(
+    type => getTransactionTypePricingMode(perTypePricing[type]) === tab,
+  );
+}
+
+export function hasMixedPerTypePricing(config?: ICRateGroupPricingConfig | null): boolean {
+  if (config?.scope !== 'per_type' || !config.byTransactionType) return false;
+  const modes = IC_SALE_TRANSACTION_TYPES.map(type => config.byTransactionType?.[type]?.mode);
+  return modes.some(mode => mode === 'flat') && modes.some(mode => mode === 'slab');
+}
+
+export type PricingEditorHydration = {
+  perTypePricing: Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>>;
+  rateTab: RatePricingKind;
+  selectedTypes: ICSaleTransactionType[];
+  pricingConfig: ICRateGroupPricingConfig;
+};
+
+/** Single source of truth for loading group data into the pricing editor. */
+export function hydratePricingEditorFromGroup(
+  group: Pick<ICRateGroup, 'saleRate' | 'conversionRate' | 'pricingConfig'> | undefined,
+): PricingEditorHydration {
+  const groupFlat = group ? getFlatRateFromGroup(group) : { saleRate: 0, conversionRate: 1 };
+  const flat = flatForNormalize({
+    saleRate: groupFlat.saleRate > 0 ? groupFlat.saleRate : null,
+    conversionRate: groupFlat.conversionRate > 0 ? groupFlat.conversionRate : null,
+  });
+  const perTypePricing = loadPerTypePricingFromGroup(group?.pricingConfig, flat);
+  const rateTab = inferRateTabFromConfig(group?.pricingConfig);
+  const selectedTypes = inferInitialSelectedTypes(perTypePricing, rateTab);
+  const pricingConfig =
+    group?.pricingConfig && hasAdvancedPricing(group.pricingConfig)
+      ? finalizePerTypePricingConfig(perTypePricing, flat, { fillMissing: false })
+      : normalizePricingConfig(createDefaultPricingConfig(), flat);
+
+  return { perTypePricing, rateTab, selectedTypes, pricingConfig };
+}
+
+export function expandPricingConfigToPerType(
+  config: ICRateGroupPricingConfig | null | undefined,
+  flat: FlatRateValues,
+): NonNullable<ICRateGroupPricingConfig['byTransactionType']> {
+  return loadPerTypePricingFromGroup(config, flat) as NonNullable<
+    ICRateGroupPricingConfig['byTransactionType']
+  >;
+}
+
+export function finalizePerTypePricingConfig(
+  byTransactionType: Partial<NonNullable<ICRateGroupPricingConfig['byTransactionType']>>,
+  flat: FlatRateValues,
+  options?: { fillMissing?: boolean },
+): ICRateGroupPricingConfig {
+  const complete = { ...byTransactionType } as NonNullable<
+    ICRateGroupPricingConfig['byTransactionType']
+  >;
+
+  if (options?.fillMissing !== false) {
+    for (const type of IC_SALE_TRANSACTION_TYPES) {
+      if (!complete[type]) {
+        complete[type] = createFlatPricing(flat);
+      }
+    }
+  }
+
+  return {
+    scope: 'per_type',
+    kind: inferPerTypeConfigKind(complete),
+    byTransactionType: complete,
+  };
+}
+
+export function serializeTransactionPricing(pricing: ICRateTransactionPricing): string {
+  return JSON.stringify(pricing);
+}
+
+export function transactionPricingMatches(
+  a: ICRateTransactionPricing,
+  b: ICRateTransactionPricing,
+): boolean {
+  return serializeTransactionPricing(a) === serializeTransactionPricing(b);
+}
+
 /** Empty advanced config — group uses top-level flat rate for all types. */
 export function createDefaultPricingConfig(): ICRateGroupPricingConfig {
   return {
@@ -316,18 +533,22 @@ export function autofillTransactionPricing(
 
 export function buildPerTypePricing(
   flat: FlatRateValues,
-  kind: RatePricingKind,
+  _kind: RatePricingKind,
   existing?: ICRateGroupPricingConfig['byTransactionType'],
 ): NonNullable<ICRateGroupPricingConfig['byTransactionType']> {
   const result: NonNullable<ICRateGroupPricingConfig['byTransactionType']> = {};
   for (const type of IC_SALE_TRANSACTION_TYPES) {
-    const prior = existing?.[type];
-    result[type] =
-      kind === 'flat'
-        ? autofillTransactionPricing(flat, prior?.mode === 'flat' ? prior : null)
-        : autofillTransactionPricing(flat, prior?.mode === 'slab' ? prior : null);
+    result[type] = autofillTransactionPricing(flat, existing?.[type] ?? null);
   }
   return result;
+}
+
+function inferPerTypeConfigKind(
+  byTransactionType: NonNullable<ICRateGroupPricingConfig['byTransactionType']>,
+): RatePricingKind {
+  const modes = IC_SALE_TRANSACTION_TYPES.map(type => byTransactionType[type]?.mode);
+  if (modes.length > 0 && modes.every(mode => mode === 'slab')) return 'slab';
+  return 'flat';
 }
 
 export function normalizePricingConfig(
@@ -349,10 +570,11 @@ export function normalizePricingConfig(
     };
   }
 
+  const byTransactionType = buildPerTypePricing(flat, kind, config?.byTransactionType);
   return {
     scope: 'per_type',
-    kind,
-    byTransactionType: buildPerTypePricing(flat, kind, config?.byTransactionType),
+    kind: inferPerTypeConfigKind(byTransactionType),
+    byTransactionType,
   };
 }
 
@@ -388,13 +610,13 @@ export function validateSlabTiers(slabs: ICRateSlabTier[]): string | null {
       if (prev.maxUnits == null) {
         return `Tier ${i}: only the last tier can be open-ended.`;
       }
-      // Inclusive ranges: 0–100, then 101–200, then 201+.
-      const expectedFrom = prev.maxUnits + 1;
+      // Inclusive ranges: 0–24 then 25+, or 0–1.999 then 2+ (1 unit = 1000 INR).
+      const expectedFrom = nextUnitTierMin(prev.maxUnits);
       if (tier.minUnits <= prev.maxUnits) {
-        return `Volume tiers cannot overlap. Tier ${i + 1} From must be ${expectedFrom} (previous To + 1), not ${tier.minUnits}.`;
+        return `Volume tiers cannot overlap. Tier ${i + 1} From must be ${expectedFrom} (previous To + step), not ${tier.minUnits}.`;
       }
       if (tier.minUnits > expectedFrom) {
-        return `Volume tiers cannot have gaps. Tier ${i + 1} From must be ${expectedFrom} (previous To + 1).`;
+        return `Volume tiers cannot have gaps. Tier ${i + 1} From must be ${expectedFrom} (previous To + step).`;
       }
     }
   }
@@ -505,7 +727,9 @@ export function resolveGroupOrderRate(
 ): FlatRateValues {
   const fallback = getFlatRateFromGroup(group);
   const type = (transactionType || 'transfer') as ICSaleTransactionType;
-  const config = group.pricingConfig;
+  const config = group.pricingConfig
+    ? normalizePricingConfig(group.pricingConfig, fallback)
+    : null;
 
   if (!config || (config.scope === 'all_types' && config.kind === 'flat')) {
     return fallback;
@@ -528,8 +752,14 @@ export function resolveGroupOrderRate(
 export function getPricingSummaryLabel(config?: ICRateGroupPricingConfig | null): string {
   if (!hasAdvancedPricing(config)) return 'Flat (all types)';
   const scope = getPricingScope(config);
-  const kind = getPricingKind(config);
-  if (scope === 'all_types' && kind === 'slab') return 'Slabs (all types)';
-  if (scope === 'per_type' && kind === 'flat') return 'Flat per type';
+  if (scope === 'all_types' && config?.kind === 'slab') return 'Slabs (all types)';
+  if (scope === 'per_type' && config?.byTransactionType) {
+    const modes = IC_SALE_TRANSACTION_TYPES.map(type => config.byTransactionType?.[type]?.mode);
+    const hasFlat = modes.some(mode => mode === 'flat');
+    const hasSlab = modes.some(mode => mode === 'slab');
+    if (hasFlat && hasSlab) return 'Mixed (flat + slab)';
+    if (hasSlab) return 'Slabs per type';
+    return 'Flat per type';
+  }
   return 'Slabs per type';
 }

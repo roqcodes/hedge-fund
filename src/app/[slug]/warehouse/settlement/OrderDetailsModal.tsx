@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { completeDeliveryWithUnits, deliveryAgentRejectOrder } from '@/app/actions/warehouseActions';
+import { completeDeliveryWithUnits, deliveryAgentRejectOrder, warehouseRejectOrder } from '@/app/actions/warehouseActions';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import Modal from '@/components/ui/Modal';
 import RejectRemarkModal from '@/components/ic-transfer/shared/RejectRemarkModal';
@@ -17,6 +17,7 @@ import type { WarehouseOrder } from '@/types/warehouse';
 type Props = {
   order: WarehouseOrder;
   isDeliveryView?: boolean;
+  isWarehouseDirectDeliver?: boolean;
   onClose: () => void;
   onSuccess: () => void;
 };
@@ -48,6 +49,7 @@ function ImagePanel({
   isUploading,
   onUpload,
   onClear,
+  showCapture = false,
 }: {
   title: string;
   imageUrl?: string | null;
@@ -56,34 +58,102 @@ function ImagePanel({
   isUploading?: boolean;
   onUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClear?: () => void;
+  showCapture?: boolean;
 }) {
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const fileInputs = onUpload ? (
+    <>
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onUpload}
+        disabled={isUploading}
+      />
+      {showCapture ? (
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={onUpload}
+          disabled={isUploading}
+        />
+      ) : null}
+    </>
+  ) : null;
+
+  const uploadButtons = editable && onUpload ? (
+    <div className="flex flex-wrap gap-2">
+      {showCapture ? (
+        <button
+          type="button"
+          disabled={isUploading}
+          onClick={() => cameraInputRef.current?.click()}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="13" r="4" />
+          </svg>
+          {isUploading ? 'Uploading…' : 'Capture'}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        disabled={isUploading}
+        onClick={() => galleryInputRef.current?.click()}
+        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        {isUploading ? 'Uploading…' : 'Upload'}
+      </button>
+    </div>
+  ) : null;
+
   return (
     <div className="min-w-0">
       <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{title}</p>
       {imageUrl ? (
-        <div className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt={title} className="absolute inset-0 h-full w-full object-contain" />
+        <div className="space-y-2">
+          <div className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt={title} className="absolute inset-0 h-full w-full object-contain" />
+          </div>
           {editable && onClear ? (
-            <button
-              type="button"
-              className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-xs font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"
-              onClick={onClear}
-            >
-              Replace image
-            </button>
+            <>
+              {uploadButtons}
+              <button
+                type="button"
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                onClick={onClear}
+                disabled={isUploading}
+              >
+                Remove image
+              </button>
+            </>
           ) : null}
+          {fileInputs}
         </div>
       ) : editable && onUpload ? (
-        <label className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/80 text-slate-400 transition-colors hover:border-slate-300 hover:bg-slate-50">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mb-1.5 opacity-70" aria-hidden>
+        <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 text-slate-400">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-70" aria-hidden>
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          <span className="text-xs font-semibold">{isUploading ? 'Uploading…' : 'Upload image'}</span>
-          <input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={isUploading} />
-        </label>
+          <p className="text-center text-xs font-medium text-slate-500">Add payment proof image</p>
+          {uploadButtons}
+          {fileInputs}
+        </div>
       ) : (
         <div className="flex aspect-[4/3] items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-xs font-medium text-slate-400">
           {emptyLabel}
@@ -93,19 +163,28 @@ function ImagePanel({
   );
 }
 
-export default function OrderDetailsModal({ order, isDeliveryView = false, onClose, onSuccess }: Props) {
+export default function OrderDetailsModal({
+  order,
+  isDeliveryView = false,
+  isWarehouseDirectDeliver = false,
+  onClose,
+  onSuccess,
+}: Props) {
   const { showToast, user, branches } = useApp();
   const [loading, setLoading] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const totalUnits = Number(order.units);
-  const [collectedUnits, setCollectedUnits] = useState(totalUnits.toString());
+  const [collectedUnits, setCollectedUnits] = useState('');
   const [deliveryImageUrl, setDeliveryImageUrl] = useState(order?.delivery_image_url || '');
   const [deleteToken, setDeleteToken] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
 
   if (!order) return null;
 
-  const isEditable = isDeliveryView && !isDeliveryAgentFinished(order.order_status) && canDeliveryAgentAct(order.order_status);
+  const canRecordDelivery = (isDeliveryView || isWarehouseDirectDeliver)
+    && !isDeliveryAgentFinished(order.order_status)
+    && canDeliveryAgentAct(order.order_status);
+  const isEditable = canRecordDelivery;
 
   const deliveredUnits = isEditable
     ? Math.min(totalUnits, Math.max(0, parseFloat(collectedUnits) || 0))
@@ -179,7 +258,10 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
 
   const handleReject = async (remarks: string) => {
     setLoading(true);
-    const res = await deliveryAgentRejectOrder(order.id, remarks, user?.email || 'delivery_agent');
+    const updatedBy = user?.email || (isWarehouseDirectDeliver ? 'warehouse' : 'delivery_agent');
+    const res = isWarehouseDirectDeliver
+      ? await warehouseRejectOrder(order.id, remarks, updatedBy)
+      : await deliveryAgentRejectOrder(order.id, remarks, updatedBy);
     setLoading(false);
     if (res.success) {
       showToast('Order rejected', 'success');
@@ -335,13 +417,14 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
               emptyLabel="No original image"
             />
             <ImagePanel
-              title="Delivery proof"
+              title="Payment proof"
               imageUrl={deliveryImageUrl}
-              emptyLabel="No delivery proof"
+              emptyLabel="No payment proof"
               editable={isEditable}
               isUploading={isUploading}
               onUpload={isEditable ? handleImageUpload : undefined}
               onClear={isEditable ? handleDeleteImage : undefined}
+              showCapture
             />
           </section>
         </div>
@@ -350,8 +433,12 @@ export default function OrderDetailsModal({ order, isDeliveryView = false, onClo
       <RejectRemarkModal
         open={rejectOpen}
         loading={loading}
-        title="Reject Delivery"
-        description="Provide a reason for rejecting this delivery. The warehouse manager and admin will be notified."
+        title={isWarehouseDirectDeliver ? 'Reject Order' : 'Reject Delivery'}
+        description={
+          isWarehouseDirectDeliver
+            ? 'Provide a reason for rejecting this order. The admin will be notified to reassign or reject.'
+            : 'Provide a reason for rejecting this delivery. The warehouse manager and admin will be notified.'
+        }
         onConfirm={handleReject}
         onCancel={() => setRejectOpen(false)}
       />

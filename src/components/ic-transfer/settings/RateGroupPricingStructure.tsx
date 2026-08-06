@@ -6,6 +6,7 @@ import {
   getFlatRateFromGroup,
   getPricingSummaryLabel,
   hasAdvancedPricing,
+  hasMixedPerTypePricing,
   normalizePricingConfig,
 } from '@/lib/icTransfer/ratePricing';
 import {
@@ -194,7 +195,7 @@ function PerTypeGrid({
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {IC_SALE_TRANSACTION_TYPE_OPTIONS.map(opt => {
         const pricing = config.byTransactionType?.[opt.value as ICSaleTransactionType];
-        const isSlab = pricing?.mode === 'slab' || config.kind === 'slab';
+        const isSlab = pricing?.mode === 'slab';
 
         return (
           <div
@@ -208,7 +209,7 @@ function PerTypeGrid({
               </p>
             </div>
             <div className="p-3">
-              {pricing?.mode === 'slab' || (config.kind === 'slab' && pricing?.slabs?.length) ? (
+              {isSlab ? (
                 <SlabLadder
                   pricing={pricing ?? { mode: 'slab', slabs: [] }}
                   currency={currency}
@@ -287,9 +288,11 @@ export default function RateGroupPricingStructure({
       ) : config.scope === 'per_type' ? (
         <div className="space-y-2">
           <p className="text-xs text-slate-500">
-            {config.kind === 'slab'
-              ? 'Separate volume tiers for each transaction type.'
-              : 'A different flat rate for each transaction type.'}
+            {hasMixedPerTypePricing(config)
+              ? 'Flat and slab rates differ by transaction type.'
+              : config.kind === 'slab'
+                ? 'Separate volume tiers for each transaction type.'
+                : 'A different flat rate for each transaction type.'}
           </p>
           <PerTypeGrid
             config={config}
