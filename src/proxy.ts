@@ -20,6 +20,8 @@ const SYSTEM_PATHS = new Set(['users', 'branches', 'finance', 'funds', 'group', 
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
+  // Vercel cron jobs — no session cookie; must bypass auth or cron silently fails
+  if (pathname.startsWith('/api/cron/')) return true;
   // Allow all static assets & Next.js internals
   if (
     pathname.startsWith('/_next') ||

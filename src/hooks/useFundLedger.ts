@@ -20,6 +20,7 @@ import type {
   Customer,
 } from '@/types';
 import type { AmountInputSide, EntityTransferInputSide } from '@/lib/fundLedgerAmounts';
+import { useAutoRefreshData } from '@/hooks/useAutoRefreshData';
 
 export interface FundLedgerState {
   entries: FundEntityLedgerEntry[];
@@ -120,6 +121,11 @@ export function useFundLedger(): UseFundLedgerReturn {
       setLoading(false);
     }
   }, [branchId, refreshLedger]);
+
+  useAutoRefreshData({
+    enabled: !!branchId,
+    refetch: fetchEntries,
+  });
 
   useEffect(() => {
     if (selectedCustomerId) {

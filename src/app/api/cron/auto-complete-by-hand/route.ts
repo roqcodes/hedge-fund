@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { autoCompleteByHandOrdersCronAction } from '@/app/actions/icTransferActions';
+import { isAuthorizedCronRequest } from '@/lib/cronAuth';
+
+export const dynamic = 'force-dynamic';
 
 /**
  * Daily 10:00 PM UAE (GST, UTC+4) → 18:00 UTC.
  * Configure in vercel.json or your scheduler.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!isAuthorizedCronRequest(request.headers.get('authorization'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

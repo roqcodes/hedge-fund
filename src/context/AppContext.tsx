@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   User,
@@ -117,6 +117,7 @@ import {
   shouldHideMainSidebar,
   isWarehousePortalRoute,
 } from '@/lib/navigation/mainNav';
+import { useAutoRefreshData } from '@/hooks/useAutoRefreshData';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
 
@@ -326,6 +327,7 @@ const findBranchBySlug = (branches: Branch[], slug: string) =>
 export function AppProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const currentSlug = useMemo(() => getSlugFromPath(pathname), [pathname]);
+  const refetchInFlightRef = useRef(false);
 
   const [state, setState] = useState<AppState>({
     user: null,
@@ -385,6 +387,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refetchData = useCallback(async () => {
+    if (refetchInFlightRef.current) return;
+    refetchInFlightRef.current = true;
     try {
       const slug = currentSlug === 'superadmin' ? undefined : currentSlug;
       const dbRes = await fetchInitialDataAction(slug);
@@ -394,6 +398,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setState(s => {
           return {
             ...s,
+            globalBranches: data.globalBranches || data.branches,
+            globalEntities: data.globalEntities || data.entities || [],
             branches: data.branches,
             transactions: data.transactions,
             expenses: data.expenses,
@@ -427,8 +433,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await refetchCurrencyRates();
     } catch (e) {
       console.error('Failed to refetch data:', e);
+    } finally {
+      refetchInFlightRef.current = false;
     }
   }, [currentSlug, refetchCurrencyRates]);
+
+  useAutoRefreshData({
+    enabled: state.isAuthenticated && !state.isInitialLoading,
+    refetch: refetchData,
+  });
 
   const removePhysicalBuyOptimistic = useCallback((buy: PhysicalBuy) => {
     setState(s => ({

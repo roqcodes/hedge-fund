@@ -112,7 +112,9 @@ export async function assertICTransferSalesEnabledAction(): Promise<DbActionResu
  * Daily 5:00 PM Dubai (GST, UTC+4) → 13:00 UTC.
  * Invoked by the cron route — not for direct client use.
  */
-export async function autoResetICRatesCronAction(): Promise<DbActionResult<{ resetCount: number }>> {
+export async function autoResetICRatesCronAction(): Promise<
+  DbActionResult<{ resetCount: number; skipped?: boolean; reason?: string }>
+> {
   try {
     await query(SQL_ENSURE_IC_TRANSFER_SETTINGS);
     const settingsRes = await query(
@@ -121,7 +123,10 @@ export async function autoResetICRatesCronAction(): Promise<DbActionResult<{ res
     );
     const settings = mapICTransferSettingsRow(settingsRes.rows[0]);
     if (!settings.autoRateResetEnabled) {
-      return { success: true, data: { resetCount: 0 } };
+      return {
+        success: true,
+        data: { resetCount: 0, skipped: true, reason: 'auto_rate_reset_enabled is false' },
+      };
     }
 
     const res = await query(

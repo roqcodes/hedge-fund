@@ -27,6 +27,7 @@ import WarehouseKpiGrid from '@/components/warehouse/WarehouseKpiGrid';
 import { computeWarehouseSettlementKpis } from '@/lib/warehouse/kpiMetrics';
 import { warehouseOrderMatchesSearch } from '@/lib/warehouse/orderSearch';
 import { resolveDateRange } from '@/lib/warehouseDateUtils';
+import { useAutoRefreshData } from '@/hooks/useAutoRefreshData';
 
 import type { WarehouseOrder, DeliveryAgent } from '@/types/warehouse';
 
@@ -83,12 +84,12 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
   const rawRoleId   = (user?.role?.startsWith('warehouse_') || user?.role?.startsWith('delivery_')) ? user.role.split('_')[1] : null;
   const warehouseId = rawRoleId ? icWarehouses.find((w: any) => w.id.startsWith(rawRoleId))?.id : null;
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     if (!warehouseId) {
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     const { dateFrom, dateTo } = resolveDateRange(dateFilter, customStartDate, customEndDate);
     const [ordersRes, undeliveredRes, agentsRes] = await Promise.all([
       fetchWarehouseOrders(warehouseId, { dateFrom, dateTo }),
@@ -97,7 +98,7 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
     ]);
 
     if (ordersRes.success && ordersRes.data) setOrders(ordersRes.data as WarehouseOrder[]);
-    else showToast(ordersRes.error || 'Failed to fetch orders', 'error');
+    else if (!silent) showToast(ordersRes.error || 'Failed to fetch orders', 'error');
 
     if (undeliveredRes.success && undeliveredRes.data) {
       setUndeliveredOrders(undeliveredRes.data as WarehouseOrder[]);
@@ -105,12 +106,17 @@ export default function SettlementClient({ branchSlug }: { branchSlug: string })
 
     if (agentsRes.success && agentsRes.data) setAgents(agentsRes.data as DeliveryAgent[]);
 
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [warehouseId, showToast, dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
-    loadData();
+    void loadData(false);
   }, [loadData]);
+
+  useAutoRefreshData({
+    enabled: !!warehouseId,
+    refetch: () => loadData(true),
+  });
 
   const openAcceptModal = (order: WarehouseOrder) => {
     setSelectedOrder(order);

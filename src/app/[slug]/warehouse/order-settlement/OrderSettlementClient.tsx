@@ -19,6 +19,7 @@ import { resolveDateRange } from '@/lib/warehouseDateUtils';
 import WarehouseKpiGrid from '@/components/warehouse/WarehouseKpiGrid';
 import { computeDeliveryAgentKpis } from '@/lib/warehouse/kpiMetrics';
 import { warehouseOrderMatchesSearch } from '@/lib/warehouse/orderSearch';
+import { useAutoRefreshData } from '@/hooks/useAutoRefreshData';
 import type { WarehouseOrder } from '@/types/warehouse';
 
 type TabKey = 'Pending' | 'AwaitingAdmin' | 'Completed' | 'Rejected';
@@ -46,22 +47,27 @@ export default function OrderSettlementClient({ branchSlug }: { branchSlug: stri
   const [selectedOrder,    setSelectedOrder]    = useState<WarehouseOrder | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     if (!user?.email) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     const { dateFrom, dateTo } = resolveDateRange(dateFilter, customStartDate, customEndDate);
     const res = await fetchDeliveryAgentOrders(user.email, { dateFrom, dateTo });
     if (res.success && res.data) {
       setOrders(res.data as WarehouseOrder[]);
-    } else {
+    } else if (!silent) {
       showToast(res.error || 'Failed to load delivery orders', 'error');
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [user?.email, showToast, dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
-    loadData();
+    void loadData(false);
   }, [loadData]);
+
+  useAutoRefreshData({
+    enabled: !!user?.email,
+    refetch: () => loadData(true),
+  });
 
   const handleSort = (field: SortField) => {
     setSortField(f => {
