@@ -10,6 +10,7 @@ import {
   type FulfillmentHandler,
 } from '@/lib/icTransfer/fulfillmentHandler';
 import { canAdminChangeFulfillmentHandler } from '@/lib/icTransfer/orderWorkflowRules';
+import { isCustomerOrderPendingAtAdmin } from '@/lib/icTransfer/adminOnlyBranch';
 import { canPerformICTransferAdminActions } from '@/lib/rbac';
 
 type Props = {
@@ -31,6 +32,13 @@ export default function FulfillmentHandlerControl({ sale, onUpdated }: Props) {
       return (
         <span className="text-[10px] font-medium text-teal-700" title="Awaiting branch manager review">
           Branch review
+        </span>
+      );
+    }
+    if (isCustomerOrderPendingAtAdmin(sale)) {
+      return (
+        <span className="text-[10px] font-medium text-amber-700" title="Awaiting admin acceptance">
+          Admin queue
         </span>
       );
     }

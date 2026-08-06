@@ -29,6 +29,7 @@ export function isDateFilterPinnedStatus(status?: string | null): boolean {
 /** Customer ↔ branch level: edit while awaiting or fixing branch review. */
 const CUSTOMER_EDIT_STATUSES: ICOrderStatus[] = [
   'pending_branch_review',
+  'pending',
   'branch_rejected',
   'admin_rejected',
 ];
@@ -36,6 +37,7 @@ const CUSTOMER_EDIT_STATUSES: ICOrderStatus[] = [
 /** Customer ↔ branch level: delete only before branch forwards the order. */
 const CUSTOMER_DELETE_STATUSES: ICOrderStatus[] = [
   'pending_branch_review',
+  'pending',
   'branch_rejected',
 ];
 

@@ -39,6 +39,11 @@ import {
   saleBelongsToBranchPortal,
   shouldRecordCustomerOrderUnderBranch,
 } from '@/lib/icTransfer/branchOrderOwnership';
+import {
+  customerOrderInitialStatus,
+  customerOrderResubmitStatusAfterAdminReject,
+  type BranchPortalConfig,
+} from '@/lib/icTransfer/adminOnlyBranch';
 import { canEditOrder, canDeleteOrder } from '@/lib/icTransfer/orderWorkflowRules';
 import { validateSubCustomerForOrder } from '@/app/actions/subCustomerActions';
 import { transactionTypeRequiresBank } from '@/lib/icTransfer/transactionTypes';
@@ -764,13 +769,15 @@ export async function dbAddICSaleAction(
     let salePayload = { ...parsed };
     let branchName = '';
     let branchHiddenPages: string[] | null = null;
+    let branchId: string | null = null;
 
     if (slug) {
       const branchRes = await query(
-        `SELECT name, hidden_pages FROM branches WHERE slug = $1 LIMIT 1`,
+        `SELECT id, name, hidden_pages FROM branches WHERE slug = $1 LIMIT 1`,
         [slug],
       );
       if (branchRes.rows.length > 0) {
+        branchId = String(branchRes.rows[0].id);
         branchName = String(branchRes.rows[0].name || '');
         branchHiddenPages = normalizeHiddenPages(
           Array.isArray(branchRes.rows[0].hidden_pages)
@@ -779,6 +786,11 @@ export async function dbAddICSaleAction(
         );
       }
     }
+
+    const branchPortalConfig: BranchPortalConfig = {
+      branchId,
+      hiddenPages: branchHiddenPages,
+    };
 
     if (user?.role === 'customer') {
       if (!user.customerId) {
@@ -821,7 +833,7 @@ export async function dbAddICSaleAction(
     let fulfillmentHandler = salePayload.fulfillmentHandler === 'branch' ? 'branch' : 'hq_admin';
 
     if (isCustomerOrder) {
-      initialOrderStatus = 'pending_branch_review';
+      initialOrderStatus = customerOrderInitialStatus(branchPortalConfig);
       fulfillmentHandler = 'hq_admin';
     }
     const client = await pool.connect();
@@ -1655,11 +1667,31 @@ export async function branchResubmitICSaleAction(
     let resetHandler = '';
     const isResubmit = status === 'branch_rejected' || status === 'admin_rejected';
 
+    let branchPortalConfig: BranchPortalConfig | null = null;
+    if (slug) {
+      const branchRes = await query(
+        `SELECT id, hidden_pages FROM branches WHERE slug = $1 LIMIT 1`,
+        [slug],
+      );
+      if (branchRes.rows.length > 0) {
+        branchPortalConfig = {
+          branchId: String(branchRes.rows[0].id),
+          hiddenPages: normalizeHiddenPages(
+            Array.isArray(branchRes.rows[0].hidden_pages)
+              ? branchRes.rows[0].hidden_pages.map(String)
+              : [],
+          ),
+        };
+      }
+    }
+
     if (status === 'branch_rejected') {
       targetStatus = 'pending_branch_review';
       resetHandler = `, fulfillment_handler = 'hq_admin'`;
     } else if (status === 'admin_rejected') {
-      targetStatus = isCustomerEnteredOrder(sale) ? 'pending_branch_review' : 'pending';
+      targetStatus = isCustomerEnteredOrder(sale)
+        ? customerOrderResubmitStatusAfterAdminReject(branchPortalConfig)
+        : 'pending';
       if (targetStatus === 'pending_branch_review') {
         resetHandler = `, fulfillment_handler = 'hq_admin'`;
       }
@@ -1756,7 +1788,7 @@ export async function branchDeleteICSaleAction(
 
     const allowedStatuses =
       user?.role === 'customer'
-        ? ['pending_branch_review', 'branch_rejected']
+        ? ['pending_branch_review', 'branch_rejected', 'pending']
         : isBranchHandledSale(auth.sale)
           ? ['pending']
           : ['pending', 'admin_rejected'];

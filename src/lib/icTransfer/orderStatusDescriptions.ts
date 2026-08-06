@@ -1,6 +1,7 @@
 import type { ICSale } from '@/types';
 import { isByHandSale } from './byHand';
 import { isCustomerEnteredOrder } from './branchOrderOwnership';
+import { isCustomerOrderPendingAtAdmin } from './adminOnlyBranch';
 import { isBranchHandledSale } from './fulfillmentHandler';
 import { normalizeOrderStatus } from './orderStatus';
 
@@ -34,9 +35,11 @@ export function getOrderStatusDescription(
     },
     pending: {
       customer: customerOrder
-        ? branchHandled
-          ? 'Branch approved your order for local handling. Waiting for the branch to assign a warehouse. You can track progress here but cannot edit this order.'
-          : 'Branch approved your order and sent it to admin. Waiting for admin acceptance — you can track progress here but cannot edit or delete.'
+        ? isCustomerOrderPendingAtAdmin(sale)
+          ? 'Your order was sent to admin for processing. Waiting for admin acceptance — you can edit or delete while pending.'
+          : branchHandled
+            ? 'Branch approved your order for local handling. Waiting for the branch to assign a warehouse. You can track progress here but cannot edit this order.'
+            : 'Branch approved your order and sent it to admin. Waiting for admin acceptance — you can track progress here but cannot edit or delete.'
         : 'Order is waiting to be accepted.',
       branch: branchHandled
         ? 'Assign a branch warehouse to start fulfillment, or edit/delete while still pending.'
