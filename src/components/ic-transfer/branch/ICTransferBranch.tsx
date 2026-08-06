@@ -12,12 +12,9 @@ import {
   DataTableSection,
   PageHeader,
   PageShell,
-  SectionCard,
   useICTransferFilters,
   AddButton,
 } from '../ui';
-import ToggleSwitch from '@/components/ui/ToggleSwitch';
-import { canManageICTransferGlobalSettings } from '@/lib/icTransfer/settings';
 import AddICBranchOrderModal from './AddICBranchOrderModal';
 import SubCustomerModal from './SubCustomerModal';
 import ViewSaleModal from '../sales/ViewSaleModal';
@@ -74,14 +71,11 @@ export default function ICTransferBranch() {
     branchRequestCancelICSale,
     user,
     icTransferSettings,
-    updateICTransferSalesEnabled,
     showToast,
   } = useApp();
   const isCustomer = isCustomerRole(user?.role);
   const customerId = user?.customerId;
   const salesPaused = !icTransferSettings.salesEnabled;
-  const canManageGlobalSettings = canManageICTransferGlobalSettings(user);
-  const [isTogglingSales, setIsTogglingSales] = useState(false);
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [subCustomerModalOpen, setSubCustomerModalOpen] = useState(false);
@@ -260,12 +254,6 @@ export default function ICTransferBranch() {
     setModalOpen(true);
   };
 
-  const handleSalesToggle = async (next: boolean) => {
-    setIsTogglingSales(true);
-    await updateICTransferSalesEnabled(next);
-    setIsTogglingSales(false);
-  };
-
   const handleView = (s: ICSale) => {
     setSelectedSale(s);
     setViewModalOpen(true);
@@ -337,49 +325,7 @@ export default function ICTransferBranch() {
         }
       />
 
-      {canManageGlobalSettings ? (
-        <SectionCard
-          className={`mb-5 border-2 ${
-            salesPaused ? 'border-amber-300 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/40'
-          }`}
-        >
-          <div className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                    salesPaused
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-emerald-100 text-emerald-800'
-                  }`}
-                >
-                  {salesPaused ? 'Sales paused' : 'Sales active'}
-                </span>
-                <h3 className="text-base font-bold text-slate-900 sm:text-lg">Global sales control</h3>
-              </div>
-              <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-600">
-                {salesPaused
-                  ? 'New orders are blocked for all customers, branches, and portals until sales are reactivated.'
-                  : 'Customers and branches can create new IC Transfer orders. Deactivate to pause all new sales instantly.'}
-              </p>
-            </div>
-            <div className="shrink-0 md:min-w-[280px]">
-              <ToggleSwitch
-                checked={icTransferSettings.salesEnabled}
-                onChange={handleSalesToggle}
-                disabled={isTogglingSales}
-                tone={salesPaused ? 'amber' : 'emerald'}
-                label="Sales enabled"
-                hint={
-                  salesPaused
-                    ? 'Turn on to allow new orders across all customers and branches'
-                    : 'Turn off to pause all new orders instantly'
-                }
-              />
-            </div>
-          </div>
-        </SectionCard>
-      ) : salesPaused ? (
+      {salesPaused ? (
         <div
           role="status"
           className="mb-5 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 md:px-5 md:py-4"
