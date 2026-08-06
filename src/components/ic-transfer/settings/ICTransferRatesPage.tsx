@@ -349,7 +349,7 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
         </div>
       )}
 
-      {!isBranchPortal && canManageGlobalSettings ? (
+      {canManageGlobalSettings ? (
         <SectionCard className="mb-5">
           <div className="px-4 py-4 md:px-6">
             <ToggleSwitch

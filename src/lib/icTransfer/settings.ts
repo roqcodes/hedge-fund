@@ -27,5 +27,5 @@ export function mapICTransferSettingsRow(
 export function canManageICTransferGlobalSettings(
   user: { role?: string } | null | undefined,
 ): boolean {
-  return user?.role === 'admin';
+  return user?.role === 'admin' || user?.role === 'branch_manager';
 }

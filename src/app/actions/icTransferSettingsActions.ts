@@ -27,11 +27,11 @@ export async function fetchICTransferSettingsAction(): Promise<DbActionResult<IC
   }
 }
 
-async function assertAdminForSettings(): Promise<DbActionResult<void>> {
+async function assertCanManageSettings(): Promise<DbActionResult<void>> {
   const userRes = await getCurrentUserAction();
   const user = userRes.success ? userRes.data : null;
   if (!canManageICTransferGlobalSettings(user)) {
-    return { success: false, error: 'Only HQ admins can change IC Transfer settings' };
+    return { success: false, error: 'Only admins and branch managers can change IC Transfer settings' };
   }
   return { success: true, data: undefined };
 }
@@ -40,7 +40,7 @@ export async function updateICTransferSalesEnabledAction(
   salesEnabled: boolean,
 ): Promise<DbActionResult<ICTransferSettings>> {
   try {
-    const guard = await assertAdminForSettings();
+    const guard = await assertCanManageSettings();
     if (!guard.success) {
       return { success: false, error: guard.error };
     }
@@ -67,7 +67,7 @@ export async function updateICTransferAutoRateResetAction(
   autoRateResetEnabled: boolean,
 ): Promise<DbActionResult<ICTransferSettings>> {
   try {
-    const guard = await assertAdminForSettings();
+    const guard = await assertCanManageSettings();
     if (!guard.success) {
       return { success: false, error: guard.error };
     }
