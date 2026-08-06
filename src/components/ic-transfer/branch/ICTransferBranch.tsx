@@ -61,9 +61,10 @@ const SORTABLE_COLUMNS: Record<string, SortField> = {
 };
 
 export default function ICTransferBranch() {
-  const { icSales, icWarehouses, icRateGroups, currentSlug, branches, branchDeleteICSale, branchRequestCancelICSale, user } = useApp();
+  const { icSales, icWarehouses, icRateGroups, currentSlug, branches, branchDeleteICSale, branchRequestCancelICSale, user, icTransferSettings, showToast } = useApp();
   const isCustomer = isCustomerRole(user?.role);
   const customerId = user?.customerId;
+  const salesPaused = !icTransferSettings.salesEnabled;
   const { selectedRegionIds } = useICTransferRegionFilter();
   const [modalOpen, setModalOpen] = useState(false);
   const [subCustomerModalOpen, setSubCustomerModalOpen] = useState(false);
@@ -234,6 +235,10 @@ export default function ICTransferBranch() {
   };
 
   const handleCreateOrder = () => {
+    if (salesPaused) {
+      showToast('Sales are temporarily paused. New orders cannot be created right now.', 'error');
+      return;
+    }
     setSelectedSale(null);
     setModalOpen(true);
   };
@@ -304,10 +309,19 @@ export default function ICTransferBranch() {
                 }
               />
             )}
-            <AddButton label="Create Order" onClick={handleCreateOrder} />
+            <AddButton label="Create Order" onClick={handleCreateOrder} disabled={salesPaused} />
           </div>
         }
       />
+
+      {salesPaused ? (
+        <div
+          role="status"
+          className="mb-5 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 md:px-5 md:py-4"
+        >
+          Sales are temporarily paused. New orders cannot be created right now.
+        </div>
+      ) : null}
 
       <ICTransferDateFilterBar
         dateFilter={dateFilter}

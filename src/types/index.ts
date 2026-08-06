@@ -675,6 +675,13 @@ export interface ICRateGroup {
   updatedAt?: string;
 }
 
+export interface ICTransferSettings {
+  salesEnabled: boolean;
+  autoRateResetEnabled: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 export interface ICPurchase {
   id: string;
   supplierId?: string;

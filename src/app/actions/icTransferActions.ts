@@ -23,6 +23,7 @@ import {
   mapICSaleRow,
 } from '@/lib/icTransferMappers';
 import { adjustWarehouseStock, logWarehouseStockTransaction } from '@/lib/warehouse/stockDb';
+import { assertICTransferSalesEnabledAction } from '@/app/actions/icTransferSettingsActions';
 import {
   hasICSaleEditableFieldsChanged,
   type ICSaleContentFields,
@@ -761,6 +762,11 @@ export async function dbAddICSaleAction(
   branchSlug?: string,
 ): Promise<DbActionResult<ICSale>> {
   try {
+    const salesGuard = await assertICTransferSalesEnabledAction();
+    if (!salesGuard.success) {
+      return { success: false, error: salesGuard.error };
+    }
+
     const parsed = addSaleSchema.parse(sale);
     const slug = branchSlug && branchSlug !== 'superadmin' ? branchSlug : undefined;
     const userRes = slug ? await getCurrentUserAction(slug) : await getCurrentUserAction();

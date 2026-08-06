@@ -22,6 +22,8 @@ import RateGroupBulkUpdateBar from './RateGroupBulkUpdateBar';
 import RateGroupFormModal, { type RateGroupFormValues } from './RateGroupFormModal';
 import RateGroupManageUsersModal, { type RateGroupMembersPayload } from './RateGroupManageUsersModal';
 import RateGroupViewModal from './RateGroupViewModal';
+import ToggleSwitch from '@/components/ui/ToggleSwitch';
+import { canManageICTransferGlobalSettings } from '@/lib/icTransfer/settings';
 import type { ICRateGroup, ICRateGroupPricingConfig } from '@/types';
 
 const WORLD_CURRENCIES = [
@@ -61,9 +63,14 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
     allBranches,
     showToast,
     currentSlug,
+    user,
+    icTransferSettings,
+    updateICTransferAutoRateReset,
   } = useApp();
 
   const isBranchPortal = portalMode === 'branch' && !!branchId;
+  const canManageGlobalSettings = canManageICTransferGlobalSettings(user);
+  const [isTogglingAutoReset, setIsTogglingAutoReset] = useState(false);
 
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -305,6 +312,12 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
     ? allBranches.find(b => b.id === branchId)
     : undefined;
 
+  const handleAutoRateResetToggle = async (next: boolean) => {
+    setIsTogglingAutoReset(true);
+    await updateICTransferAutoRateReset(next);
+    setIsTogglingAutoReset(false);
+  };
+
   return (
     <PageShell>
       <PageHeader
@@ -336,14 +349,32 @@ export default function ICTransferRatesPage({ portalMode = 'admin', branchId }: 
         </div>
       )}
 
-      <SectionCard>
+      {!isBranchPortal && canManageGlobalSettings ? (
+        <SectionCard className="mb-5">
+          <div className="px-4 py-4 md:px-6">
+            <ToggleSwitch
+              checked={icTransferSettings.autoRateResetEnabled}
+              onChange={handleAutoRateResetToggle}
+              disabled={isTogglingAutoReset}
+              tone="amber"
+              label="Automatic rate reset at 5:00 PM Dubai time"
+              hint="When enabled, every rate group's sale rate and pricing config resets to 0 daily at 5:00 PM GST (13:00 UTC)."
+            />
+          </div>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard className="mb-5">
         <RateGroupBulkUpdateBar
           groups={scopedRateGroups}
           isSaving={isBulkSaving}
           convertedRateOnly={isBranchPortal}
+          standalone
           onSave={handleBulkSave}
         />
+      </SectionCard>
 
+      <SectionCard>
         <div className={`${portalMobileToolbarClass} md:border-b md:border-slate-100 md:px-6 md:py-4 md:pb-3`}>
           <h3 className="shrink-0 text-base font-bold text-slate-900 sm:text-lg">
             {isBranchPortal ? 'Your customer rate groups' : 'All Groups'}

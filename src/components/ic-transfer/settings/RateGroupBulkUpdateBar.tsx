@@ -25,6 +25,7 @@ type Props = {
   groups: ICRateGroup[];
   isSaving: boolean;
   convertedRateOnly?: boolean;
+  standalone?: boolean;
   onSave: (
     groupIds: string[],
     saleRate: number,
@@ -55,6 +56,7 @@ export default function RateGroupBulkUpdateBar({
   groups,
   isSaving,
   convertedRateOnly = false,
+  standalone = false,
   onSave,
 }: Props) {
   const { showToast } = useApp();
@@ -252,7 +254,7 @@ export default function RateGroupBulkUpdateBar({
 
   if (groups.length === 0) {
     return (
-      <div className="border-b border-slate-100 px-4 py-8 text-center md:px-6">
+      <div className={`px-4 py-8 text-center md:px-6 ${standalone ? '' : 'border-b border-slate-100'}`}>
         <p className="text-sm font-medium text-slate-500">
           Create a rate group first to use bulk update.
         </p>
@@ -263,7 +265,7 @@ export default function RateGroupBulkUpdateBar({
   return (
     <form
       onSubmit={handleSubmit}
-      className="border-b border-slate-100"
+      className={standalone ? '' : 'border-b border-slate-100'}
     >
       <div className="flex flex-col gap-1 border-b border-slate-100 px-4 py-4 md:flex-row md:items-end md:justify-between md:px-6 md:py-5">
         <div>

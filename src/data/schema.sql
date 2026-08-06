@@ -914,4 +914,17 @@ CREATE INDEX IF NOT EXISTS idx_ic_sales_delivery_agent ON ic_sales(delivery_agen
 ALTER TABLE ic_warehouses DROP CONSTRAINT IF EXISTS ic_warehouses_stock_nonnegative;
 ALTER TABLE ic_warehouses ADD CONSTRAINT ic_warehouses_stock_nonnegative CHECK (current_stock >= 0);
 
+-- IC Transfer global settings (sales pause, auto rate reset)
+CREATE TABLE IF NOT EXISTS ic_transfer_settings (
+  id VARCHAR(20) PRIMARY KEY DEFAULT 'global',
+  sales_enabled BOOLEAN NOT NULL DEFAULT true,
+  auto_rate_reset_enabled BOOLEAN NOT NULL DEFAULT false,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_by VARCHAR(255)
+);
+
+INSERT INTO ic_transfer_settings (id, sales_enabled, auto_rate_reset_enabled)
+VALUES ('global', true, false)
+ON CONFLICT (id) DO NOTHING;
+
 

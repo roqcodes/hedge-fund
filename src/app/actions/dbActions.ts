@@ -30,10 +30,11 @@ import {
   mapICSaleRow,
   mapICWarehouseTransactionRow,
 } from '@/lib/icTransferMappers';
-import {
-  filterRateGroupsForCustomerPortal,
+import { filterRateGroupsForCustomerPortal,
   stripAdminRatesFromSale,
 } from '@/lib/icTransfer/customerPortalScope';
+import { mapICTransferSettingsRow } from '@/lib/icTransfer/settings';
+import { SQL_ENSURE_IC_TRANSFER_SETTINGS } from '@/lib/sql/icTransferSettingsSql';
 import { logger } from '@/lib/logger';
 import { computeDealBuyAggregates, type DealBuyAggregates } from '@/lib/dealCalculations';
 
@@ -64,6 +65,7 @@ import {
   ICSupplier,
   ICWarehouse,
   ICRateGroup,
+  ICTransferSettings,
   ICPurchase,
   ICSale,
   ICWarehouseTransaction,
@@ -183,6 +185,7 @@ export interface InitialDataPayload {
   icSuppliers: ICSupplier[];
   icWarehouses: ICWarehouse[];
   icRateGroups: ICRateGroup[];
+  icTransferSettings: ICTransferSettings;
   icPurchases: ICPurchase[];
   icSales: ICSale[];
   icWarehouseTransactions: ICWarehouseTransaction[];
@@ -255,6 +258,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);`);
     // Auto-backfill is removed because it was overwriting manually corrected data on every reload.
     await query(SQL_ENSURE_USDT_SCHEMA);
+    await query(SQL_ENSURE_IC_TRANSFER_SETTINGS);
 
     // 1. Fetch HQ Balance
     const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
@@ -654,6 +658,11 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
     const icSuppliers = icSuppliersRes.rows.map(r => mapICSupplierRow(r));
     const icWarehousesRes = await query('SELECT * FROM ic_warehouses');
     const icWarehouses = icWarehousesRes.rows.map(r => mapICWarehouseRow(r));
+    const icTransferSettingsRes = await query(
+      `SELECT sales_enabled, auto_rate_reset_enabled, updated_at, updated_by
+       FROM ic_transfer_settings WHERE id = 'global' LIMIT 1`,
+    );
+    const icTransferSettings = mapICTransferSettingsRow(icTransferSettingsRes.rows[0]);
     const icRateGroupsRes = await query(`
       SELECT g.*, 
              COALESCE((SELECT array_agg(customer_id) FROM ic_rate_group_customers WHERE group_id = g.id), ARRAY[]::varchar[]) as customer_ids,
@@ -780,6 +789,7 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         icSuppliers,
         icWarehouses,
         icRateGroups,
+        icTransferSettings,
         icPurchases,
         icSales,
         icWarehouseTransactions,

@@ -28,6 +28,7 @@ import {
   ICWarehouse,
   ICRateGroup,
   ICRateGroupPricingConfig,
+  ICTransferSettings,
   ICPurchase,
   ICSale,
   ICWarehouseTransaction,
@@ -98,6 +99,11 @@ import {
   branchDeleteICSaleAction,
   branchRequestCancelICSaleAction,
 } from '@/app/actions/icTransferActions';
+import {
+  updateICTransferSalesEnabledAction,
+  updateICTransferAutoRateResetAction,
+} from '@/app/actions/icTransferSettingsActions';
+import { DEFAULT_IC_TRANSFER_SETTINGS } from '@/lib/icTransfer/settings';
 import { fetchCurrencyRatesAction } from '@/app/actions/currencyActions';
 import {
   sanitizeEnabledCurrencies,
@@ -156,6 +162,7 @@ interface AppState {
   icSuppliers: ICSupplier[];
   icWarehouses: ICWarehouse[];
   icRateGroups: ICRateGroup[];
+  icTransferSettings: ICTransferSettings;
   icPurchases: ICPurchase[];
   icSales: ICSale[];
   icWarehouseTransactions: ICWarehouseTransaction[];
@@ -274,6 +281,8 @@ interface AppContextType extends AppState {
   deleteICRateGroup: (id: string) => Promise<boolean>;
   setICRateGroupCustomers: (groupId: string, customerIds: string[]) => Promise<boolean>;
   setICRateGroupBranches: (groupId: string, branchIds: string[]) => Promise<boolean>;
+  updateICTransferSalesEnabled: (enabled: boolean) => Promise<boolean>;
+  updateICTransferAutoRateReset: (enabled: boolean) => Promise<boolean>;
   addICPurchase: (purchase: Omit<ICPurchase, 'id' | 'createdAt'>) => Promise<boolean>;
   updateICPurchase: (id: string, updates: Partial<Omit<ICPurchase, 'id' | 'createdAt'>>) => Promise<boolean>;
   addICSale: (sale: Omit<ICSale, 'id' | 'createdAt' | 'enteredBy' | 'enteredByName' | 'enteredByUserId'>) => Promise<boolean>;
@@ -358,6 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     icSuppliers: [],
     icWarehouses: [],
     icRateGroups: [],
+    icTransferSettings: { ...DEFAULT_IC_TRANSFER_SETTINGS },
     icPurchases: [],
     icSales: [],
     icWarehouseTransactions: [],
@@ -407,6 +417,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             icSuppliers: data.icSuppliers || [],
             icWarehouses: data.icWarehouses || [],
             icRateGroups: data.icRateGroups || [],
+            icTransferSettings: data.icTransferSettings || { ...DEFAULT_IC_TRANSFER_SETTINGS },
             icPurchases: data.icPurchases || [],
             icSales: data.icSales || [],
             icWarehouseTransactions: data.icWarehouseTransactions || [],
@@ -500,6 +511,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             icSuppliers: data.icSuppliers || [],
             icWarehouses: data.icWarehouses || [],
             icRateGroups: data.icRateGroups || [],
+            icTransferSettings: data.icTransferSettings || { ...DEFAULT_IC_TRANSFER_SETTINGS },
             icPurchases: data.icPurchases || [],
             icSales: data.icSales || [],
             icWarehouseTransactions: data.icWarehouseTransactions || [],
@@ -1869,6 +1881,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [showToast]);
 
+  const updateICTransferSalesEnabled = useCallback(async (enabled: boolean) => {
+    try {
+      const res = await updateICTransferSalesEnabledAction(enabled);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icTransferSettings: res.data! }));
+        showToast(enabled ? 'Sales activated — new orders can be created' : 'Sales paused — new orders are blocked');
+        return true;
+      }
+      showToast(res.error || 'Failed to update sales setting', 'error');
+      return false;
+    } catch {
+      showToast('Error updating sales setting', 'error');
+      return false;
+    }
+  }, [showToast]);
+
+  const updateICTransferAutoRateReset = useCallback(async (enabled: boolean) => {
+    try {
+      const res = await updateICTransferAutoRateResetAction(enabled);
+      if (res.success && res.data) {
+        setState(s => ({ ...s, icTransferSettings: res.data! }));
+        if (enabled) {
+          showToast('Automatic rate reset enabled — all groups reset to 0 daily at 5:00 PM Dubai time');
+        } else {
+          showToast('Automatic rate reset disabled');
+        }
+        return true;
+      }
+      showToast(res.error || 'Failed to update rate reset setting', 'error');
+      return false;
+    } catch {
+      showToast('Error updating rate reset setting', 'error');
+      return false;
+    }
+  }, [showToast]);
+
   const addICPurchase = useCallback(async (purchase: Omit<ICPurchase, 'id' | 'createdAt'>) => {
     try {
       const branchSlug = currentSlug !== 'superadmin' ? currentSlug : undefined;
@@ -2160,9 +2208,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
-      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale,
+      addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, updateICTransferSalesEnabled, updateICTransferAutoRateReset, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, updateICTransferSalesEnabled, updateICTransferAutoRateReset, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;
