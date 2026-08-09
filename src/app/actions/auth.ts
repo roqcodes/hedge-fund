@@ -65,6 +65,21 @@ export async function loginAction(email: string, securityKey: string, branchSlug
         return { success: false, error: 'Your customer account is inactive. Contact your branch.' };
       }
     }
+
+    if (user.role === 'investor' && user.id) {
+      const investorRes = await query(
+        `SELECT status FROM investors WHERE cognito_user_id = $1 LIMIT 1`,
+        [user.id],
+      );
+      if (investorRes.rows.length === 0) {
+        await deleteSession(branchSlug);
+        return { success: false, error: 'Investor account is not linked to an investor record.' };
+      }
+      if (String(investorRes.rows[0].status) === 'inactive') {
+        await deleteSession(branchSlug);
+        return { success: false, error: 'Your investor account is inactive. Contact your branch.' };
+      }
+    }
     
     return { success: true, data: enrichedUser };
   } catch (error: unknown) {

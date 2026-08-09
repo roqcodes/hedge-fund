@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { getPageIdFromBranchPathname, isBranchPageEnabled } from '@/lib/branchPages';
-import { canReadPage, isBranchPortalRole, isCustomerRole } from '@/lib/rbac';
+import { canReadPage, isBranchPortalRole, isCustomerRole, isInvestorRole } from '@/lib/rbac';
 
 /** Redirects branch users away from disabled or unauthorized pages. */
 export default function BranchPageGuard() {
@@ -37,6 +37,16 @@ export default function BranchPageGuard() {
       return;
     }
 
+    if (isInvestorRole(user.role)) {
+      const investorHome = `/${currentSlug}/group`;
+      const normalizedPath = pathname.replace(/\/$/, '');
+      const normalizedHome = investorHome.replace(/\/$/, '');
+      if (!normalizedPath.startsWith(normalizedHome)) {
+        router.replace(investorHome);
+      }
+      return;
+    }
+
     if (user.role === 'staff' && pathname.includes('/ic-transfer/')) {
       const portalBase = `/${currentSlug}/ic-transfer`;
       const normalizedPath = pathname.replace(/\/$/, '');
@@ -50,13 +60,21 @@ export default function BranchPageGuard() {
     if (!pageId) return;
 
     const hiddenPages = branch.hiddenPages;
+    const homePath = `/${currentSlug}`;
+    const normalizedPath = pathname.replace(/\/$/, '') || '/';
+    const normalizedHome = homePath.replace(/\/$/, '');
+
     if (!isBranchPageEnabled(pageId, hiddenPages)) {
-      router.replace(`/${currentSlug}`);
+      if (normalizedPath !== normalizedHome) {
+        router.replace(homePath);
+      }
       return;
     }
 
     if (user.role === 'staff' && !canReadPage(user, pageId, hiddenPages)) {
-      router.replace(`/${currentSlug}`);
+      if (normalizedPath !== normalizedHome) {
+        router.replace(homePath);
+      }
     }
 
     if (user.role.startsWith('delivery') && pageId !== 'warehouse') {

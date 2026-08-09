@@ -28,6 +28,7 @@ import {
   tableWrap,
   dataTable,
 } from '@/lib/ui';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
 
 export default function InvestorsPage() {
   const searchParams = useSearchParams();
@@ -106,8 +107,11 @@ export default function InvestorsPage() {
     <>
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
         <div className={pageHeader}>
-          <div>
-            <h2 className={pageTitle}>Investors</h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className={pageTitle}>Investors</h2>
+              <ReadOnlyPill />
+            </div>
             <p className={pageSubtitle}>
               {investors.length} registered investors — {activeCount} active portfolios
             </p>
@@ -553,6 +557,9 @@ function AddInvestorModal({
   const [branchId, setBranchId] = useState('');
   const [isGlobal, setIsGlobal] = useState(false);
   const [notes, setNotes] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [formError, setFormError] = useState('');
 
   React.useEffect(() => {
     if (open && isBranchView && branches.length === 1) {
@@ -580,10 +587,27 @@ function AddInvestorModal({
     setBranchId(isAdmin ? '' : (user?.branchId || ''));
     setIsGlobal(false);
     setNotes('');
+    setPassword('');
+    setConfirmPassword('');
+    setFormError('');
   };
 
   const handleSubmit = () => {
+    setFormError('');
     if (!name || !email || !phone || !nationality || !address || !city || !country) return;
+    if (!password || password.length < 8) {
+      setFormError('Portal password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setFormError('Passwords do not match.');
+      return;
+    }
+    const portalBranchId = isGlobal ? undefined : (branchId || user?.branchId || undefined);
+    if (!portalBranchId && !(isBranchView && branches.length === 1)) {
+      setFormError('Select a branch for portal access.');
+      return;
+    }
     addInvestor({
       name,
       email,
@@ -599,9 +623,10 @@ function AddInvestorModal({
       goldWeightGrams: Number(goldGrams) || 0,
       riskProfile,
       preferredContact,
-      assignedBranchId: isGlobal ? undefined : (branchId || user?.branchId || undefined),
+      assignedBranchId: portalBranchId,
       isGlobal: isAdmin ? isGlobal : false,
       notes: notes || undefined,
+      password,
     });
     reset();
     onClose();
@@ -626,7 +651,8 @@ function AddInvestorModal({
         </>
       }
     >
-      <p className="mb-5 text-sm font-medium text-slate-500">Register an investor with contact details and initial deposit positions.</p>
+      <p className="mb-5 text-sm font-medium text-slate-500">Register an investor with contact details, portal login, and initial deposit positions.</p>
+      {formError && <p className="mb-4 text-sm font-semibold text-red-600">{formError}</p>}
 
       <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Personal details</h4>
       <div className={formRow}>
@@ -701,6 +727,39 @@ function AddInvestorModal({
             Country *
           </label>
           <input id="inv-country" className={formInput} value={country} onChange={e => setCountry(e.target.value)} />
+        </div>
+      </div>
+
+      <h4 className="mb-3 mt-6 text-xs font-bold uppercase tracking-wider text-slate-400">Portal login</h4>
+      <p className="mb-4 text-sm text-slate-500">Creates a read-only Groups &amp; Deals portal account for this investor.</p>
+      <div className={formRow}>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="inv-password">
+            Password *
+          </label>
+          <input
+            id="inv-password"
+            type="password"
+            autoComplete="new-password"
+            className={formInput}
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            minLength={8}
+          />
+        </div>
+        <div className={formGroup}>
+          <label className={formLabel} htmlFor="inv-confirm-password">
+            Confirm password *
+          </label>
+          <input
+            id="inv-confirm-password"
+            type="password"
+            autoComplete="new-password"
+            className={formInput}
+            value={confirmPassword}
+            onChange={e => setConfirmPassword(e.target.value)}
+            minLength={8}
+          />
         </div>
       </div>
 

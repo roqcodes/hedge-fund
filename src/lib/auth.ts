@@ -2,9 +2,10 @@ import 'server-only';
 import { CognitoIdentityProviderClient, InitiateAuthCommand, GetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
-import { User, UserRole, PagePermissionMap } from '@/types';
+import { User, UserRole, PagePermissionMap, DealPermissionMap } from '@/types';
 import { env } from '@/lib/env';
 import { fetchBranchHiddenPages, fetchUserPermissionsFromDb } from '@/lib/userPermissions';
+import { fetchUserDealPermissionsFromDb } from '@/lib/dealPermissions';
 import { defaultStaffPermissions, normalizePermissionMap } from '@/lib/rbac';
 import { query } from '@/lib/db';
 
@@ -23,8 +24,10 @@ export interface SessionPayload {
   branchId?: string;
   customerId?: string;
   permissions?: PagePermissionMap;
+  dealPermissions?: DealPermissionMap;
   idToken?: string;
   expiresAt: string;
+  investorId?: string;
 }
 
 /**
@@ -112,6 +115,7 @@ export async function authenticateWithCognito(email: string, securityKey: string
       roleAttr !== 'branch_manager' && 
       roleAttr !== 'staff' && 
       roleAttr !== 'customer' &&
+      roleAttr !== 'investor' &&
       !roleAttr.startsWith('warehouse_') && 
       !roleAttr.startsWith('delivery_')
     )) {
@@ -175,6 +179,27 @@ async function loadCustomerProfile(user: User): Promise<User> {
   }
 }
 
+async function loadInvestorProfile(user: User): Promise<User> {
+  if (user.role !== 'investor' || !user.id) return user;
+
+  try {
+    const res = await query(
+      `SELECT id, name, assigned_branch_id, status FROM investors WHERE cognito_user_id = $1 LIMIT 1`,
+      [user.id],
+    );
+    if (res.rows.length === 0) return user;
+    const branchId = user.branchId || (res.rows[0].assigned_branch_id ? String(res.rows[0].assigned_branch_id) : undefined);
+    return {
+      ...user,
+      investorId: String(res.rows[0].id),
+      name: String(res.rows[0].name || user.name),
+      branchId,
+    };
+  } catch {
+    return user;
+  }
+}
+
 /**
  * Loads staff permissions from the database (always fresh on session read).
  */
@@ -183,13 +208,17 @@ async function loadStaffPermissions(user: User): Promise<User> {
 
   try {
     const hiddenPages = await fetchBranchHiddenPages(user.branchId);
-    const permissions = await fetchUserPermissionsFromDb(user.id, user.branchId);
+    const [permissions, dealPermissions] = await Promise.all([
+      fetchUserPermissionsFromDb(user.id, user.branchId),
+      fetchUserDealPermissionsFromDb(user.id),
+    ]);
     return {
       ...user,
       permissions: normalizePermissionMap(permissions, hiddenPages),
+      dealPermissions,
     };
   } catch {
-    return { ...user, permissions: defaultStaffPermissions() };
+    return { ...user, permissions: defaultStaffPermissions(), dealPermissions: {} };
   }
 }
 
@@ -202,6 +231,8 @@ export async function createSession(user: User, branchSlug?: string): Promise<Us
     enriched = await loadStaffPermissions(user);
   } else if (user.role === 'customer') {
     enriched = await loadCustomerProfile(user);
+  } else if (user.role === 'investor') {
+    enriched = await loadInvestorProfile(user);
   }
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
   const session = await encrypt({
@@ -266,6 +297,8 @@ export async function getSessionUser(branchSlug?: string): Promise<User | null> 
     branchId: payload.branchId,
     customerId: payload.customerId,
     permissions: payload.permissions,
+    dealPermissions: payload.dealPermissions,
+    investorId: payload.investorId,
   };
 
   if (baseUser.role === 'staff') {
@@ -274,6 +307,10 @@ export async function getSessionUser(branchSlug?: string): Promise<User | null> 
 
   if (baseUser.role === 'customer') {
     return loadCustomerProfile(baseUser);
+  }
+
+  if (baseUser.role === 'investor') {
+    return loadInvestorProfile(baseUser);
   }
 
   return baseUser;

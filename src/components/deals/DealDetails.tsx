@@ -1,17 +1,24 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatAED, formatAEDStr, formatDateTime } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import KPICard from '@/components/ui/KPICard';
 import EditDealModal from './EditDealModal';
+import DealInvestorAssignmentModal from './DealInvestorAssignmentModal';
+import DealStaffAssignmentModal from './DealStaffAssignmentModal';
 import DealTransactionsTable from './DealTransactionsTable';
 import CreateDealShellModal from './CreateDealShellModal';
 import { useDateFilter } from '@/hooks/useDateFilter';
+import { useDealWriteAccess } from '@/hooks/useDealWriteAccess';
+import { useInvestorPortalView } from '@/hooks/useInvestorPortalView';
+import { investorDealShareRatio, investorTotalBuyInvestment } from '@/lib/investorDealMetrics';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
+import { hasFullBranchAccess } from '@/lib/rbac';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import Modal from '@/components/ui/Modal';
-import { DealTransaction } from '@/types';
+import { DealTransaction, type DealInvestor, type DealStaffAssignment } from '@/types';
 import {
   pageHeader,
   pageSubtitle,
@@ -24,23 +31,55 @@ import {
 } from '@/lib/ui';
 
 export default function DealDetails({ dealId }: { dealId: string }) {
-  const { deals, investors, selectInvestor, dealTransactions, deleteDealTransaction, currentSlug } = useApp();
+  const { deals, investors, selectInvestor, dealTransactions, deleteDealTransaction, currentSlug, isInitialLoading, updateDeal, user } = useApp();
   const params = useParams();
   const branchSlug = params?.branchSlug as string;
-  const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
+  const groupBasePath = useMemo(
+    () => branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group'),
+    [branchSlug, currentSlug],
+  );
   const router = useRouter();
+  const redirectedRef = useRef(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showAddTxn, setShowAddTxn] = useState(false);
+  const [showInvestorModal, setShowInvestorModal] = useState(false);
+  const [showStaffModal, setShowStaffModal] = useState(false);
 
   const [selectedTxn, setSelectedTxn] = useState<DealTransaction | null>(null);
 
   const deal = deals.find(d => d.id === dealId);
+  const { canWrite, buttonProps: wp } = useDealWriteAccess(dealId);
+  const { isInvestorView, investorId } = useInvestorPortalView();
+  const canAssignStaff = hasFullBranchAccess(user);
+  const branchSlugForStaff = branchSlug || (currentSlug && currentSlug !== 'superadmin' ? currentSlug : undefined);
+
+  const handleSaveInvestors = async (nextInvestors: DealInvestor[]) => {
+    if (!deal) return;
+    updateDeal({
+      ...deal,
+      investors: nextInvestors,
+      totalInvestment: deal.amount,
+      balance: 0,
+    });
+  };
+
+  const handleSaveStaff = async (nextStaff: DealStaffAssignment[]) => {
+    if (!deal) return;
+    updateDeal({
+      ...deal,
+      staffAssignments: nextStaff,
+    });
+  };
 
   useEffect(() => {
-    if (!deal) {
-      router.push(groupBasePath);
+    if (isInitialLoading || deal) {
+      redirectedRef.current = false;
+      return;
     }
-  }, [deal, router, groupBasePath]);
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+    router.replace(groupBasePath);
+  }, [deal, isInitialLoading, router, groupBasePath]);
 
   const fundingPercentage = Math.min(((deal?.totalInvestment || 0) / (deal?.amount || 1)) * 100, 100);
 
@@ -61,15 +100,23 @@ export default function DealDetails({ dealId }: { dealId: string }) {
   const dealCurrencyVolume = Number(unsettledTransactions.reduce((sum, t) => sum + (t.currencyAmount || 0), 0).toFixed(2)).toString();
 
   const filteredTotalPL = filteredTransactions.length > 0
-    ? filteredTransactions.reduce((sum, txn) => sum + (txn.grossProfit || 0), 0)
-    : (deal?.totalPL || 0);
+    ? filteredTransactions.reduce((sum, txn) => sum + (isInvestorView ? (txn.myPayoutAmount || 0) : (txn.grossProfit || 0)), 0)
+    : (isInvestorView ? 0 : (deal?.totalPL || 0));
 
-  const filteredTotalExpense = filteredTransactions.length > 0
+  const filteredTotalExpense = isInvestorView
+    ? 0
+    : filteredTransactions.length > 0
     ? filteredTransactions.reduce((sum, txn) => sum + (Number(txn.expenses) || 0), 0)
     : 0;
 
+  const investorShare = investorDealShareRatio(deal);
+  const myBuyInvestmentTotal = isInvestorView
+    ? investorTotalBuyInvestment(filteredTransactions, investorShare)
+    : 0;
   const unsettledCost = unsettledTransactions.reduce((sum, t) => sum + (t.pureCostAed || 0), 0);
-  const groupCapital = (deal?.amount || 0) - unsettledCost;
+  const groupCapital = isInvestorView
+    ? myBuyInvestmentTotal
+    : (deal?.amount || 0) - unsettledCost;
 
   // Calculate total management profit and investor payouts dynamically using snapshot payouts
   const profitDistributions = React.useMemo(() => {
@@ -141,11 +188,13 @@ export default function DealDetails({ dealId }: { dealId: string }) {
     });
   }, [deal, investors, profitDistributions.investorTotals]);
 
-  if (!deal) {
+  if (isInitialLoading || !deal) {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center gap-4">
         <div className="size-8 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600"></div>
-        <p className="text-sm font-medium text-slate-500">Redirecting to Groups...</p>
+        <p className="text-sm font-medium text-slate-500">
+          {isInitialLoading ? 'Loading group…' : 'Redirecting to Groups…'}
+        </p>
       </div>
     );
   }
@@ -167,16 +216,20 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               </button>
               <h2 className={pageTitle}>{deal.groupName || deal.name}</h2>
               <span className={badgeClass(deal.status)}>{deal.status.toUpperCase()}</span>
+              <ReadOnlyPill dealId={dealId} className="ml-auto" />
             </div>
             <p className={pageSubtitle}>
               Created: {formatDateTime(deal.date)}
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {!isInvestorView && (
+            <>
             <button
               type="button"
-              className="inline-flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-[#D11439] to-[#f02852] text-white shadow-primary transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:-translate-y-px motion-safe:hover:shadow-primary-hover motion-safe:active:translate-y-0 motion-safe:active:scale-[0.99] sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:text-sm sm:gap-1.5 font-bold text-xs"
+              className="inline-flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-[#D11439] to-[#f02852] text-white shadow-primary transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:hover:-translate-y-px motion-safe:hover:shadow-primary-hover motion-safe:active:translate-y-0 motion-safe:active:scale-[0.99] sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:text-sm sm:gap-1.5 font-bold text-xs disabled:opacity-50 disabled:pointer-events-none"
               onClick={() => setShowAddTxn(true)}
+              {...wp()}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="stroke-2">
                 <path d="M12 5v14M5 12h14" />
@@ -185,9 +238,42 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             </button>
             <button
               type="button"
-              className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-transparent sm:text-slate-500 sm:hover:bg-slate-100 sm:hover:text-slate-900 gap-2 font-semibold text-sm"
+              className="flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 gap-2 font-semibold text-sm disabled:opacity-50 disabled:pointer-events-none"
+              onClick={() => setShowInvestorModal(true)}
+              aria-label="Manage Investors"
+              {...wp()}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[18px] sm:h-[18px]">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                <path d="M16 3.13a4 4 0 010 7.75" />
+              </svg>
+              <span className="hidden sm:inline">Investors</span>
+            </button>
+            {canAssignStaff && branchSlugForStaff && (
+            <button
+              type="button"
+              className="flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 sm:w-auto sm:h-auto sm:px-4 sm:py-2 gap-2 font-semibold text-sm disabled:opacity-50 disabled:pointer-events-none"
+              onClick={() => setShowStaffModal(true)}
+              aria-label="Manage Staff"
+              {...wp()}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[18px] sm:h-[18px]">
+                <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                <circle cx="8.5" cy="7" r="4" />
+                <line x1="20" y1="8" x2="20" y2="14" />
+                <line x1="23" y1="11" x2="17" y2="11" />
+              </svg>
+              <span className="hidden sm:inline">Staff</span>
+            </button>
+            )}
+            <button
+              type="button"
+              className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors hover:bg-accent hover:text-white sm:w-auto sm:h-auto sm:px-4 sm:py-2 sm:rounded-lg sm:bg-transparent sm:text-slate-500 sm:hover:bg-slate-100 sm:hover:text-slate-900 gap-2 font-semibold text-sm disabled:opacity-50 disabled:pointer-events-none"
               onClick={() => setShowEdit(true)}
               aria-label="Edit Group"
+              {...wp()}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="sm:w-[18px] sm:h-[18px] sm:stroke-2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -195,6 +281,8 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               </svg>
               <span className="hidden sm:inline">Edit Group</span>
             </button>
+            </>
+            )}
           </div>
         </div>
 
@@ -246,9 +334,9 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             bgColor="var(--warning-light)"
           />
           <KPICard
-            label="Group Capital"
+            label={isInvestorView ? 'My Investment' : 'Group Capital'}
             value={formatAED(groupCapital)}
-            subValue="Available Capital"
+            subValue={isInvestorView ? 'Your share in deal purchases' : 'Available Capital'}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -257,6 +345,7 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             color="var(--accent)"
             bgColor="var(--accent-light)"
           />
+          {!isInvestorView && (
           <KPICard
             label={deal.groupType === 'currency' ? "Currency Volume" : "Gold Volume"}
             value={deal.groupType === 'currency' ? `${dealCurrencyVolume}` : `${dealGoldVolume} g`}
@@ -275,6 +364,8 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             color={deal.groupType === 'currency' ? "#4f46e5" : "var(--warning)"}
             bgColor={deal.groupType === 'currency' ? "#e0e7ff" : "var(--warning-light)"}
           />
+          )}
+          {!isInvestorView && (
           <KPICard
             label="Total Expenses"
             value={formatAED(filteredTotalExpense, true)}
@@ -287,10 +378,11 @@ export default function DealDetails({ dealId }: { dealId: string }) {
             color="var(--action)"
             bgColor="var(--action-light)"
           />
+          )}
           <KPICard
-            label="P&L"
+            label={isInvestorView ? 'My P&L' : 'P&L'}
             value={formatAED(filteredTotalPL, true)}
-            subValue="Gross Profit"
+            subValue={isInvestorView ? 'Your profit share' : 'Gross Profit'}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -339,11 +431,22 @@ export default function DealDetails({ dealId }: { dealId: string }) {
 
         <div className="mb-6 mt-8 rounded-2xl sm:rounded-3xl border border-slate-100 bg-white p-4 sm:p-5 shadow-surface-xs">
           <div className="mb-4 sm:mb-5">
-            <h3 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">Profit Distribution</h3>
-            <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">Distribution of the deal's net profit</p>
+            <h3 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">
+              {isInvestorView ? 'My Profit' : 'Profit Distribution'}
+            </h3>
+            <p className="text-xs sm:text-sm font-medium text-slate-500 mt-1">
+              {isInvestorView ? 'Your share of settled deal profits' : "Distribution of the deal's net profit"}
+            </p>
           </div>
 
-          {deal.investors.length === 0 && deal.managerShare === 0 ? (
+          {isInvestorView ? (
+            <div className="flex items-center justify-between rounded-xl sm:rounded-2xl bg-emerald-50/70 border border-emerald-100/50 p-4 sm:p-5">
+              <p className="text-sm font-bold text-slate-900">Total Profit Earned</p>
+              <p className={`font-mono text-lg font-black ${filteredTotalPL >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                {formatAED(filteredTotalPL, true)}
+              </p>
+            </div>
+          ) : deal.investors.length === 0 && deal.managerShare === 0 ? (
             <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
               <p className="text-sm font-medium text-slate-500">No profit distribution available.</p>
             </div>
@@ -379,12 +482,23 @@ export default function DealDetails({ dealId }: { dealId: string }) {
               </div>
 
               {/* Investor Cards */}
-              {displayInvestors.map((inv, idx) => {
+              {displayInvestors
+                .filter(inv => !isInvestorView || !investorId || inv.id === investorId)
+                .map((inv, idx) => {
                 const partnerProfit = profitDistributions.investorTotals[inv.id] ?? 0;
                 
                 let capitalDisplay: React.ReactNode = null;
                 if (inv.isHistoricalOnly) {
                   capitalDisplay = 'Historical Investor (Left Group)';
+                } else if (isInvestorView) {
+                  const share = deal.amount > 0 ? inv.amount / deal.amount : 0;
+                  const investment = investorTotalBuyInvestment(filteredTransactions, share);
+                  const ratio = (share * 100).toFixed(1);
+                  capitalDisplay = (
+                    <>
+                      Investment: {formatAED(investment)} • {ratio}%
+                    </>
+                  );
                 } else {
                   const ratio = deal.amount > 0 ? ((inv.amount / deal.amount) * 100).toFixed(1) : '0.0';
                   // To keep UI consistent, if the group currently holds gold, show an approximate share
@@ -447,6 +561,26 @@ export default function DealDetails({ dealId }: { dealId: string }) {
         />
       </div>
       <EditDealModal open={showEdit} onClose={() => setShowEdit(false)} deal={deal} />
+      <DealInvestorAssignmentModal
+        open={showInvestorModal}
+        onClose={() => setShowInvestorModal(false)}
+        dealAmount={deal.amount}
+        investors={investors}
+        dealInvestors={deal.investors}
+        onSave={handleSaveInvestors}
+        disabled={!canWrite}
+      />
+      {canAssignStaff && branchSlugForStaff && (
+        <DealStaffAssignmentModal
+          open={showStaffModal}
+          onClose={() => setShowStaffModal(false)}
+          branchSlug={branchSlugForStaff}
+          assignments={deal.staffAssignments ?? []}
+          onChange={() => {}}
+          onSave={handleSaveStaff}
+          disabled={!canWrite}
+        />
+      )}
       <CreateDealShellModal open={showAddTxn} onClose={() => setShowAddTxn(false)} deal={deal} />
 
       {selectedTxn && (

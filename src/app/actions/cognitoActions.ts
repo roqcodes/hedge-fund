@@ -18,6 +18,7 @@ import { seedDefaultStaffPermissions } from '@/lib/userPermissions';
 import { logger } from '@/lib/logger';
 
 const CUSTOMER_ROLE = 'customer';
+const INVESTOR_ROLE = 'investor';
 
 const cognitoClient = env.COGNITO_REGION 
   ? new CognitoIdentityProviderClient({ region: env.COGNITO_REGION })
@@ -93,7 +94,7 @@ export async function fetchCognitoUsersAction(branchSlug?: string) {
       };
     });
 
-    users = users.filter(u => u.role !== CUSTOMER_ROLE);
+    users = users.filter(u => u.role !== CUSTOMER_ROLE && u.role !== INVESTOR_ROLE);
 
     if (access.user?.role === 'branch_manager' && access.user.branchId) {
       users = users.filter(u => u.branchId === access.user!.branchId);
@@ -409,6 +410,88 @@ export async function createCustomerCognitoUser(input: {
       return { success: false, error: 'Password does not meet Cognito requirements.' };
     }
     return { success: false, error: error instanceof Error ? error.message : 'Failed to create customer account' };
+  }
+}
+
+/** Create a Cognito login for an investor (Groups & Deals portal only). */
+export async function createInvestorCognitoUser(input: {
+  email: string;
+  name: string;
+  branchId: string;
+  password: string;
+}): Promise<{ success: boolean; userId?: string; error?: string }> {
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) {
+    return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
+  }
+
+  try {
+    const createCommand = new AdminCreateUserCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: input.email,
+      UserAttributes: [
+        { Name: 'email', Value: input.email },
+        { Name: 'email_verified', Value: 'true' },
+        { Name: 'name', Value: input.name },
+        { Name: 'custom:role', Value: INVESTOR_ROLE },
+        { Name: 'custom:branchId', Value: input.branchId },
+      ],
+      MessageAction: 'SUPPRESS',
+    });
+    await cognitoClient.send(createCommand);
+
+    const setPasswordCommand = new AdminSetUserPasswordCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: input.email,
+      Password: input.password,
+      Permanent: true,
+    });
+    await cognitoClient.send(setPasswordCommand);
+
+    const userId = await lookupCognitoUserIdByEmail(input.email);
+    if (!userId) {
+      return { success: false, error: 'Investor account was created but user id could not be resolved.' };
+    }
+
+    return { success: true, userId };
+  } catch (error: unknown) {
+    logger.error({ error, email: input.email, branchId: input.branchId }, 'Error creating investor Cognito user');
+    const errName = (error as { name?: string })?.name;
+    if (errName === 'UsernameExistsException') {
+      return { success: false, error: 'A user with this email already exists.' };
+    }
+    if (errName === 'InvalidPasswordException') {
+      return { success: false, error: 'Password does not meet Cognito requirements.' };
+    }
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to create investor account' };
+  }
+}
+
+export async function deleteInvestorCognitoUser(email: string) {
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) {
+    return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
+  }
+
+  try {
+    const listRes = await cognitoClient.send(new ListUsersCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Filter: `email = "${email}"`,
+      Limit: 1,
+    }));
+    const target = listRes.Users?.[0];
+    const targetRole = getAttribute(target?.Attributes, 'custom:role');
+    if (targetRole !== INVESTOR_ROLE) {
+      return { success: false, error: 'Refusing to delete non-investor Cognito account.' };
+    }
+
+    const command = new AdminDeleteUserCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: email,
+    });
+    await cognitoClient.send(command);
+    return { success: true };
+  } catch (error: unknown) {
+    logger.error({ error, email }, 'Error deleting investor Cognito user');
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete investor account' };
   }
 }
 

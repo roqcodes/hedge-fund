@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import SellDealModal from './SellDealModal';
 import ExpensesModal from './ExpensesModal';
 import AddDealBuyModal from './AddDealBuyModal';
@@ -9,6 +9,13 @@ import { useApp } from '@/context/AppContext';
 import { formatAED } from '@/data/mockData';
 import { badgeClass } from '@/lib/badgeClass';
 import { computeDealBuyAggregates } from '@/lib/dealCalculations';
+import { useDealWriteAccess } from '@/hooks/useDealWriteAccess';
+import { useInvestorPortalView } from '@/hooks/useInvestorPortalView';
+import { dealTransactionNeedsDetailLoad } from '@/lib/dealTransactionMappers';
+import { fetchDealTransactionDetailAction, fetchInvestorDealTransactionDetailAction } from '@/app/actions/dbActions';
+import { investorDealShareRatio, investorTxnInvestment, scaleBuysForInvestor } from '@/lib/investorDealMetrics';
+import { formatInr, getCurrencySaleBreakdown, getGoldSaleBreakdown } from '@/lib/dealSaleBreakdown';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
 import { DealTransactionBuy } from '@/types';
 import { pageTitle, pageSubtitle, tableWrap, dataTable, btnPrimary } from '@/lib/ui';
 
@@ -30,26 +37,106 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
   const router = useRouter();
   const params = useParams();
   const branchSlug = params?.branchSlug as string;
-  const { deals, investors, isInitialLoading, dealTransactions, currentSlug } = useApp();
+  const { deals, investors, isInitialLoading, dealTransactions, currentSlug, upsertDealTransaction } = useApp();
   const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
   const [showSellModal, setShowSellModal] = useState(false);
   const [showExpensesModal, setShowExpensesModal] = useState(false);
   const [showAddBuy, setShowAddBuy] = useState(false);
   const [selectedBuy, setSelectedBuy] = useState<DealTransactionBuy | null>(null);
 
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
   const deal = deals.find(d => d.id === dealId);
+  const { canWrite, buttonProps: wp } = useDealWriteAccess(dealId);
+  const { isInvestorView, investorId } = useInvestorPortalView();
+
+  const portalSlug = branchSlug || (currentSlug && currentSlug !== 'superadmin' ? currentSlug : undefined);
+
+  const txnSummary = dealTransactions.find(t => t.id === txnId);
+  const needsDetailLoad = dealTransactionNeedsDetailLoad(txnSummary);
+  const shouldLoadDetail = Boolean(
+    txnSummary && (
+      needsDetailLoad
+      || (isInvestorView && (txnSummary.buyCount ?? 0) > 0 && !txnSummary.buys?.length)
+    ),
+  );
+
+  useEffect(() => {
+    if (!txnId || isInitialLoading || !txnSummary || !shouldLoadDetail) return;
+    if (isInvestorView && !investorId) return;
+
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(null);
+    const fetchDetail = isInvestorView && investorId
+      ? fetchInvestorDealTransactionDetailAction(txnId, investorId)
+      : fetchDealTransactionDetailAction(txnId, portalSlug);
+
+    fetchDetail.then(res => {
+      if (cancelled) return;
+      if (res.success && res.data) {
+        upsertDealTransaction(res.data);
+      } else if (!res.success) {
+        setDetailError(res.error || 'Failed to load deal details.');
+      }
+      setDetailLoading(false);
+    }).catch(() => {
+      if (!cancelled) {
+        setDetailError('Failed to load deal details.');
+        setDetailLoading(false);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [txnId, isInitialLoading, txnSummary, shouldLoadDetail, upsertDealTransaction, isInvestorView, investorId, portalSlug]);
+
   const txn = dealTransactions.find(t => t.id === txnId);
+  const myProfit = txn?.myPayoutAmount ?? 0;
+  const investorShareRatio = investorDealShareRatio(deal);
   const groupType = deal?.groupType === 'currency' ? 'currency' : 'gold';
   const buys = txn?.buys || [];
+  const displayBuys = useMemo(() => {
+    if (!isInvestorView) return buys;
+    return scaleBuysForInvestor(buys, investorShareRatio, groupType);
+  }, [buys, isInvestorView, investorShareRatio, groupType]);
+  const tableBuys = isInvestorView ? displayBuys : buys;
   const aggregates = useMemo(
-    () => computeDealBuyAggregates(buys, groupType),
-    [buys, groupType],
+    () => computeDealBuyAggregates(displayBuys.length > 0 ? displayBuys : buys, groupType),
+    [displayBuys, buys, groupType],
   );
+  const myDealInvestment = useMemo(() => {
+    if (!txn) return 0;
+    if (aggregates.totalCost > 0 && isInvestorView) return aggregates.totalCost;
+    return investorTxnInvestment(txn.pureCostAed || 0, investorShareRatio);
+  }, [txn, aggregates.totalCost, isInvestorView, investorShareRatio]);
   const hasBuys = aggregates.buyCount > 0;
+  const saleBreakdown = useMemo(() => {
+    if (!txn) {
+      return { sellingRateInr: null, inrToAedRate: null, salesAed: 0, isLegacy: false };
+    }
+    if (deal?.groupType === 'currency') return getCurrencySaleBreakdown(txn);
+    return getGoldSaleBreakdown(txn);
+  }, [deal?.groupType, txn]);
 
   // Calculate the remaining profit and investor distributions
   const distributions = useMemo(() => {
     if (!deal || !txn) return null;
+
+    if (isInvestorView) {
+      return {
+        managementProfit: 0,
+        investorProfitPool: myProfit,
+        breakdown: [{
+          investorId: investorId || '',
+          investorName: 'You',
+          payout: myProfit,
+          shareRatio: investorShareRatio,
+          amount: myDealInvestment,
+          isHistorical: txn.fixOrUnfix === 'fixed',
+        }],
+      };
+    }
 
     const managementProfit = txn.managementProfit;
     const investorProfitPool = txn.grossProfit - managementProfit;
@@ -82,12 +169,23 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
       investorProfitPool,
       breakdown,
     };
-  }, [deal, txn]);
+  }, [deal, txn, isInvestorView, investorId, myProfit, investorShareRatio, myDealInvestment]);
 
-  if (isInitialLoading) {
+  if (isInitialLoading || detailLoading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <p className="text-slate-500">Loading deal details...</p>
+      </div>
+    );
+  }
+
+  if (detailError) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center gap-3">
+        <p className="text-slate-500">{detailError}</p>
+        <button onClick={() => router.back()} className="text-sm font-bold text-accent hover:underline">
+          Go Back
+        </button>
       </div>
     );
   }
@@ -121,16 +219,19 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </button>
             <h1 className={pageTitle}>Deal #{txn.deal}</h1>
             <div className={badgeClass(deal.status)}>{deal.status.toUpperCase()}</div>
+            <ReadOnlyPill dealId={dealId} className="ml-auto" />
           </div>
           <p className={pageSubtitle}>Date: {txn.date} &bull; Group: {deal.groupName || deal.name}</p>
         </div>
         {/* Buttons: Buy → Expenses → Sell */}
+        {!isInvestorView && (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           {txn.fixOrUnfix === 'unfixed' && (
             <button
               type="button"
-              className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm sm:text-xs font-bold text-emerald-700 hover:bg-emerald-100 gap-1.5 transition-all"
+              className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm sm:text-xs font-bold text-emerald-700 hover:bg-emerald-100 gap-1.5 transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
               onClick={() => { setSelectedBuy(null); setShowAddBuy(true); }}
+              {...wp()}
             >
               <span>Add Buy</span>
             </button>
@@ -138,8 +239,9 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
 
           <button
             type="button"
-            className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm sm:text-xs font-bold text-rose-600 hover:bg-rose-100 active:scale-[0.99] gap-1.5 transition-all"
+            className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm sm:text-xs font-bold text-rose-600 hover:bg-rose-100 active:scale-[0.99] gap-1.5 transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
             onClick={() => setShowExpensesModal(true)}
+            {...wp()}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="1" x2="12" y2="23" />
@@ -152,9 +254,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             <button
               type="button"
               className="inline-flex min-h-[44px] sm:min-h-[36px] flex-1 sm:flex-none items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm sm:text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] gap-1.5 transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => setShowSellModal(true)}
-              disabled={!hasBuys}
-              title={!hasBuys ? 'Add at least one buy before selling' : undefined}
+              onClick={() => { if (canWrite && hasBuys) setShowSellModal(true); }}
+              {...wp({ disabled: !hasBuys, title: !hasBuys ? 'Add at least one buy before selling' : undefined })}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -165,6 +266,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </button>
           )}
         </div>
+        )}
       </div>
 
       {/* Top Row of KPI Cards */}
@@ -209,8 +311,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           }
         />
         <KPICard
-          label="Purchase Cost Total"
-          value={formatAED(aggregates.totalCost)}
+          label={isInvestorView ? 'My Purchase Cost' : 'Purchase Cost Total'}
+          value={formatAED(isInvestorView ? myDealInvestment : aggregates.totalCost)}
           colorClass="bg-slate-900 text-white"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -221,6 +323,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
           }
         />
 
+        {!isInvestorView && (
         <KPICard
           label="Expense"
           value={formatAED(txn.expenses)}
@@ -232,6 +335,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </svg>
           }
         />
+        )}
+        {!isInvestorView && (
         <KPICard
           label="Total Sale Amount"
           value={formatAED(txn.salesAed)}
@@ -242,11 +347,12 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </svg>
           }
         />
+        )}
         <KPICard
-          label="Profit/Loss"
-          value={formatAED(txn.grossProfit, true)}
-          colorClass={txn.grossProfit >= 0 ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"}
-          cardClassName={txn.grossProfit >= 0 ? 'bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-100' : 'bg-gradient-to-br from-rose-50/50 to-rose-100/30 border-rose-100'}
+          label={isInvestorView ? 'My Profit' : 'Profit/Loss'}
+          value={formatAED(isInvestorView ? myProfit : txn.grossProfit, true)}
+          colorClass={(isInvestorView ? myProfit : txn.grossProfit) >= 0 ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"}
+          cardClassName={(isInvestorView ? myProfit : txn.grossProfit) >= 0 ? 'bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-100' : 'bg-gradient-to-br from-rose-50/50 to-rose-100/30 border-rose-100'}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 6l-9.5 9.5-5-5L1 18" />
@@ -263,8 +369,8 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             <h3 className="text-lg font-bold text-slate-900">Buy Legs</h3>
             <p className="text-xs text-slate-500">Multiple buys aggregated when selling</p>
           </div>
-          {txn.fixOrUnfix === 'unfixed' && (
-            <button type="button" className={btnPrimary} onClick={() => { setSelectedBuy(null); setShowAddBuy(true); }}>
+          {txn.fixOrUnfix === 'unfixed' && !isInvestorView && (
+            <button type="button" className={`${btnPrimary} disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none`} onClick={() => { setSelectedBuy(null); setShowAddBuy(true); }} {...wp()}>
               Add Buy
             </button>
           )}
@@ -282,11 +388,13 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                   <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Purity</th>
                 )}
                 <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">Cost (AED)</th>
+                {!isInvestorView && (
                 <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">Actions</th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {buys.length > 0 ? buys.map(buy => (
+              {tableBuys.length > 0 ? tableBuys.map(buy => (
                 <tr key={buy.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-mono text-sm font-bold text-slate-900">{buy.txnId}</td>
                   <td className="px-4 py-3 text-sm text-slate-600">{buy.date}{buy.time ? ` ${buy.time}` : ''}</td>
@@ -299,22 +407,27 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                     <td className="px-4 py-3 font-mono text-sm text-slate-600">{buy.purity?.toFixed(4) ?? '—'}</td>
                   )}
                   <td className="px-4 py-3 font-mono text-sm font-bold text-slate-900">{formatAED(buy.pureCostAed)}</td>
+                  {!isInvestorView && (
                   <td className="px-4 py-3 text-right">
                     {txn.fixOrUnfix === 'unfixed' && (
                       <button
                         type="button"
-                        className="text-xs font-bold text-accent hover:underline"
+                        className="text-xs font-bold text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none disabled:no-underline"
                         onClick={() => { setSelectedBuy(buy); setShowAddBuy(true); }}
+                        {...wp()}
                       >
                         Edit
                       </button>
                     )}
                   </td>
+                  )}
                 </tr>
               )) : (
                 <tr>
                   <td colSpan={deal.groupType === 'currency' ? 5 : 6} className="px-4 py-10 text-center text-sm text-slate-500">
-                    No buys yet. Add a buy leg to record purchase details.
+                    {isInvestorView
+                      ? 'No buys recorded for this deal yet.'
+                      : 'No buys yet. Add a buy leg to record purchase details.'}
                   </td>
                 </tr>
               )}
@@ -355,21 +468,74 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
             </div>
 
             {/* Selling Details */}
+            {!isInvestorView && (
             <div>
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-rose-800 mb-3 border-b border-slate-100 pb-2">Selling Details</h4>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {deal.groupType === 'currency' ? (
+                  <>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-medium">Currency Amount</p>
+                      <p className="font-mono text-sm font-bold text-slate-900">
+                        {saleBreakdown.sellingRateInr != null
+                          ? saleBreakdown.sellingRateInr.toLocaleString()
+                          : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-medium">Conversion Rate</p>
+                      <p className="font-mono text-sm font-bold text-slate-900">
+                        {saleBreakdown.inrToAedRate != null ? saleBreakdown.inrToAedRate.toLocaleString() : '—'}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-medium">Selling Rate (INR)</p>
+                      <p className="font-mono text-sm font-bold text-slate-900">
+                        {saleBreakdown.sellingRateInr != null
+                          ? `₹ ${formatInr(saleBreakdown.sellingRateInr)}`
+                          : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 font-medium">INR → AED Rate</p>
+                      <p className="font-mono text-sm font-bold text-slate-900">
+                        {saleBreakdown.inrToAedRate != null
+                          ? saleBreakdown.inrToAedRate.toLocaleString()
+                          : '—'}
+                      </p>
+                    </div>
+                  </>
+                )}
                 <div>
                   <p className="text-[10px] text-slate-400 font-medium">Net Sales (AED)</p>
-                  <p className="font-mono text-sm font-bold text-slate-900">{txn.salesAed > 0 ? formatAED(txn.salesAed) : '-'}</p>
+                  <p className="font-mono text-sm font-bold text-slate-900">
+                    {saleBreakdown.salesAed > 0 ? formatAED(saleBreakdown.salesAed) : '—'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-medium">Status</p>
                   <p className="font-mono text-sm font-bold capitalize text-slate-900">{txn.fixOrUnfix}</p>
                 </div>
               </div>
+              {saleBreakdown.isLegacy && saleBreakdown.salesAed > 0 && (
+                <p className="mt-2 text-[10px] font-medium text-amber-600">
+                  INR rate details unavailable for this settlement — re-sell to capture full breakdown.
+                </p>
+              )}
             </div>
+            )}
+            {isInvestorView && (
+            <div>
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-rose-800 mb-3 border-b border-slate-100 pb-2">Status</h4>
+              <p className="font-mono text-sm font-bold capitalize text-slate-900">{txn.fixOrUnfix}</p>
+            </div>
+            )}
 
             {/* Expenses & Profitability */}
+            {!isInvestorView && (
             <div>
               <h4 className="text-[10px] font-bold uppercase tracking-wider text-blue-800 mb-3 border-b border-slate-100 pb-2">Financials & Profitability</h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -395,18 +561,19 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                 </div>
               </div>
             </div>
+            )}
           </div>
         </div>
 
         {/* Right side: Partner Profit Distribution */}
         <div className="flex flex-col md:rounded-3xl md:border md:border-slate-100 md:bg-white md:p-6 md:shadow-surface">
           <div className="mb-6">
-            <h3 className="text-lg font-bold text-slate-900">Profit Distribution</h3>
-            <p className="text-xs text-slate-500">Distribution of the deal&apos;s net profit</p>
+            <h3 className="text-lg font-bold text-slate-900">{isInvestorView ? 'My Profit' : 'Profit Distribution'}</h3>
+            <p className="text-xs text-slate-500">{isInvestorView ? 'Your payout for this deal' : "Distribution of the deal's net profit"}</p>
           </div>
 
           <div className="flex flex-col gap-3 flex-1">
-            {/* Manager Card */}
+            {!isInvestorView && (
             <div className="relative flex items-center justify-between overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 sm:p-4 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.04)]">
               <div className="absolute right-0 top-0 h-16 w-16 overflow-hidden z-20">
                 <div className="absolute top-[10px] -right-[30px] w-[100px] rotate-45 bg-red-600 py-0.5 text-center text-[7px] font-black uppercase tracking-widest text-white shadow-sm">
@@ -437,6 +604,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                 </p>
               </div>
             </div>
+            )}
 
             {/* Partners Cards */}
             {breakdown.map((inv, idx) => {
@@ -459,7 +627,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
                         {inv.isHistorical ? (
                           `Historical Payout • ${(inv.shareRatio * 100).toFixed(1)}%`
                         ) : (
-                          <>Capital: {formatAED(inv.amount)} • {(inv.shareRatio * 100).toFixed(1)}%</>
+                          <>{isInvestorView ? 'Investment' : 'Capital'}: {formatAED(inv.amount)} • {(inv.shareRatio * 100).toFixed(1)}%</>
                         )}
                       </p>
                     </div>
@@ -477,9 +645,9 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
 
           {/* Total Profit Distributed */}
           <div className="mt-4 flex items-center justify-between rounded-2xl bg-emerald-50/70 border border-emerald-100/50 p-4 sm:p-5">
-            <span className="text-sm sm:text-base font-bold text-slate-900">Total Distributed Profit</span>
-            <span className={`font-mono text-lg sm:text-xl font-black ${txn.grossProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-              {formatAED(txn.grossProfit, true)}
+            <span className="text-sm sm:text-base font-bold text-slate-900">{isInvestorView ? 'Your Payout' : 'Total Distributed Profit'}</span>
+            <span className={`font-mono text-lg sm:text-xl font-black ${(isInvestorView ? myProfit : txn.grossProfit) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+              {formatAED(isInvestorView ? myProfit : txn.grossProfit, true)}
             </span>
           </div>
         </div>
@@ -503,7 +671,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         onClose={() => setShowExpensesModal(false)}
         dealTransactionId={txn.id}
         dealLabel={`Deal #${txn.deal} — ${deal.groupName || deal.name}`}
-        readOnly={txn.fixOrUnfix === 'fixed'}
+        readOnly={txn.fixOrUnfix === 'fixed' || !canWrite}
       />
     </>
   );

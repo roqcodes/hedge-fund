@@ -4,12 +4,17 @@
 
 import type { ICSaleTransactionType } from '@/lib/icTransfer/transactionTypes';
 
-export type UserRole = 'admin' | 'branch_manager' | 'staff' | 'delivery' | 'customer';
+export type UserRole = 'admin' | 'branch_manager' | 'staff' | 'delivery' | 'customer' | 'investor';
 
 /** Per-page access for branch staff (none = hidden, read = view-only, write = full). */
 export type PageAccessLevel = 'none' | 'read' | 'write';
 
 export type PagePermissionMap = Partial<Record<string, PageAccessLevel>>;
+
+/** Per-deal access for branch staff (read = view only, write = manage). */
+export type DealAccessLevel = 'read' | 'write';
+
+export type DealPermissionMap = Record<string, DealAccessLevel>;
 
 export interface User {
   /** Cognito `sub` — stable user identifier. Present after sign-in; may be absent on legacy sessions. */
@@ -20,8 +25,12 @@ export interface User {
   branchId?: string;
   /** Loaded for staff — page-level permissions within their branch. */
   permissions?: PagePermissionMap;
+  /** Loaded for staff — deal-level permissions (deal id → access level). */
+  dealPermissions?: DealPermissionMap;
   /** Linked customers record — present for customer-role users after sign-in. */
   customerId?: string;
+  /** Linked investors record — present for investor-role users after sign-in. */
+  investorId?: string;
 }
 
 export interface Branch {
@@ -230,6 +239,12 @@ export interface DealInvestor {
   goldVolume?: number; // Volume of gold in grams (up to 4 decimals)
 }
 
+export interface DealStaffAssignment {
+  userId: string;
+  userName: string;
+  accessLevel: DealAccessLevel;
+}
+
 export interface Deal {
   id: string;
   name: string;
@@ -252,6 +267,10 @@ export interface Deal {
   leadPhone?: string;
   leadEmail?: string;
   leadAddress?: string;
+  staffAssignments?: DealStaffAssignment[];
+  /** Investor portal — this investor's stake in the group. */
+  myInvestmentAmount?: number;
+  myIsGold?: boolean;
 }
 
 export interface DealTransactionExpense {
@@ -300,9 +319,13 @@ export interface DealTransaction {
   marginDeposit: number;
   premiumDiscount: number;
   dealId?: string; // Foreign key linking to deals(id)
+  /** Populated on list queries without loading full buy rows. */
+  buyCount?: number;
   buys?: DealTransactionBuy[];
   payouts?: DealTransactionPayout[]; // Snapshot of investor payouts at settlement
   expensesDetails?: DealTransactionExpense[]; // Snapshot of detailed expenses
+  /** Investor portal — this investor's payout on a settled deal txn. */
+  myPayoutAmount?: number;
 }
 
 export interface DealTransactionPayout {

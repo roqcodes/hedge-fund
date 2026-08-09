@@ -4,6 +4,7 @@ import KPICard from '@/components/ui/KPICard';
 import { formatAED } from '@/data/mockData';
 import { useApp } from '@/context/AppContext';
 import { btnSecondary, btnSm, filtersBar, filterChip, filterChipActive, kpiGrid5, pageHeader, pageSubtitle, pageTitle, tableWrap, dataTable } from '@/lib/ui';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<'daily' | 'weekly' | 'monthly'>('daily');
@@ -39,8 +40,11 @@ export default function ReportsPage() {
     <div>
       <div className={pageHeader}>
         <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className={pageTitle}>Financial Reports</h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className={pageTitle}>Financial Reports</h2>
+              <ReadOnlyPill />
+            </div>
             <p className={pageSubtitle}>Consolidated branch performance reporting</p>
           </div>
 

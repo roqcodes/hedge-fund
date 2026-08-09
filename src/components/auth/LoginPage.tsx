@@ -32,8 +32,10 @@ export default function LoginPage({ branchSlug }: { branchSlug?: string }) {
       const res = await loginAction(email, password, branchSlug);
       if (res.success && res.data) {
         login(res.data);
-        // Re-fetch data with the now-active session so filtering is applied
-        await refetchData();
+        await refetchData(res.data);
+        if (res.data.role === 'investor' && branchSlug) {
+          window.location.href = `/${branchSlug}/group`;
+        }
       } else {
         setError(res.error || 'Authentication failed. Please try again.');
       }

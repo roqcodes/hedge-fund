@@ -7,6 +7,9 @@ import { tableWrap, dataTable, formInput } from '@/lib/ui';
 import { DealTransaction } from '@/types';
 
 import { useApp } from '@/context/AppContext';
+import { useDealWriteAccess } from '@/hooks/useDealWriteAccess';
+import { useInvestorPortalView } from '@/hooks/useInvestorPortalView';
+import { investorDealShareRatio, investorTxnInvestment, scaleTxnVolumeForInvestor } from '@/lib/investorDealMetrics';
 
 type SortField = keyof DealTransaction;
 type SortDirection = 'asc' | 'desc';
@@ -28,7 +31,32 @@ export default function DealTransactionsTable({
   const params = useParams();
   const dealId = params?.id as string || '1';
   const branchSlug = params?.branchSlug as string;
-  const { currentSlug } = useApp();
+  const { currentSlug, deals } = useApp();
+  const { buttonProps: wp } = useDealWriteAccess(dealId);
+  const { isInvestorView } = useInvestorPortalView();
+  const investorShareRatio = investorDealShareRatio(deals.find(d => d.id === dealId));
+  const displayPurchaseCost = (pureCostAed: number) =>
+    isInvestorView
+      ? investorTxnInvestment(pureCostAed || 0, investorShareRatio)
+      : pureCostAed;
+  const displayVolume = (row: DealTransaction) => {
+    if (!isInvestorView) {
+      return groupType === 'currency'
+        ? row.currencyAmount?.toLocaleString()
+        : row.weight.toLocaleString();
+    }
+    const scaled = scaleTxnVolumeForInvestor(
+      row.weight,
+      row.currencyAmount,
+      investorShareRatio,
+      groupType,
+    );
+    return groupType === 'currency'
+      ? scaled.currencyAmount?.toLocaleString()
+      : scaled.weight.toLocaleString();
+  };
+  const effectiveSortField = (field: SortField): SortField =>
+    isInvestorView && field === 'grossProfit' ? 'myPayoutAmount' as SortField : field;
   const groupBasePath = branchSlug ? `/group/${branchSlug}` : (currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}/group` : '/group');
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,8 +116,9 @@ export default function DealTransactionsTable({
 
     // 2. Sorting
     result.sort((a, b) => {
-      let valA = a[sortField] ?? '';
-      let valB = b[sortField] ?? '';
+      const field = effectiveSortField(sortField);
+      let valA = a[field] ?? '';
+      let valB = b[field] ?? '';
 
       if (typeof valA === 'string' && typeof valB === 'string') {
         const compare = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
@@ -231,18 +260,24 @@ export default function DealTransactionsTable({
                 <th className={thClass} onClick={() => handleSort('pureCostAed')}>
                   <div className="flex items-center gap-2">Purchase Cost {renderSortIcon('pureCostAed')}</div>
                 </th>
+                {!isInvestorView && (
                 <th className={thClass} onClick={() => handleSort('expenses')}>
                   <div className="flex items-center gap-2">Expense {renderSortIcon('expenses')}</div>
                 </th>
+                )}
+                {!isInvestorView && (
                 <th className={thClass} onClick={() => handleSort('salesAed')}>
                   <div className="flex items-center gap-2">Sales {renderSortIcon('salesAed')}</div>
                 </th>
+                )}
                 <th className={thClass} onClick={() => handleSort('grossProfit')}>
-                  <div className="flex items-center gap-2">P&L Gross {renderSortIcon('grossProfit')}</div>
+                  <div className="flex items-center gap-2">{isInvestorView ? 'My P&L' : 'P&L Gross'} {renderSortIcon('grossProfit')}</div>
                 </th>
+                {!isInvestorView && (
                 <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   Actions
                 </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -270,25 +305,32 @@ export default function DealTransactionsTable({
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600">
                       <div className="flex flex-col">
-                        <span>{groupType === 'currency' ? row.currencyAmount?.toLocaleString() : row.weight.toLocaleString()}</span>
-                        {(row.buys?.length ?? 0) > 0 && (
-                          <span className="text-[10px] text-slate-400">{row.buys!.length} buy{row.buys!.length !== 1 ? 's' : ''}</span>
+                        <span>{displayVolume(row)}</span>
+                        {(row.buyCount ?? row.buys?.length ?? 0) > 0 && (
+                          <span className="text-[10px] text-slate-400">{row.buyCount ?? row.buys!.length} buy{(row.buyCount ?? row.buys!.length) !== 1 ? 's' : ''}</span>
                         )}
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.pureCostAed)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(displayPurchaseCost(row.pureCostAed))}</td>
+                    {!isInvestorView && (
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.expenses)}</td>
+                    )}
+                    {!isInvestorView && (
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">{formatAED(row.salesAed)}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-emerald-600">{formatAED(row.grossProfit, true)}</td>
+                    )}
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-emerald-600">
+                      {formatAED(isInvestorView ? (row.myPayoutAmount || 0) : row.grossProfit, true)}
+                    </td>
+                    {!isInvestorView && (
                     <td className="whitespace-nowrap px-4 py-3 text-right text-sm">
                       <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>
                         <button
                           type="button"
-                          className="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                          className="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
                           onClick={() => {
                             if (onEdit) onEdit(row);
                           }}
-                          title="Edit Deal"
+                          {...wp({ title: 'Edit Deal' })}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -297,6 +339,7 @@ export default function DealTransactionsTable({
                         </button>
                       </div>
                     </td>
+                    )}
                   </tr>
                 ))
               ) : (
@@ -341,19 +384,23 @@ export default function DealTransactionsTable({
                       </div>
                     </div>
                     <span className="text-xs font-medium text-slate-500">
-                      {groupType === 'currency' ? `Amt: ${row.currencyAmount?.toLocaleString()}` : `Vol: ${row.weight.toLocaleString()}`}
+                      {groupType === 'currency' ? `Amt: ${displayVolume(row)}` : `Vol: ${displayVolume(row)}`}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-y-3 gap-x-4 border-y border-slate-50 py-3">
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Purchase Cost</span>
-                      <span className="font-mono text-sm font-bold text-slate-900">{formatAED(row.pureCostAed)}</span>
+                      <span className="font-mono text-sm font-bold text-slate-900">{formatAED(displayPurchaseCost(row.pureCostAed))}</span>
                     </div>
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross P&L</span>
-                      <span className="font-mono text-sm font-bold text-emerald-600">{formatAED(row.grossProfit, true)}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{isInvestorView ? 'My P&L' : 'Gross P&L'}</span>
+                      <span className="font-mono text-sm font-bold text-emerald-600">
+                        {formatAED(isInvestorView ? (row.myPayoutAmount || 0) : row.grossProfit, true)}
+                      </span>
                     </div>
+                    {!isInvestorView && (
+                    <>
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expense</span>
                       <span className="font-mono text-sm font-bold text-slate-900">{formatAED(row.expenses)}</span>
@@ -362,16 +409,20 @@ export default function DealTransactionsTable({
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sales</span>
                       <span className="font-mono text-sm font-bold text-slate-900">{formatAED(row.salesAed)}</span>
                     </div>
+                    </>
+                    )}
                   </div>
 
+                  {!isInvestorView && (
                   <div className="flex items-center justify-between text-xs mt-1" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1">
                       <button
                         type="button"
-                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:bg-slate-100 transition-colors"
+                        className="flex h-8 items-center gap-1 rounded-lg px-2 text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:bg-slate-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
                         onClick={() => {
                           if (onEdit) onEdit(row);
                         }}
+                        {...wp({ title: 'Edit Deal' })}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -384,6 +435,7 @@ export default function DealTransactionsTable({
                       View &rarr;
                     </div>
                   </div>
+                  )}
                 </div>
               ))
             ) : (

@@ -47,28 +47,34 @@ export default function SellDealModal({
   };
 
   useEffect(() => {
-    if (open) {
-      setLiveSellRateStr(transaction.liveSellRate ? transaction.liveSellRate.toString() : '');
-      setConversionRateStr('');
-      setSellPremiumDiscountStr(transaction.sellPremiumDiscount ? transaction.sellPremiumDiscount.toString() : '');
-      setError('');
-      setFetchedExpenseItems([]);
+    if (!open) return;
+    setLiveSellRateStr(transaction.liveSellRate ? transaction.liveSellRate.toString() : '');
+    setConversionRateStr(transaction.conversionRate ? transaction.conversionRate.toString() : '');
+    setSellPremiumDiscountStr(transaction.sellPremiumDiscount ? transaction.sellPremiumDiscount.toString() : '');
+    setError('');
+    setFetchedExpenseItems([]);
 
-      // Auto-fetch itemised expenses and sum them
-      setExpensesLoading(true);
-      dbFetchDealExpensesAction(transaction.id).then((res) => {
-        if (res.success && res.data && res.data.length > 0) {
-          setFetchedExpenseItems(res.data);
-          const total = res.data.reduce((acc, e) => acc + e.value, 0);
-          setExpensesStr(total.toFixed(4));
-        } else {
-          // Fallback: use value already stored on the transaction row
-          setExpensesStr(transaction.expenses ? transaction.expenses.toString() : '0');
-        }
-        setExpensesLoading(false);
-      });
+    const cached = transaction.expensesDetails;
+    if (cached && cached.length > 0) {
+      setFetchedExpenseItems(cached);
+      const total = cached.reduce((acc, e) => acc + e.value, 0);
+      setExpensesStr(total.toFixed(4));
+      setExpensesLoading(false);
+      return;
     }
-  }, [open, transaction]);
+
+    setExpensesLoading(true);
+    dbFetchDealExpensesAction(transaction.id).then((res) => {
+      if (res.success && res.data && res.data.length > 0) {
+        setFetchedExpenseItems(res.data);
+        const total = res.data.reduce((acc, e) => acc + e.value, 0);
+        setExpensesStr(total.toFixed(4));
+      } else {
+        setExpensesStr(transaction.expenses ? transaction.expenses.toString() : '0');
+      }
+      setExpensesLoading(false);
+    });
+  }, [open, transaction.id, transaction.liveSellRate, transaction.conversionRate, transaction.sellPremiumDiscount, transaction.expenses, transaction.expensesDetails]);
 
   const liveSellRateInr = parseSafeNumber(liveSellRateStr); // Live rate in INR per ounce
   const conversionRateInput = parseSafeNumber(conversionRateStr);
@@ -181,8 +187,8 @@ export default function SellDealModal({
       pureCostAed,
       currencyAmount: deal.groupType === 'currency' ? currencyAmount : transaction.currencyAmount,
       avgPurity: avgPurity ?? undefined,
-      conversionRate: deal.groupType === 'currency' ? conversionRateInput : undefined,
-      liveSellRate: deal.groupType === 'currency' ? 0 : Number(calculations.salesAed.toFixed(7)),
+      conversionRate: conversionRateInput,
+      liveSellRate: deal.groupType === 'currency' ? 0 : Number(liveSellRateInr.toFixed(7)),
       sellPremiumDiscount: 0,
       salesAed: Number(calculations.salesAed.toFixed(7)),
       expenses: Number(expenses.toFixed(7)),

@@ -1,10 +1,12 @@
 'use server';
 
 import { getCurrentUserAction } from '@/app/actions/auth';
-import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
+import { assertStaffWriteAccess, assertStaffDealWriteAccess } from '@/app/actions/permissionActions';
+import { replaceDealStaffAssignments, fetchDealStaffAssignmentsBatch } from '@/lib/dealPermissions';
 import type { BranchPageId } from '@/lib/branchPages';
-import { isBranchScopedUser, isCustomerRole } from '@/lib/rbac';
+import { hasFullBranchAccess, isBranchScopedUser, isCustomerRole, isInvestorRole } from '@/lib/rbac';
 import { query, pool } from '@/lib/db';
+import { ensureDbSchema } from '@/lib/dbSchema';
 import { DEFAULT_BRANCH_TIMEZONE, resolveBranchTimeZone, toBusinessDate, parseCalendarDate, todayInTimeZone } from '@/lib/businessTime';
 import {
   canModifyTransactionsOnDate,
@@ -17,8 +19,8 @@ import {
   SQL_BACKFILL_TRANSACTION_BUSINESS_DATES_ORPHAN,
   SQL_BRANCH_DAY_CLOSE_SELECT,
 } from '@/lib/sql/businessDateSql';
-import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
+import { computeDealBuyAggregates, type DealBuyAggregates } from '@/lib/dealCalculations';
 import { mapPhysicalBuyRow, mapPhysicalSellRow, mapPhysicalBulkSellRow } from '@/lib/physicalMappers';
 import { mapUsdtBuyRow, mapUsdtSellRow, mapUsdtSettingsRow } from '@/lib/usdtMappers';
 import {
@@ -34,10 +36,16 @@ import { filterRateGroupsForCustomerPortal,
   stripAdminRatesFromSale,
 } from '@/lib/icTransfer/customerPortalScope';
 import { mapICTransferSettingsRow } from '@/lib/icTransfer/settings';
-import { SQL_ENSURE_IC_TRANSFER_SETTINGS } from '@/lib/sql/icTransferSettingsSql';
 import { logger } from '@/lib/logger';
-import { computeDealBuyAggregates, type DealBuyAggregates } from '@/lib/dealCalculations';
+import { SQL_INVESTOR_DEALS, SQL_INVESTOR_DEAL_TRANSACTIONS, SQL_INVESTOR_DEAL_TRANSACTION_DETAIL } from '@/lib/investorPortalSql';
+import { createInvestorCognitoUser, deleteInvestorCognitoUser } from '@/app/actions/cognitoActions';
+import { SQL_DEALS_WITH_INVESTORS, SQL_DEAL_TRANSACTIONS_LIST, SQL_DEAL_TRANSACTION_DETAIL } from '@/lib/initialDataSql';
+import {
+  mapDealTransactionDetailRow,
+  mapDealTransactionListRow,
+} from '@/lib/dealTransactionMappers';
 
+import type { User } from '@/types';
 import { sanitizeEnabledCurrencies } from '@/lib/currency';
 import { normalizeHiddenPages } from '@/lib/branchPages';
 import { validateJournalEntry } from '@/lib/journalEntry';
@@ -199,16 +207,142 @@ async function resolveBranchSlug(branchId?: string): Promise<string | undefined>
   return res.rows[0]?.slug as string | undefined;
 }
 
+/** Read session from branch portal cookie first, then superadmin fallback. */
+async function resolveCurrentUser(
+  branchSlug?: string,
+  branchId?: string,
+): Promise<User | null> {
+  const slug = branchSlug ?? (branchId ? await resolveBranchSlug(branchId) : undefined);
+  if (slug) {
+    const branchUser = (await getCurrentUserAction(slug)).data;
+    if (branchUser) return branchUser;
+  }
+  return (await getCurrentUserAction()).data ?? null;
+}
+
+async function resolveDealBranchIdFromTransaction(transactionId: string): Promise<string | undefined> {
+  const res = await query(
+    `SELECT d.managing_branch_id
+     FROM deal_transactions dt
+     INNER JOIN deals d ON d.id = dt.deal_id
+     WHERE dt.id = $1
+     LIMIT 1`,
+    [transactionId],
+  );
+  const branchId = res.rows[0]?.managing_branch_id;
+  return branchId ? String(branchId) : undefined;
+}
+
 async function guardStaffWrite(
   pageId: BranchPageId,
   branchSlug?: string,
   branchId?: string,
 ): Promise<DbGuardFail | null> {
-  const slug = branchSlug ?? (await resolveBranchSlug(branchId));
-  let user = slug ? (await getCurrentUserAction(slug)).data : null;
-  if (!user) user = (await getCurrentUserAction()).data ?? null;
+  const user = await resolveCurrentUser(branchSlug, branchId);
   const err = await assertStaffWriteAccess(user, pageId, branchId ?? user?.branchId);
   return err ? { success: false, error: err } : null;
+}
+
+async function guardStaffDealWrite(
+  dealId: string,
+  branchSlug?: string,
+  branchId?: string,
+): Promise<DbGuardFail | null> {
+  const user = await resolveCurrentUser(branchSlug, branchId);
+  const err = await assertStaffDealWriteAccess(user, dealId, branchId ?? user?.branchId);
+  return err ? { success: false, error: err } : null;
+}
+
+async function resolveDealBranchId(dealId: string): Promise<string | undefined> {
+  const res = await query(`SELECT managing_branch_id FROM deals WHERE id = $1 LIMIT 1`, [dealId]);
+  return res.rows[0]?.managing_branch_id as string | undefined;
+}
+
+async function guardStaffDealWriteByTxn(dealTransactionId: string): Promise<DbGuardFail | null> {
+  const res = await query(`SELECT deal_id FROM deal_transactions WHERE id = $1 LIMIT 1`, [dealTransactionId]);
+  const dealId = res.rows[0]?.deal_id as string | undefined;
+  if (!dealId) return { success: false, error: 'Deal transaction not found.' };
+  const branchId = await resolveDealBranchId(dealId);
+  return guardStaffDealWrite(dealId, undefined, branchId);
+}
+
+async function requireStaffOrManagerRead(
+  branchSlug?: string,
+  branchId?: string,
+): Promise<{ user: User } | DbGuardFail> {
+  const user = await resolveCurrentUser(branchSlug, branchId);
+  if (!user) return { success: false, error: 'You must be signed in.' };
+  if (isInvestorRole(user.role) || isCustomerRole(user.role)) {
+    return { success: false, error: 'Access denied.' };
+  }
+  return { user };
+}
+
+async function requireInvestorSession(
+  investorId: string,
+  branchId: string,
+): Promise<{ user: User } | DbGuardFail> {
+  const branchSlug = await resolveBranchSlug(branchId);
+  if (!branchSlug) {
+    return { success: false, error: 'Branch not found.' };
+  }
+  const userRes = await getCurrentUserAction(branchSlug);
+  const user = userRes.success ? userRes.data : null;
+  if (!user || !isInvestorRole(user.role)) {
+    return { success: false, error: 'Unauthorized.' };
+  }
+  if (!user.investorId || user.investorId !== investorId) {
+    return { success: false, error: 'Access denied.' };
+  }
+  if (!user.branchId || user.branchId !== branchId) {
+    return { success: false, error: 'Access denied.' };
+  }
+  return { user };
+}
+
+async function requireInvestorSessionForTxn(
+  investorId: string,
+): Promise<{ user: User } | DbGuardFail> {
+  const branchRes = await query(
+    'SELECT assigned_branch_id FROM investors WHERE id = $1 LIMIT 1',
+    [investorId],
+  );
+  const branchId = branchRes.rows[0]?.assigned_branch_id as string | undefined;
+  if (!branchId) {
+    return { success: false, error: 'Unauthorized.' };
+  }
+  return requireInvestorSession(investorId, branchId);
+}
+
+function mapInvestorPortalBranch(r: Record<string, unknown>): Branch {
+  return {
+    id: String(r.id),
+    slug: (r.slug as string) || String(r.name).toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    name: String(r.name),
+    logo_url: r.logo_url as string | undefined,
+    address: r.address as string | undefined,
+    city: r.city as string | undefined,
+    country: r.country as string | undefined,
+    trn: r.trn as string | undefined,
+    phone: r.phone as string | undefined,
+    email: r.email as string | undefined,
+    website: r.website as string | undefined,
+    location: r.location ? String(r.location) : '',
+    managerName: r.manager_name ? String(r.manager_name) : '',
+    cashBalance: 0,
+    goldBalance: 0,
+    currentBalance: 0,
+    openingBalance: 0,
+    openingGoldBalance: 0,
+    closingBalance: 0,
+    dailyPL: 0,
+    status: r.status as Branch['status'],
+    timezone: resolveBranchTimeZone(r.timezone ? String(r.timezone) : null),
+    hiddenPages: normalizeHiddenPages(Array.isArray(r.hidden_pages) ? (r.hidden_pages as string[]).map(String) : []),
+    enabledCurrencies: sanitizeEnabledCurrencies(r.enabled_currencies),
+    lastActivity: r.last_activity ? new Date(r.last_activity as string).toISOString() : new Date().toISOString(),
+    createdAt: r.created_at ? new Date(r.created_at as string).toISOString() : new Date().toISOString(),
+  };
 }
 
 /**
@@ -218,54 +352,31 @@ async function guardStaffWrite(
  */
 export async function fetchInitialDataAction(branchSlug?: string): Promise<DbActionResult<InitialDataPayload>> {
   try {
-    await query(`
-      CREATE TABLE IF NOT EXISTS user_page_permissions (
-        user_id VARCHAR(128) NOT NULL,
-        branch_id VARCHAR(50) NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-        page_id VARCHAR(50) NOT NULL,
-        access_level VARCHAR(10) NOT NULL DEFAULT 'none' CHECK (access_level IN ('none', 'read', 'write')),
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_by VARCHAR(255),
-        PRIMARY KEY (user_id, branch_id, page_id)
-      );
-    `);
-    await query(`CREATE INDEX IF NOT EXISTS idx_user_page_permissions_branch ON user_page_permissions(branch_id);`);
+    await ensureDbSchema();
 
-    // ── AUTO-MIGRATION: Fix branch ID length (Max 10 chars for Cognito) ──
-    await query(`
-      DO $$
-      BEGIN
-        IF EXISTS (SELECT 1 FROM branches WHERE id = 'br-aibak-office') THEN
-          UPDATE branches SET name = 'Aibak Office Old' WHERE id = 'br-aibak-office';
-          INSERT INTO branches (id, name, location, manager_name, status)
-          VALUES ('BRAIBAKOFF', 'Aibak Office', 'Dubai', 'Aibak', 'active')
-          ON CONFLICT (id) DO NOTHING;
-          
-          UPDATE deals SET managing_branch_id = 'BRAIBAKOFF', to_branch_id = 'BRAIBAKOFF' WHERE managing_branch_id = 'br-aibak-office' OR to_branch_id = 'br-aibak-office';
-          UPDATE investors SET assigned_branch_id = 'BRAIBAKOFF' WHERE assigned_branch_id = 'br-aibak-office';
-          UPDATE entities SET branch_id = 'BRAIBAKOFF' WHERE branch_id = 'br-aibak-office';
-          
-          DELETE FROM branches WHERE id = 'br-aibak-office';
-        END IF;
-      END $$;
-    `);
-    // ─────────────────────────────────────────────────────────────────────
+    const userRes = await getCurrentUserAction(branchSlug);
+    const currentUser = userRes.success ? userRes.data : null;
 
-    await query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Dubai';`);
-    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS business_date DATE;`);
-    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by VARCHAR(255);`);
-    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_name VARCHAR(255);`);
-    await query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS entered_by_user_id VARCHAR(255);`);
-    // Auto-backfill is removed because it was overwriting manually corrected data on every reload.
-    await query(SQL_ENSURE_USDT_SCHEMA);
-    await query(SQL_ENSURE_IC_TRANSFER_SETTINGS);
+    if (currentUser && isInvestorRole(currentUser.role)) {
+      return { success: false, error: 'Investor portal users cannot access manager data.' };
+    }
 
-    // 1. Fetch HQ Balance
-    const hqRes = await query('SELECT amount FROM hq_balance WHERE id = 1');
+    const isBranchScoped =
+      !!currentUser && isBranchScopedUser(currentUser) && !!currentUser.branchId;
+    const branchId = isBranchScoped ? currentUser!.branchId! : null;
+    const isStaff = currentUser?.role === 'staff';
+    const staffUserId = isStaff && currentUser?.id ? currentUser.id : null;
+
+    const [hqRes, branchesRes, staffPermRes] = await Promise.all([
+      query('SELECT amount FROM hq_balance WHERE id = 1'),
+      query('SELECT * FROM branches ORDER BY id ASC'),
+      staffUserId
+        ? query('SELECT deal_id FROM user_deal_permissions WHERE user_id = $1', [staffUserId])
+        : Promise.resolve({ rows: [] as { deal_id: string }[] }),
+    ]);
+
     const hqBalance = hqRes.rows.length > 0 ? parseFloat(hqRes.rows[0].amount) : 50000000;
 
-    // 2. Fetch Branches
-    const branchesRes = await query('SELECT * FROM branches ORDER BY id ASC');
     const branches: Branch[] = branchesRes.rows.map((r) => ({
       id: r.id,
       slug: r.slug || r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -295,21 +406,190 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
     }));
 
-    // 3. Fetch Transactions
-    const txRes = await query('SELECT * FROM transactions ORDER BY date DESC');
-    const tagLinksRes = await query(`
-      SELECT ttl.transaction_id, tt.id, tt.name
-      FROM transaction_tag_links ttl
-      JOIN transaction_tags tt ON tt.id = ttl.tag_id
-    `).catch(() => ({ rows: [] as { transaction_id: string; id: string; name: string }[] }));
+    const branchName = branchId ? branches.find((b) => b.id === branchId)?.name ?? branchId : null;
+    const staffDealIds = staffUserId ? staffPermRes.rows.map((r) => r.deal_id as string) : [];
+    const staffFilterActive = !!staffUserId;
+
+    const branchTzById = Object.fromEntries(
+      branches.map((b) => [b.id, resolveBranchTimeZone(b.timezone)]),
+    );
+
+    const customerSession =
+      !!currentUser && isCustomerRole(currentUser.role) && !!currentUser.customerId;
+
+    const [
+      txRes,
+      tagLinksRes,
+      expRes,
+      invRes,
+      notifRes,
+      investorsRes,
+      dealsRes,
+      dealTxRes,
+      entitiesRes,
+      ledgersRes,
+      transactionTagsRes,
+      physicalBalancesRes,
+      physicalBuysRes,
+      physicalSellsRes,
+      physicalBulkSellsRes,
+      usdtBuysRes,
+      usdtSellsRes,
+      usdtSettingsRes,
+      icRegionsRes,
+      icSuppliersRes,
+      icWarehousesRes,
+      icTransferSettingsRes,
+      icRateGroupsRes,
+      icPurchasesRes,
+      icSalesRes,
+      icWarehouseTxRes,
+    ] = await Promise.all([
+      branchId
+        ? query(
+            `SELECT * FROM transactions
+             WHERE branch_id = $1 OR from_entity = $2 OR to_entity = $2
+             ORDER BY date DESC`,
+            [branchId, branchName],
+          )
+        : query('SELECT * FROM transactions ORDER BY date DESC'),
+      query(`
+        SELECT ttl.transaction_id, tt.id, tt.name
+        FROM transaction_tag_links ttl
+        JOIN transaction_tags tt ON tt.id = ttl.tag_id
+        ${branchId ? `WHERE tt.branch_id = $1 OR tt.branch_id IS NULL` : ''}
+      `, branchId ? [branchId] : []).catch(() => ({ rows: [] as { transaction_id: string; id: string; name: string }[] })),
+      branchId
+        ? query('SELECT * FROM expenses WHERE branch_id = $1 ORDER BY date DESC', [branchId])
+        : query('SELECT * FROM expenses ORDER BY date DESC'),
+      branchId
+        ? query('SELECT * FROM invoices WHERE branch_id = $1 ORDER BY date DESC', [branchId])
+        : query('SELECT * FROM invoices ORDER BY date DESC'),
+      query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50'),
+      branchId
+        ? query(
+            `SELECT i.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', d.id,
+                    'date', d.date,
+                    'type', d.type,
+                    'amount', d.amount,
+                    'goldGrams', d.gold_grams,
+                    'notes', d.notes
+                  )
+                ) FILTER (WHERE d.id IS NOT NULL),
+                '[]'::json
+              ) AS deposits
+            FROM investors i
+            LEFT JOIN investor_deposits d ON d.investor_id = i.id
+            WHERE i.assigned_branch_id = $1 OR i.is_global = true
+            GROUP BY i.id
+            ORDER BY i.joined_date DESC`,
+            [branchId],
+          )
+        : query(`
+            SELECT i.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', d.id,
+                    'date', d.date,
+                    'type', d.type,
+                    'amount', d.amount,
+                    'goldGrams', d.gold_grams,
+                    'notes', d.notes
+                  )
+                ) FILTER (WHERE d.id IS NOT NULL),
+                '[]'::json
+              ) AS deposits
+            FROM investors i
+            LEFT JOIN investor_deposits d ON d.investor_id = i.id
+            GROUP BY i.id
+            ORDER BY i.joined_date DESC
+          `),
+      query(SQL_DEALS_WITH_INVESTORS, [branchId, staffFilterActive, staffDealIds]),
+      query(SQL_DEAL_TRANSACTIONS_LIST, [branchId, staffFilterActive, staffDealIds]),
+      branchId
+        ? query('SELECT * FROM entities WHERE branch_id IS NULL OR branch_id = $1 ORDER BY created_at DESC', [branchId])
+        : query('SELECT * FROM entities ORDER BY created_at DESC'),
+      query('SELECT * FROM ledgers ORDER BY sort_order ASC, created_at ASC'),
+      query(
+        branchId
+          ? 'SELECT * FROM transaction_tags WHERE branch_id IS NULL OR branch_id = $1 ORDER BY name ASC'
+          : 'SELECT * FROM transaction_tags ORDER BY name ASC',
+        branchId ? [branchId] : [],
+      ).catch(() => ({ rows: [] })),
+      branchId
+        ? query('SELECT * FROM physical_balances WHERE branch_id = $1', [branchId])
+        : query('SELECT * FROM physical_balances'),
+      branchId
+        ? query('SELECT * FROM physical_buys WHERE branch_id = $1 ORDER BY date DESC', [branchId])
+        : query('SELECT * FROM physical_buys ORDER BY date DESC'),
+      branchId
+        ? query(
+            `SELECT ps.* FROM physical_sells ps
+             INNER JOIN physical_buys pb ON pb.id = ps.buy_id
+             WHERE pb.branch_id = $1
+             ORDER BY ps.date DESC`,
+            [branchId],
+          )
+        : query('SELECT * FROM physical_sells ORDER BY date DESC'),
+      branchId
+        ? query('SELECT * FROM physical_bulk_sells WHERE branch_id = $1 ORDER BY date DESC', [branchId])
+        : query('SELECT * FROM physical_bulk_sells ORDER BY date DESC'),
+      branchId
+        ? query('SELECT * FROM usdt_buys WHERE branch_id = $1 ORDER BY date DESC', [branchId])
+        : query('SELECT * FROM usdt_buys ORDER BY date DESC'),
+      branchId
+        ? query('SELECT * FROM usdt_sells WHERE branch_id = $1 ORDER BY date DESC', [branchId])
+        : query('SELECT * FROM usdt_sells ORDER BY date DESC'),
+      branchId
+        ? query('SELECT * FROM usdt_branch_settings WHERE branch_id = $1', [branchId])
+        : query('SELECT * FROM usdt_branch_settings'),
+      query('SELECT * FROM ic_regions'),
+      query('SELECT * FROM ic_suppliers'),
+      query('SELECT * FROM ic_warehouses'),
+      query(
+        `SELECT sales_enabled, auto_rate_reset_enabled, updated_at, updated_by
+         FROM ic_transfer_settings WHERE id = 'global' LIMIT 1`,
+      ),
+      query(`
+        SELECT g.*,
+          COALESCE((SELECT array_agg(customer_id) FROM ic_rate_group_customers WHERE group_id = g.id), ARRAY[]::varchar[]) as customer_ids,
+          COALESCE((SELECT array_agg(branch_id) FROM ic_rate_group_branches WHERE group_id = g.id), ARRAY[]::varchar[]) as branch_ids
+        FROM ic_rate_groups g
+      `),
+      query('SELECT * FROM ic_purchases ORDER BY created_at DESC'),
+      customerSession
+        ? query(
+            `SELECT s.*, a.name as delivery_agent_name
+             FROM ic_sales s
+             LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
+             WHERE s.order_customer_id = $1
+             ORDER BY s.created_at DESC`,
+            [currentUser!.customerId],
+          )
+        : query(
+            `SELECT s.*, a.name as delivery_agent_name
+             FROM ic_sales s
+             LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
+             ORDER BY s.created_at DESC`,
+          ),
+      query('SELECT * FROM ic_warehouse_transactions ORDER BY created_at DESC'),
+    ]);
+
+    const staffAssignmentsPromise = fetchDealStaffAssignmentsBatch(
+      dealsRes.rows.map((r) => r.id as string),
+    );
+
     const tagsByTxnId: Record<string, { id: string; name: string }[]> = {};
     for (const row of tagLinksRes.rows) {
       if (!tagsByTxnId[row.transaction_id]) tagsByTxnId[row.transaction_id] = [];
       tagsByTxnId[row.transaction_id].push({ id: row.id, name: row.name });
     }
-    const branchTzById = Object.fromEntries(
-      branches.map(b => [b.id, resolveBranchTimeZone(b.timezone)]),
-    );
+
     const transactions: Transaction[] = txRes.rows.map((r) => {
       const linked = tagsByTxnId[r.id] || [];
       const branchTz = r.branch_id ? branchTzById[String(r.branch_id)] : DEFAULT_BRANCH_TIMEZONE;
@@ -329,13 +609,11 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
         businessDate: r.business_date ? parseCalendarDate(r.business_date) : toBusinessDate(isoDate, branchTz),
         enteredByUsername: r.entered_by ? String(r.entered_by) : undefined,
         enteredByName: r.entered_by_name ? String(r.entered_by_name) : undefined,
-        tags: linked.map(t => t.name),
-        tagIds: linked.map(t => t.id),
+        tags: linked.map((t) => t.name),
+        tagIds: linked.map((t) => t.id),
       };
     });
 
-    // 4. Fetch Expenses
-    const expRes = await query('SELECT * FROM expenses ORDER BY date DESC');
     const expenses: Expense[] = expRes.rows.map((r) => ({
       id: r.id,
       date: new Date(r.date).toISOString().slice(0, 10),
@@ -348,8 +626,6 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       paymentMethod: r.payment_method ?? undefined,
     }));
 
-    // 5. Fetch Invoices
-    const invRes = await query('SELECT * FROM invoices ORDER BY date DESC');
     const invoices: Invoice[] = invRes.rows.map((r) => ({
       id: r.id,
       clientName: r.client_name,
@@ -361,8 +637,6 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       status: r.status,
     }));
 
-    // 6. Fetch Notifications
-    const notifRes = await query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50');
     const notifications: Notification[] = notifRes.rows.map((r) => ({
       id: r.id,
       message: r.message,
@@ -370,29 +644,6 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       read: r.read,
       type: r.type,
     }));
-
-    // 7. Fetch Investors with deposits (single query via LEFT JOIN + json_agg)
-    const investorsRes = await query(`
-      SELECT
-        i.*,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', d.id,
-              'date', d.date,
-              'type', d.type,
-              'amount', d.amount,
-              'goldGrams', d.gold_grams,
-              'notes', d.notes
-            )
-          ) FILTER (WHERE d.id IS NOT NULL),
-          '[]'::json
-        ) AS deposits
-      FROM investors i
-      LEFT JOIN investor_deposits d ON d.investor_id = i.id
-      GROUP BY i.id
-      ORDER BY i.joined_date DESC
-    `);
 
     const investors: Investor[] = investorsRes.rows.map((r) => ({
       id: r.id,
@@ -435,26 +686,327 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       })),
     }));
 
-    // 8. Fetch Deals with investors (single query via LEFT JOIN + json_agg)
-    const dealsRes = await query(`
-      SELECT
-        dl.*,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'investorId', di.investor_id,
-              'investorName', di.investor_name,
-              'amount', di.amount,
-              'isGold', di.is_gold
-            )
-          ) FILTER (WHERE di.deal_id IS NOT NULL),
-          '[]'::json
-        ) AS deal_investors_json
-      FROM deals dl
-      LEFT JOIN deal_investors di ON di.deal_id = dl.id
-      GROUP BY dl.id
-      ORDER BY dl.date DESC
-    `);
+    const deals: Deal[] = dealsRes.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      amount: parseFloat(r.amount),
+      investors: (r.deal_investors_json as Array<{
+        investorId: string;
+        investorName: string;
+        amount: string;
+        isGold: boolean;
+      }>).map((di) => ({
+        investorId: di.investorId,
+        investorName: di.investorName,
+        amount: parseFloat(di.amount),
+        isGold: di.isGold,
+      })),
+      totalInvestment: parseFloat(r.total_investment),
+      balance: parseFloat(r.balance),
+      toBranchId: r.to_branch_id,
+      toBranchName: r.to_branch_name,
+      groupName: r.group_name,
+      groupType: r.group_type,
+      totalPL: parseFloat(r.total_pl),
+      expense: parseFloat(r.expense),
+      managerShare: parseFloat(r.manager_share || '20.00'),
+      goldVolume: parseFloat(r.gold_volume || '0.00'),
+      managingBranchId: r.managing_branch_id || undefined,
+      status: r.status,
+      date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
+    }));
+
+    try {
+      const staffAssignmentsByDeal = await staffAssignmentsPromise;
+      for (const deal of deals) {
+        deal.staffAssignments = staffAssignmentsByDeal[deal.id] ?? [];
+      }
+    } catch (staffPermError) {
+      logger.warn({ error: staffPermError }, 'Could not load deal staff assignments');
+      for (const deal of deals) {
+        deal.staffAssignments = [];
+      }
+    }
+
+    const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) =>
+      mapDealTransactionListRow(r as Record<string, unknown>),
+    );
+
+    const entities: Entity[] = entitiesRes.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone || undefined,
+      branchId: r.branch_id || undefined,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
+    const ledgers: import('@/types').Ledger[] = ledgersRes.rows.map((r: any) => ({
+      id: r.id,
+      branchId: r.branch_id || undefined,
+      name: r.name,
+      impact: r.impact,
+      isKpi: r.is_kpi,
+      kpiInvert: Boolean(r.kpi_invert),
+      sortOrder: r.sort_order,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
+    const transactionTags: import('@/types').TransactionTag[] = transactionTagsRes.rows.map((r: any) => ({
+      id: r.id,
+      branchId: r.branch_id || undefined,
+      name: r.name,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    }));
+
+    const physicalBalances = physicalBalancesRes.rows.map((r) => ({
+      branchId: r.branch_id,
+      initialCapital: parseFloat(r.initial_capital),
+      initialVolume: parseFloat(r.initial_volume),
+      availableFund: parseFloat(r.available_fund),
+      availableVolume: parseFloat(r.available_volume),
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : undefined,
+    }));
+
+    const physicalBuys = physicalBuysRes.rows.map((r) => mapPhysicalBuyRow(r));
+    const physicalSells = physicalSellsRes.rows.map((r) => mapPhysicalSellRow(r));
+    const physicalBulkSells = physicalBulkSellsRes.rows.map((r) => mapPhysicalBulkSellRow(r));
+    const usdtBuys = usdtBuysRes.rows.map((r) => mapUsdtBuyRow(r));
+    const usdtSells = usdtSellsRes.rows.map((r) => mapUsdtSellRow(r));
+    const usdtSettings = usdtSettingsRes.rows.map((r) => mapUsdtSettingsRow(r));
+
+    const icRegions = icRegionsRes.rows.map((r) => mapICRegionRow(r));
+    const icSuppliers = icSuppliersRes.rows.map((r) => mapICSupplierRow(r));
+    const icWarehouses = icWarehousesRes.rows.map((r) => mapICWarehouseRow(r));
+    const icTransferSettings = mapICTransferSettingsRow(icTransferSettingsRes.rows[0]);
+    const icPurchases = icPurchasesRes.rows.map((r) => mapICPurchaseRow(r));
+    let icSales = icSalesRes.rows.map((r) => mapICSaleRow(r));
+    const icWarehouseTransactions = icWarehouseTxRes.rows.map((r) => mapICWarehouseTransactionRow(r));
+    let icRateGroups = icRateGroupsRes.rows.map((r) => mapICRateGroupRow(r));
+
+    if (customerSession && currentUser?.customerId) {
+      const parentId = currentUser.customerId;
+      let custBranchId = currentUser.branchId || '';
+      if (!custBranchId) {
+        const custBranchRes = await query(
+          `SELECT branch_id FROM customers WHERE id = $1 LIMIT 1`,
+          [parentId],
+        );
+        custBranchId = custBranchRes.rows[0]?.branch_id
+          ? String(custBranchRes.rows[0].branch_id)
+          : '';
+      }
+      icSales = icSales.map(stripAdminRatesFromSale);
+      icRateGroups = filterRateGroupsForCustomerPortal(icRateGroups, parentId, custBranchId || undefined);
+    } else {
+      icSales = icSales.map((sale) => {
+        const { subCustomerId: _id, subCustomerName: _name, ...rest } = sale;
+        return rest;
+      });
+    }
+
+    const finalBranches = branchId ? branches.filter((b) => b.id === branchId) : branches;
+    const finalLedgers = branchId ? filterBranchLedgers(ledgers, branchId) : ledgers;
+
+    return {
+      success: true,
+      data: {
+        globalBranches: branches,
+        globalEntities: entities,
+        branches: finalBranches,
+        transactions,
+        expenses,
+        invoices,
+        notifications,
+        investors,
+        deals,
+        hqBalance,
+        dealTransactions,
+        entities,
+        ledgers: finalLedgers,
+        transactionTags,
+        physicalBalances,
+        physicalBuys,
+        physicalSells,
+        physicalBulkSells,
+        usdtBuys,
+        usdtSells,
+        usdtSettings,
+        icRegions,
+        icSuppliers,
+        icWarehouses,
+        icRateGroups,
+        icTransferSettings,
+        icPurchases,
+        icSales,
+        icWarehouseTransactions,
+      },
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch dashboard data.';
+    logger.error({ error, branchSlug }, 'Failed to fetch initial data from Postgres');
+    return { success: false, error: message };
+  }
+}
+
+export interface DealsDataPayload {
+  globalBranches: Branch[];
+  branches: Branch[];
+  investors: Investor[];
+  deals: Deal[];
+  dealTransactions: DealTransaction[];
+  hqBalance: number;
+}
+
+/**
+ * Lightweight fetch for Groups & Deals pages — avoids IC/physical/USDT/ledger queries.
+ * Use for polling and manual refresh while on group routes.
+ */
+export async function fetchDealsDataAction(branchSlug?: string): Promise<DbActionResult<DealsDataPayload>> {
+  try {
+    const userRes = await getCurrentUserAction(branchSlug);
+    const currentUser = userRes.success ? userRes.data : null;
+
+    if (currentUser && isInvestorRole(currentUser.role)) {
+      return { success: false, error: 'Investor portal users cannot access manager data.' };
+    }
+
+    const isBranchScoped =
+      !!currentUser && isBranchScopedUser(currentUser) && !!currentUser.branchId;
+    const branchId = isBranchScoped ? currentUser!.branchId! : null;
+    const isStaff = currentUser?.role === 'staff';
+    const staffUserId = isStaff && currentUser?.id ? currentUser.id : null;
+
+    const [hqRes, branchesRes, staffPermRes] = await Promise.all([
+      query('SELECT amount FROM hq_balance WHERE id = 1'),
+      query('SELECT * FROM branches ORDER BY id ASC'),
+      staffUserId
+        ? query('SELECT deal_id FROM user_deal_permissions WHERE user_id = $1', [staffUserId])
+        : Promise.resolve({ rows: [] as { deal_id: string }[] }),
+    ]);
+
+    const staffDealIds = staffUserId ? staffPermRes.rows.map((r) => r.deal_id as string) : [];
+    const staffFilterActive = !!staffUserId;
+
+    const [investorsRes, dealsRes, dealTxRes] = await Promise.all([
+      branchId
+        ? query(
+            `SELECT i.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', d.id,
+                    'date', d.date,
+                    'type', d.type,
+                    'amount', d.amount,
+                    'goldGrams', d.gold_grams,
+                    'notes', d.notes
+                  )
+                ) FILTER (WHERE d.id IS NOT NULL),
+                '[]'::json
+              ) AS deposits
+            FROM investors i
+            LEFT JOIN investor_deposits d ON d.investor_id = i.id
+            WHERE i.assigned_branch_id = $1 OR i.is_global = true
+            GROUP BY i.id
+            ORDER BY i.joined_date DESC`,
+            [branchId],
+          )
+        : query(`
+            SELECT i.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', d.id,
+                    'date', d.date,
+                    'type', d.type,
+                    'amount', d.amount,
+                    'goldGrams', d.gold_grams,
+                    'notes', d.notes
+                  )
+                ) FILTER (WHERE d.id IS NOT NULL),
+                '[]'::json
+              ) AS deposits
+            FROM investors i
+            LEFT JOIN investor_deposits d ON d.investor_id = i.id
+            GROUP BY i.id
+            ORDER BY i.joined_date DESC
+          `),
+      query(SQL_DEALS_WITH_INVESTORS, [branchId, staffFilterActive, staffDealIds]),
+      query(SQL_DEAL_TRANSACTIONS_LIST, [branchId, staffFilterActive, staffDealIds]),
+    ]);
+
+    const hqBalance = hqRes.rows.length > 0 ? parseFloat(hqRes.rows[0].amount) : 50000000;
+
+    const branches: Branch[] = branchesRes.rows.map((r) => ({
+      id: r.id,
+      slug: r.slug || r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      name: r.name,
+      logo_url: r.logo_url,
+      address: r.address,
+      city: r.city,
+      country: r.country,
+      trn: r.trn,
+      phone: r.phone,
+      email: r.email,
+      website: r.website,
+      location: r.location,
+      managerName: r.manager_name,
+      cashBalance: parseFloat(r.cash_balance),
+      goldBalance: parseFloat(r.gold_balance || '0'),
+      currentBalance: parseFloat(r.current_balance),
+      openingBalance: parseFloat(r.opening_balance),
+      openingGoldBalance: parseFloat(r.opening_gold_balance || '0'),
+      closingBalance: parseFloat(r.closing_balance),
+      dailyPL: parseFloat(r.daily_pl),
+      status: r.status,
+      timezone: resolveBranchTimeZone(r.timezone ? String(r.timezone) : null),
+      hiddenPages: normalizeHiddenPages(Array.isArray(r.hidden_pages) ? r.hidden_pages.map(String) : []),
+      enabledCurrencies: sanitizeEnabledCurrencies(r.enabled_currencies),
+      lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+    }));
+
+    const investors: Investor[] = investorsRes.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      nationality: r.nationality,
+      emiratesId: r.emirates_id || undefined,
+      passportNo: r.passport_no || undefined,
+      address: r.address,
+      city: r.city,
+      country: r.country,
+      cashDeposit: parseFloat(r.cash_deposit),
+      goldDeposit: parseFloat(r.gold_deposit),
+      goldWeightGrams: parseFloat(r.gold_weight_grams),
+      status: r.status,
+      riskProfile: r.risk_profile,
+      kycStatus: r.kyc_status,
+      joinedDate: new Date(r.joined_date).toISOString().slice(0, 10),
+      lastActivity: r.last_activity ? new Date(r.last_activity).toISOString() : new Date().toISOString(),
+      assignedBranchId: r.assigned_branch_id || undefined,
+      assignedBranchName: r.assigned_branch_name || undefined,
+      isGlobal: r.is_global,
+      preferredContact: r.preferred_contact,
+      notes: r.notes || undefined,
+      depositHistory: (r.deposits as Array<{
+        id: string;
+        date: string;
+        type: 'cash' | 'gold';
+        amount: string;
+        goldGrams: string | null;
+        notes: string | null;
+      }>).map((d) => ({
+        id: d.id,
+        date: new Date(d.date).toISOString().slice(0, 10),
+        type: d.type,
+        amount: parseFloat(d.amount),
+        goldGrams: d.goldGrams ? parseFloat(d.goldGrams) : undefined,
+        notes: d.notes || undefined,
+      })),
+    }));
 
     const deals: Deal[] = dealsRes.rows.map((r) => ({
       id: r.id,
@@ -486,318 +1038,160 @@ export async function fetchInitialDataAction(branchSlug?: string): Promise<DbAct
       date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
     }));
 
-    const dealTxRes = await query(`
-      SELECT dt.*,
-        (SELECT COALESCE(json_agg(
-            json_build_object(
-              'id', dtp.id,
-              'dealTransactionId', dtp.deal_transaction_id,
-              'investorId', dtp.investor_id,
-              'investorName', dtp.investor_name,
-              'payoutAmount', dtp.payout_amount,
-              'createdAt', dtp.created_at
-            )
-          ), '[]'::json)
-         FROM deal_transaction_payouts dtp 
-         WHERE dtp.deal_transaction_id = dt.id
-        ) as payouts,
-        (SELECT COALESCE(json_agg(
-            json_build_object(
-              'id', dte.id,
-              'dealTransactionId', dte.deal_transaction_id,
-              'key', dte.key,
-              'value', dte.value,
-              'timestamp', dte.timestamp,
-              'createdAt', dte.created_at
-            )
-          ), '[]'::json)
-         FROM deal_transaction_expenses dte 
-         WHERE dte.deal_transaction_id = dt.id
-        ) as expenses_details,
-        (SELECT COALESCE(json_agg(
-            json_build_object(
-              'id', dtb.id,
-              'dealTransactionId', dtb.deal_transaction_id,
-              'txnId', dtb.txn_id,
-              'date', dtb.date,
-              'time', dtb.time,
-              'weight', dtb.weight,
-              'purity', dtb.purity,
-              'pureCostAed', dtb.pure_cost_aed,
-              'currencyAmount', dtb.currency_amount,
-              'purchaseRate', dtb.purchase_rate,
-              'createdAt', dtb.created_at
-            ) ORDER BY dtb.created_at ASC
-          ), '[]'::json)
-         FROM deal_transaction_buys dtb
-         WHERE dtb.deal_transaction_id = dt.id
-        ) as buys
-      FROM deal_transactions dt
-      ORDER BY dt.date DESC
-    `);
-    const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) => ({
-      id: r.id,
-      date: r.date ? new Date(r.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-      time: r.time || undefined,
-      dealId: r.deal_id || undefined,
-      deal: r.deal_number || (r.id.startsWith('txn-') ? r.id.substring(4) : (r.id.split('-').pop() || '1')),
-      weight: parseFloat(r.weight),
-      rate: parseFloat(r.rate),
-      pureCostAed: parseFloat(r.pure_cost_aed),
-      currencyAmount: r.currency_amount != null ? parseFloat(r.currency_amount) : undefined,
-      purchaseRate: r.purchase_rate != null ? parseFloat(r.purchase_rate) : undefined,
-      conversionRate: r.conversion_rate != null ? parseFloat(r.conversion_rate) : undefined,
-      avgPurity: r.avg_purity != null ? parseFloat(r.avg_purity) : undefined,
-      liveSellRate: parseFloat(r.live_sell_rate || '0'),
-      sellPremiumDiscount: parseFloat(r.sell_premium_discount || '0'),
-      salesAed: parseFloat(r.sales_aed || '0'),
-      expenses: parseFloat(r.expenses || '0'),
-      grossProfit: parseFloat(r.gross_profit || '0'),
-      netProfitPerGram: parseFloat(r.net_profit_per_gram || '0'),
-      managementProfit: parseFloat(r.management_profit || '0'),
-      fixOrUnfix: r.fix_or_unfix,
-      marginDeposit: parseFloat(r.margin_deposit || '0'),
-      premiumDiscount: parseFloat(r.premium_discount || '0'),
-      buys: ((r.buys as Array<any>) || []).map((b: any) => ({
-        id: b.id,
-        dealTransactionId: b.dealTransactionId,
-        txnId: b.txnId,
-        date: b.date ? new Date(b.date).toISOString().slice(0, 10) : '',
-        time: b.time || undefined,
-        weight: parseFloat(b.weight || '0'),
-        purity: b.purity != null ? parseFloat(b.purity) : undefined,
-        pureCostAed: parseFloat(b.pureCostAed || '0'),
-        currencyAmount: b.currencyAmount != null ? parseFloat(b.currencyAmount) : undefined,
-        purchaseRate: b.purchaseRate != null ? parseFloat(b.purchaseRate) : undefined,
-        createdAt: b.createdAt,
-      })),
-      payouts: (r.payouts as Array<any>).map((p: any) => ({
-        id: p.id,
-        dealTransactionId: p.dealTransactionId,
-        investorId: p.investorId,
-        investorName: p.investorName,
-        payoutAmount: parseFloat(p.payoutAmount),
-        createdAt: p.createdAt,
-      })),
-      expensesDetails: (r.expenses_details as Array<any>).map((e: any) => ({
-        id: e.id,
-        dealTransactionId: e.dealTransactionId,
-        key: e.key,
-        value: parseFloat(e.value),
-        timestamp: e.timestamp,
-        createdAt: e.createdAt,
-      })),
-    }));
-
-    // Fetch Entities
-    const entitiesRes = await query('SELECT * FROM entities ORDER BY created_at DESC');
-    const entities: Entity[] = entitiesRes.rows.map((r: any) => ({
-      id: r.id,
-      name: r.name,
-      phone: r.phone || undefined,
-      branchId: r.branch_id || undefined,
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-    }));
-
-    // Fetch Ledgers
-    const ledgersRes = await query('SELECT * FROM ledgers ORDER BY sort_order ASC, created_at ASC');
-    const ledgers: import('@/types').Ledger[] = ledgersRes.rows.map((r: any) => ({
-      id: r.id,
-      branchId: r.branch_id || undefined,
-      name: r.name,
-      impact: r.impact,
-      isKpi: r.is_kpi,
-      kpiInvert: Boolean(r.kpi_invert),
-      sortOrder: r.sort_order,
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-    }));
-
-    const transactionTagsRes = await query('SELECT * FROM transaction_tags ORDER BY name ASC').catch(() => ({ rows: [] }));
-    const transactionTags: import('@/types').TransactionTag[] = transactionTagsRes.rows.map((r: any) => ({
-      id: r.id,
-      branchId: r.branch_id || undefined,
-      name: r.name,
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-    }));
-
-    const userRes = await getCurrentUserAction(branchSlug);
-    const currentUser = userRes.success ? userRes.data : null;
-
-    // Fetch Physical Data
-    const physicalBalancesRes = await query('SELECT * FROM physical_balances');
-    const physicalBalances = physicalBalancesRes.rows.map(r => ({
-      branchId: r.branch_id,
-      initialCapital: parseFloat(r.initial_capital),
-      initialVolume: parseFloat(r.initial_volume),
-      availableFund: parseFloat(r.available_fund),
-      availableVolume: parseFloat(r.available_volume),
-      createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined,
-      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : undefined,
-    }));
-
-    const physicalBuysRes = await query('SELECT * FROM physical_buys ORDER BY date DESC');
-    const physicalBuys = physicalBuysRes.rows.map(r => mapPhysicalBuyRow(r));
-
-    const physicalSellsRes = await query('SELECT * FROM physical_sells ORDER BY date DESC');
-    const physicalSells = physicalSellsRes.rows.map(r => mapPhysicalSellRow(r));
-
-    const physicalBulkSellsRes = await query('SELECT * FROM physical_bulk_sells ORDER BY date DESC');
-    const physicalBulkSells = physicalBulkSellsRes.rows.map(r => mapPhysicalBulkSellRow(r));
-
-    const usdtBuysRes = await query('SELECT * FROM usdt_buys ORDER BY date DESC');
-    const usdtBuys = usdtBuysRes.rows.map(r => mapUsdtBuyRow(r));
-    const usdtSellsRes = await query('SELECT * FROM usdt_sells ORDER BY date DESC');
-    const usdtSells = usdtSellsRes.rows.map(r => mapUsdtSellRow(r));
-    const usdtSettingsRes = await query('SELECT * FROM usdt_branch_settings');
-    const usdtSettings = usdtSettingsRes.rows.map(r => mapUsdtSettingsRow(r));
-
-    // Fetch IC Transfer Data
-    const icRegionsRes = await query('SELECT * FROM ic_regions');
-    const icRegions = icRegionsRes.rows.map(r => mapICRegionRow(r));
-    const icSuppliersRes = await query('SELECT * FROM ic_suppliers');
-    const icSuppliers = icSuppliersRes.rows.map(r => mapICSupplierRow(r));
-    const icWarehousesRes = await query('SELECT * FROM ic_warehouses');
-    const icWarehouses = icWarehousesRes.rows.map(r => mapICWarehouseRow(r));
-    const icTransferSettingsRes = await query(
-      `SELECT sales_enabled, auto_rate_reset_enabled, updated_at, updated_by
-       FROM ic_transfer_settings WHERE id = 'global' LIMIT 1`,
-    );
-    const icTransferSettings = mapICTransferSettingsRow(icTransferSettingsRes.rows[0]);
-    const icRateGroupsRes = await query(`
-      SELECT g.*, 
-             COALESCE((SELECT array_agg(customer_id) FROM ic_rate_group_customers WHERE group_id = g.id), ARRAY[]::varchar[]) as customer_ids,
-             COALESCE((SELECT array_agg(branch_id) FROM ic_rate_group_branches WHERE group_id = g.id), ARRAY[]::varchar[]) as branch_ids
-      FROM ic_rate_groups g
-    `);
-    const icPurchasesRes = await query('SELECT * FROM ic_purchases ORDER BY created_at DESC');
-    const icPurchases = icPurchasesRes.rows.map(r => mapICPurchaseRow(r));
-
-    const isCustomerSession =
-      currentUser && isCustomerRole(currentUser.role) && !!currentUser.customerId;
-    const icSalesRes = isCustomerSession
-      ? await query(
-          `SELECT s.*, a.name as delivery_agent_name
-           FROM ic_sales s
-           LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
-           WHERE s.order_customer_id = $1
-           ORDER BY s.created_at DESC`,
-          [currentUser!.customerId],
-        )
-      : await query(
-          `SELECT s.*, a.name as delivery_agent_name
-           FROM ic_sales s
-           LEFT JOIN ic_delivery_agents a ON s.delivery_agent_id = a.id
-           ORDER BY s.created_at DESC`,
-        );
-    let icSales = icSalesRes.rows.map(r => mapICSaleRow(r));
-    const icWarehouseTxRes = await query('SELECT * FROM ic_warehouse_transactions ORDER BY created_at DESC');
-    const icWarehouseTransactions = icWarehouseTxRes.rows.map(r => mapICWarehouseTransactionRow(r));
-
-    let icRateGroups = icRateGroupsRes.rows.map(r => mapICRateGroupRow(r));
-
-    if (isCustomerSession && currentUser?.customerId) {
-      const parentId = currentUser.customerId;
-      let branchId = currentUser.branchId || '';
-      if (!branchId) {
-        const custBranchRes = await query(
-          `SELECT branch_id FROM customers WHERE id = $1 LIMIT 1`,
-          [parentId],
-        );
-        branchId = custBranchRes.rows[0]?.branch_id
-          ? String(custBranchRes.rows[0].branch_id)
-          : '';
+    try {
+      const staffAssignmentsByDeal = await fetchDealStaffAssignmentsBatch(deals.map((d) => d.id));
+      for (const deal of deals) {
+        deal.staffAssignments = staffAssignmentsByDeal[deal.id] ?? [];
       }
-      icSales = icSales.map(stripAdminRatesFromSale);
-      icRateGroups = filterRateGroupsForCustomerPortal(icRateGroups, parentId, branchId || undefined);
-    } else {
-      icSales = icSales.map(sale => {
-        const { subCustomerId: _id, subCustomerName: _name, ...rest } = sale;
-        return rest;
-      });
+    } catch {
+      for (const deal of deals) {
+        deal.staffAssignments = [];
+      }
     }
 
-
-    let finalBranches = branches;
-    let finalTransactions = transactions;
-    let finalExpenses = expenses;
-    let finalInvoices = invoices;
-    let finalInvestors = investors;
-    let finalDeals = deals;
-    let finalDealTransactions = dealTransactions;
-    let finalEntities = entities;
-    let finalLedgers = ledgers;
-    let finalTransactionTags = transactionTags;
-    let finalPhysicalBalances = physicalBalances;
-    let finalPhysicalBuys = physicalBuys;
-    let finalPhysicalSells = physicalSells;
-    let finalPhysicalBulkSells = physicalBulkSells;
-    let finalUsdtBuys = usdtBuys;
-    let finalUsdtSells = usdtSells;
-    let finalUsdtSettings = usdtSettings;
-
-    if (currentUser && isBranchScopedUser(currentUser) && currentUser.branchId) {
-      const bId = currentUser.branchId;
-      const branchName = branches.find(b => b.id === bId)?.name || bId;
-      
-      finalBranches = branches.filter(b => b.id === bId);
-      finalTransactions = transactions.filter(t => t.to === branchName || t.from === branchName || t.branchId === bId);
-      finalExpenses = expenses.filter(e => e.branchId === bId);
-      finalInvoices = invoices.filter(i => i.branchId === bId);
-      finalInvestors = investors.filter(i => i.assignedBranchId === bId || i.isGlobal);
-      finalDeals = deals.filter(d => d.managingBranchId === bId);
-      
-      const dealIds = new Set(finalDeals.map(d => d.id));
-      finalDealTransactions = dealTransactions.filter(dt => dealIds.has(dt.dealId || ''));
-      finalEntities = entities.filter(e => !e.branchId || e.branchId === bId);
-      finalLedgers = filterBranchLedgers(ledgers, bId);
-      finalTransactionTags = transactionTags.filter(t => !t.branchId || t.branchId === bId);
-      finalPhysicalBalances = physicalBalances.filter(b => b.branchId === bId);
-      finalPhysicalBuys = physicalBuys.filter(b => b.branchId === bId);
-      const buyIds = new Set(finalPhysicalBuys.map(b => b.id));
-      finalPhysicalSells = physicalSells.filter(s => buyIds.has(s.buyId));
-      finalUsdtBuys = usdtBuys.filter(b => b.branchId === bId);
-      finalUsdtSells = usdtSells.filter(s => s.branchId === bId);
-      finalUsdtSettings = usdtSettings.filter(s => s.branchId === bId);
-      finalPhysicalBulkSells = physicalBulkSells.filter(b => b.branchId === bId);
-    }
+    const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) =>
+      mapDealTransactionListRow(r as Record<string, unknown>),
+    );
 
     return {
       success: true,
       data: {
         globalBranches: branches,
-        globalEntities: entities,
-        branches: finalBranches,
-        transactions: finalTransactions,
-        expenses: finalExpenses,
-        invoices: finalInvoices,
-        notifications,
-        investors: finalInvestors,
-        deals: finalDeals,
+        branches,
+        investors,
+        deals,
+        dealTransactions,
         hqBalance,
-        dealTransactions: finalDealTransactions,
-        entities: finalEntities,
-        ledgers: finalLedgers,
-        transactionTags: finalTransactionTags,
-        physicalBalances: finalPhysicalBalances,
-        physicalBuys: finalPhysicalBuys,
-        physicalSells: finalPhysicalSells,
-        physicalBulkSells: finalPhysicalBulkSells,
-        usdtBuys: finalUsdtBuys,
-        usdtSells: finalUsdtSells,
-        usdtSettings: finalUsdtSettings,
-        icRegions,
-        icSuppliers,
-        icWarehouses,
-        icRateGroups,
-        icTransferSettings,
-        icPurchases,
-        icSales,
-        icWarehouseTransactions,
       },
     };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch dashboard data.';
-    logger.error({ error, branchSlug }, 'Failed to fetch initial data from Postgres');
+    const message = error instanceof Error ? error.message : 'Failed to fetch deals data.';
+    logger.error({ error, branchSlug }, 'Failed to fetch deals data from Postgres');
+    return { success: false, error: message };
+  }
+}
+
+/** Load full nested details for a single deal transaction (buys, payouts, expenses). */
+export async function fetchDealTransactionDetailAction(
+  transactionId: string,
+  branchSlug?: string,
+): Promise<DbActionResult<DealTransaction>> {
+  try {
+    const branchId = await resolveDealBranchIdFromTransaction(transactionId);
+    const auth = await requireStaffOrManagerRead(branchSlug, branchId);
+    if ('success' in auth) return auth;
+
+    const res = await query(SQL_DEAL_TRANSACTION_DETAIL, [transactionId]);
+    if (!res.rows.length) {
+      return { success: false, error: 'Deal transaction not found.' };
+    }
+    return {
+      success: true,
+      data: mapDealTransactionDetailRow(res.rows[0] as Record<string, unknown>),
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch deal transaction.';
+    logger.error({ error, transactionId }, 'Failed to fetch deal transaction detail');
+    return { success: false, error: message };
+  }
+}
+
+/** Investor-scoped transaction detail — buys + own payout only. */
+export async function fetchInvestorDealTransactionDetailAction(
+  transactionId: string,
+  investorId: string,
+): Promise<DbActionResult<DealTransaction>> {
+  try {
+    const auth = await requireInvestorSessionForTxn(investorId);
+    if ('success' in auth) return auth;
+    const sessionInvestorId = auth.user.investorId!;
+
+    const res = await query(SQL_INVESTOR_DEAL_TRANSACTION_DETAIL, [transactionId, sessionInvestorId]);
+    if (!res.rows.length) {
+      return { success: false, error: 'Deal transaction not found or access denied.' };
+    }
+    const txn = mapDealTransactionDetailRow(res.rows[0] as Record<string, unknown>);
+    txn.myPayoutAmount = parseFloat(String(res.rows[0].my_payout_amount || '0'));
+    txn.payouts = txn.payouts?.filter(p => p.investorId === sessionInvestorId) ?? [];
+    return { success: true, data: txn };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch deal transaction.';
+    logger.error({ error, transactionId, investorId }, 'Failed to fetch investor deal transaction detail');
+    return { success: false, error: message };
+  }
+}
+
+export interface InvestorPortalPayload {
+  branches: Branch[];
+  deals: Deal[];
+  dealTransactions: DealTransaction[];
+}
+
+/** Minimal fetch for investor portal — only groups they participate in and their payouts. */
+export async function fetchInvestorPortalDataAction(
+  investorId: string,
+  branchId: string,
+): Promise<DbActionResult<InvestorPortalPayload>> {
+  try {
+    const auth = await requireInvestorSession(investorId, branchId);
+    if ('success' in auth) return auth;
+    const sessionInvestorId = auth.user.investorId!;
+
+    const [branchesRes, dealsRes, dealTxRes] = await Promise.all([
+      query('SELECT * FROM branches WHERE id = $1', [branchId]),
+      query(SQL_INVESTOR_DEALS, [sessionInvestorId, branchId]),
+      query(SQL_INVESTOR_DEAL_TRANSACTIONS, [sessionInvestorId, branchId]),
+    ]);
+
+    const branches: Branch[] = branchesRes.rows.map((r) => mapInvestorPortalBranch(r as Record<string, unknown>));
+
+    const deals: Deal[] = dealsRes.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      amount: parseFloat(r.amount),
+      investors: (r.deal_investors_json as Array<{
+        investorId: string;
+        investorName: string;
+        amount: string;
+        isGold: boolean;
+      }>).map((di) => ({
+        investorId: di.investorId,
+        investorName: di.investorName,
+        amount: parseFloat(di.amount),
+        isGold: di.isGold,
+      })),
+      totalInvestment: parseFloat(r.total_investment),
+      balance: 0,
+      toBranchId: r.to_branch_id,
+      toBranchName: r.to_branch_name,
+      groupName: r.group_name,
+      groupType: r.group_type,
+      totalPL: 0,
+      expense: 0,
+      managerShare: parseFloat(r.manager_share || '20.00'),
+      goldVolume: parseFloat(r.gold_volume || '0.00'),
+      managingBranchId: r.managing_branch_id || undefined,
+      status: r.status,
+      date: r.date ? new Date(r.date).toISOString() : new Date().toISOString(),
+      myInvestmentAmount: parseFloat(r.my_investment_amount),
+      myIsGold: Boolean(r.my_is_gold),
+    }));
+
+    const dealTransactions: DealTransaction[] = dealTxRes.rows.map((r) => {
+      const txn = mapDealTransactionListRow(r as Record<string, unknown>);
+      txn.myPayoutAmount = parseFloat(String(r.my_payout_amount || '0'));
+      txn.grossProfit = 0;
+      txn.managementProfit = 0;
+      txn.expenses = 0;
+      txn.salesAed = 0;
+      txn.netProfitPerGram = 0;
+      return txn;
+    });
+
+    return { success: true, data: { branches, deals, dealTransactions } };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch investor portal data.';
+    logger.error({ error, investorId, branchId }, 'Failed to fetch investor portal data');
     return { success: false, error: message };
   }
 }
@@ -1110,9 +1504,17 @@ export async function dbAddExpenseAction(
  */
 export async function dbAddInvestorAction(
   investor: Investor,
+  portalAccess?: { password: string; branchId: string },
 ): Promise<DbActionResult<Investor>> {
   const denied = await guardStaffWrite('investors', undefined, investor.assignedBranchId);
   if (denied) return denied;
+
+  if (!portalAccess?.password || !portalAccess.branchId) {
+    return { success: false, error: 'Email login password and branch are required for investor portal access.' };
+  }
+  if (portalAccess.password.length < 8) {
+    return { success: false, error: 'Password must be at least 8 characters.' };
+  }
 
   // Validate
   const validation = addInvestorSchema.safeParse({
@@ -1137,14 +1539,24 @@ export async function dbAddInvestorAction(
     return { success: false, error: validation.error.issues.map((i) => i.message).join(', ') };
   }
 
+  const cognitoRes = await createInvestorCognitoUser({
+    email: investor.email,
+    name: investor.name,
+    branchId: portalAccess.branchId,
+    password: portalAccess.password,
+  });
+  if (!cognitoRes.success || !cognitoRes.userId) {
+    return { success: false, error: cognitoRes.error || 'Failed to create investor login.' };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     // 1. Insert investor
     await client.query(
-      `INSERT INTO investors (id, name, email, phone, nationality, emirates_id, passport_no, address, city, country, cash_deposit, gold_deposit, gold_weight_grams, status, risk_profile, kyc_status, joined_date, last_activity, assigned_branch_id, assigned_branch_name, preferred_contact, is_global, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+      `INSERT INTO investors (id, name, email, phone, nationality, emirates_id, passport_no, address, city, country, cash_deposit, gold_deposit, gold_weight_grams, status, risk_profile, kyc_status, joined_date, last_activity, assigned_branch_id, assigned_branch_name, preferred_contact, is_global, notes, cognito_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
       [
         investor.id,
         investor.name,
@@ -1164,11 +1576,12 @@ export async function dbAddInvestorAction(
         investor.kycStatus,
         investor.joinedDate,
         investor.lastActivity,
-        investor.assignedBranchId || null,
+        investor.assignedBranchId || portalAccess.branchId,
         investor.assignedBranchName || null,
         investor.preferredContact,
         investor.isGlobal || false,
         investor.notes || null,
+        cognitoRes.userId,
       ]
     );
 
@@ -1187,6 +1600,7 @@ export async function dbAddInvestorAction(
     return { success: true, data: investor };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
+    await deleteInvestorCognitoUser(investor.email);
     const message = formatPgError(error);
     logger.error({ error, investor }, 'Error adding investor');
     return { success: false, error: message };
@@ -1263,6 +1677,9 @@ export async function dbDeleteInvestorAction(
   id: string
 ): Promise<DbActionResult<{ id: string }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const guard = await guardStaffWrite('investors');
+  if (guard) return guard;
 
   const client = await pool.connect();
   try {
@@ -1357,6 +1774,13 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
       }
     }
 
+    const slug = await resolveBranchSlug(deal.managingBranchId);
+    let user = slug ? (await getCurrentUserAction(slug)).data : null;
+    if (!user) user = (await getCurrentUserAction()).data ?? null;
+    if (hasFullBranchAccess(user) && deal.staffAssignments && deal.staffAssignments.length > 0) {
+      await replaceDealStaffAssignments(deal.id, deal.staffAssignments, user?.email ?? 'system');
+    }
+
     await client.query('COMMIT');
     return { success: true, data: deal };
   } catch (error: unknown) {
@@ -1373,6 +1797,10 @@ export async function dbAddDealAction(deal: Deal): Promise<DbActionResult<Deal>>
  * Updates an existing deal and replaces its associated participant investors.
  */
 export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Deal>> {
+  const branchId = await resolveDealBranchId(deal.id);
+  const denied = await guardStaffDealWrite(deal.id, undefined, branchId);
+  if (denied) return denied;
+
   // Validate
   const validation = updateDealSchema.safeParse(deal);
   if (!validation.success) {
@@ -1432,6 +1860,13 @@ export async function dbUpdateDealAction(deal: Deal): Promise<DbActionResult<Dea
           [deal.id, di.investorId, di.investorName, di.amount, di.isGold]
         );
       }
+    }
+
+    const slug = await resolveBranchSlug(branchId);
+    let user = slug ? (await getCurrentUserAction(slug)).data : null;
+    if (!user) user = (await getCurrentUserAction()).data ?? null;
+    if (hasFullBranchAccess(user)) {
+      await replaceDealStaffAssignments(deal.id, deal.staffAssignments ?? [], user?.email ?? 'system');
     }
 
     await client.query('COMMIT');
@@ -1501,6 +1936,11 @@ export async function dbAddDealTransactionAction(
   txn: DealTransaction
 ): Promise<DbActionResult<DealTransaction>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+  if (txn.dealId) {
+    const branchId = await resolveDealBranchId(txn.dealId);
+    const denied = await guardStaffDealWrite(txn.dealId, undefined, branchId);
+    if (denied) return denied;
+  }
 
   const client = await pool.connect();
   try {
@@ -1568,6 +2008,11 @@ export async function dbUpdateDealTransactionAction(
   txn: DealTransaction
 ): Promise<DbActionResult<DealTransaction>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+  if (txn.dealId) {
+    const branchId = await resolveDealBranchId(txn.dealId);
+    const denied = await guardStaffDealWrite(txn.dealId, undefined, branchId);
+    if (denied) return denied;
+  }
 
   const client = await pool.connect();
   try {
@@ -1657,6 +2102,10 @@ export async function dbDeleteDealTransactionAction(
 ): Promise<DbActionResult<{ id: string; dealId: string }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
 
+  const branchId = await resolveDealBranchId(dealId);
+  const denied = await guardStaffDealWrite(dealId, undefined, branchId);
+  if (denied) return denied;
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1698,6 +2147,9 @@ export async function dbAddDealTransactionBuyAction(
   groupType: 'gold' | 'currency' = 'gold',
 ): Promise<DbActionResult<{ buy: DealTransactionBuy; aggregates: DealBuyAggregates }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const denied = await guardStaffDealWriteByTxn(buy.dealTransactionId);
+  if (denied) return denied;
 
   const client = await pool.connect();
   try {
@@ -1756,6 +2208,9 @@ export async function dbUpdateDealTransactionBuyAction(
   groupType: 'gold' | 'currency' = 'gold',
 ): Promise<DbActionResult<{ buy: DealTransactionBuy; aggregates: DealBuyAggregates }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const denied = await guardStaffDealWriteByTxn(buy.dealTransactionId);
+  if (denied) return denied;
 
   const client = await pool.connect();
   try {
@@ -1819,6 +2274,9 @@ export async function dbDeleteDealTransactionBuyAction(
 ): Promise<DbActionResult<{ aggregates: DealBuyAggregates }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
 
+  const denied = await guardStaffDealWriteByTxn(dealTransactionId);
+  if (denied) return denied;
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1864,6 +2322,9 @@ export async function dbAddDealExpensesAction(
 ): Promise<DbActionResult<DealTransactionExpense[]>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
   if (!expenses.length) return { success: true, data: [] };
+
+  const denied = await guardStaffDealWriteByTxn(expenses[0].dealTransactionId);
+  if (denied) return denied;
 
   const client = await pool.connect();
   try {
@@ -1935,6 +2396,16 @@ export async function dbDeleteDealExpenseAction(
   if (!pool) return { success: false, error: 'Database not connected.' };
 
   try {
+    const txnRes = await query(
+      `SELECT deal_transaction_id FROM deal_transaction_expenses WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    const dealTransactionId = txnRes.rows[0]?.deal_transaction_id as string | undefined;
+    if (dealTransactionId) {
+      const denied = await guardStaffDealWriteByTxn(dealTransactionId);
+      if (denied) return denied;
+    }
+
     await query(`DELETE FROM deal_transaction_expenses WHERE id = $1`, [id]);
     return { success: true, data: { id } };
   } catch (error: unknown) {
@@ -1951,6 +2422,10 @@ export async function dbDeleteDealAction(
   id: string
 ): Promise<DbActionResult<{ id: string }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
+
+  const branchId = await resolveDealBranchId(id);
+  const denied = await guardStaffDealWrite(id, undefined, branchId);
+  if (denied) return denied;
 
   const client = await pool.connect();
   try {

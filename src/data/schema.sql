@@ -161,6 +161,9 @@ CREATE TABLE IF NOT EXISTS investors (
     notes TEXT
 );
 
+ALTER TABLE investors ADD COLUMN IF NOT EXISTS cognito_user_id VARCHAR(128) UNIQUE;
+CREATE INDEX IF NOT EXISTS idx_investors_cognito_user ON investors(cognito_user_id);
+
 -- 8. Investor Deposits (History)
 CREATE TABLE IF NOT EXISTS investor_deposits (
     id VARCHAR(50) PRIMARY KEY,
@@ -191,6 +194,8 @@ CREATE TABLE IF NOT EXISTS deals (
     managing_branch_id VARCHAR(50) REFERENCES branches(id) ON DELETE RESTRICT,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_deals_managing_branch ON deals(managing_branch_id);
 
 -- 10. Deal Investors (Many-to-Many junction table)
 CREATE TABLE IF NOT EXISTS deal_investors (
@@ -227,6 +232,8 @@ CREATE TABLE IF NOT EXISTS deal_transactions (
     premium_discount DECIMAL(15, 2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_deal_transactions_deal_id ON deal_transactions(deal_id);
 
 -- 12. Deal Transaction Expenses (itemised key-value expenses per deal transaction)
 CREATE TABLE IF NOT EXISTS deal_transaction_expenses (
@@ -630,6 +637,19 @@ CREATE TABLE IF NOT EXISTS user_page_permissions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_page_permissions_branch ON user_page_permissions(branch_id);
+
+-- Staff assignments to deal groups (read = view only, write = manage)
+CREATE TABLE IF NOT EXISTS user_deal_permissions (
+    user_id VARCHAR(128) NOT NULL,
+    deal_id VARCHAR(50) NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    access_level VARCHAR(10) NOT NULL CHECK (access_level IN ('read', 'write')),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(255),
+    PRIMARY KEY (user_id, deal_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_deal_permissions_deal ON user_deal_permissions(deal_id);
+CREATE INDEX IF NOT EXISTS idx_user_deal_permissions_user ON user_deal_permissions(user_id);
 
 -- =========================================================================
 -- IC Transfer Module (Optimized & Relational)

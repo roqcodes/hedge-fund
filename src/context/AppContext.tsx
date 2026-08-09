@@ -38,6 +38,8 @@ import { DEFAULT_BRANCH_TIMEZONE } from '@/lib/businessTime';
 import { getCurrentUserAction, logoutAction } from '@/app/actions/auth';
 import {
   fetchInitialDataAction,
+  fetchDealsDataAction,
+  fetchInvestorPortalDataAction,
   dbAddBranchAction,
   dbUpdateBranchAction,
   dbUpdateBranchInitialFundAction,
@@ -110,7 +112,7 @@ import {
   setLiveCurrencyRates,
   type CurrencyCode,
 } from '@/lib/currency';
-import { isBranchScopedUser, isBranchPortalRole } from '@/lib/rbac';
+import { isBranchScopedUser, isBranchPortalRole, isInvestorRole, filterDealsForStaff } from '@/lib/rbac';
 import {
   getVisibleMainNavItems,
   resolveCompactPortalHome,
@@ -118,6 +120,8 @@ import {
   isWarehousePortalRoute,
 } from '@/lib/navigation/mainNav';
 import { useAutoRefreshData } from '@/hooks/useAutoRefreshData';
+import { mergeDealTransactionLists, mergeInvestorDealTransactionLists } from '@/lib/dealTransactionMappers';
+import { isGroupRoute } from '@/lib/routes';
 
 interface Toast { id: string; message: string; type: 'success' | 'error'; }
 
@@ -187,6 +191,7 @@ export type AddInvestorInput = {
   assignedBranchId?: string;
   isGlobal?: boolean;
   notes?: string;
+  password: string;
 };
 
 interface AppContextType extends AppState {
@@ -232,7 +237,8 @@ interface AppContextType extends AppState {
   setActiveCurrency: (c: CurrencyCode) => void;
   enabledCurrencies: CurrencyCode[];
   refetchCurrencyRates: () => Promise<void>;
-  refetchData: () => Promise<void>;
+  refetchData: (userOverride?: User | null) => Promise<void>;
+  upsertDealTransaction: (txn: DealTransaction) => void;
   removePhysicalBuyOptimistic: (buy: PhysicalBuy) => void;
   isBranchView: boolean;
   currentSlug: string;
@@ -386,11 +392,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const refetchData = useCallback(async () => {
+  const refetchData = useCallback(async (userOverride?: User | null) => {
     if (refetchInFlightRef.current) return;
     refetchInFlightRef.current = true;
     try {
       const slug = currentSlug === 'superadmin' ? undefined : currentSlug;
+      const onGroupPage = isGroupRoute(pathname);
+
+      const activeUser = userOverride ?? state.user;
+      const investorUser = activeUser?.role === 'investor' ? activeUser : null;
+      if (investorUser?.investorId && investorUser.branchId) {
+        const dbRes = await fetchInvestorPortalDataAction(investorUser.investorId, investorUser.branchId);
+        if (dbRes.success && dbRes.data) {
+          const data = dbRes.data;
+          setState(s => ({
+            ...s,
+            branches: data.branches,
+            globalBranches: data.branches,
+            deals: data.deals,
+            dealTransactions: mergeInvestorDealTransactionLists(data.dealTransactions, s.dealTransactions),
+          }));
+        }
+        return;
+      }
+
+      if (onGroupPage) {
+        const dbRes = await fetchDealsDataAction(slug);
+        if (dbRes.success && dbRes.data) {
+          const data = dbRes.data;
+          setState(s => ({
+            ...s,
+            globalBranches: data.globalBranches,
+            branches: data.branches,
+            investors: data.investors,
+            deals: data.deals,
+            hqBalance: data.hqBalance,
+            dealTransactions: mergeDealTransactionLists(data.dealTransactions, s.dealTransactions),
+          }));
+        }
+        return;
+      }
+
       const dbRes = await fetchInitialDataAction(slug);
       if (dbRes.success && dbRes.data) {
         const data = dbRes.data;
@@ -408,7 +450,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             investors: data.investors,
             deals: data.deals,
             hqBalance: data.hqBalance,
-            dealTransactions: data.dealTransactions || [],
+            dealTransactions: mergeDealTransactionLists(
+              data.dealTransactions || [],
+              s.dealTransactions,
+            ),
             entities: data.entities || [],
             ledgers: data.ledgers || [],
             transactionTags: data.transactionTags || [],
@@ -436,11 +481,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       refetchInFlightRef.current = false;
     }
-  }, [currentSlug, refetchCurrencyRates]);
+  }, [currentSlug, pathname, refetchCurrencyRates, state.user]);
+
+  const upsertDealTransaction = useCallback((txn: DealTransaction) => {
+    setState(s => ({
+      ...s,
+      dealTransactions: s.dealTransactions.some(t => t.id === txn.id)
+        ? s.dealTransactions.map(t => (t.id === txn.id ? txn : t))
+        : [...s.dealTransactions, txn],
+    }));
+  }, []);
 
   useAutoRefreshData({
     enabled: state.isAuthenticated && !state.isInitialLoading,
     refetch: refetchData,
+    intervalMs: isGroupRoute(pathname) || state.user?.role === 'investor' ? 90_000 : undefined,
   });
 
   const removePhysicalBuyOptimistic = useCallback((buy: PhysicalBuy) => {
@@ -490,6 +545,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       try {
+        if (currentUser?.role === 'investor' && currentUser.investorId && currentUser.branchId) {
+          const portalRes = await fetchInvestorPortalDataAction(currentUser.investorId, currentUser.branchId);
+          if (portalRes.success && portalRes.data) {
+            const data = portalRes.data;
+            setState(s => ({
+              ...s,
+              user: currentUser,
+              isAuthenticated,
+              branches: data.branches,
+              globalBranches: data.branches,
+              deals: data.deals,
+              dealTransactions: mergeInvestorDealTransactionLists(data.dealTransactions, s.dealTransactions),
+              investors: [],
+              isInitialLoading: false,
+            }));
+            return;
+          }
+          setState(s => ({
+            ...s,
+            user: currentUser,
+            isAuthenticated,
+            branches: [],
+            globalBranches: [],
+            deals: [],
+            dealTransactions: [],
+            investors: [],
+            isInitialLoading: false,
+          }));
+          return;
+        }
+
         const dbRes = await fetchInitialDataAction(slug);
         if (dbRes.success && dbRes.data) {
           const data = dbRes.data;
@@ -509,7 +595,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             investors: data.investors,
             deals: data.deals,
             hqBalance: data.hqBalance,
-            dealTransactions: data.dealTransactions || [],
+            dealTransactions: mergeDealTransactionLists(
+              data.dealTransactions || [],
+              s.dealTransactions,
+            ),
             entities: data.entities || [],
             ledgers: data.ledgers || [],
             transactionTags: data.transactionTags || [],
@@ -638,6 +727,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addInvestor = useCallback(async (input: AddInvestorInput) => {
+    const { password, ...investorFields } = input;
     const branch = input.assignedBranchId
       ? state.branches.find(b => b.id === input.assignedBranchId)
       : undefined;
@@ -665,7 +755,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const newInvestor: Investor = {
       id: mock.generateId('INV'),
-      ...input,
+      ...investorFields,
       status: 'active',
       kycStatus: 'pending',
       joinedDate: now.slice(0, 10),
@@ -676,7 +766,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      const dbRes = await dbAddInvestorAction(newInvestor);
+      const branchIdForPortal = input.assignedBranchId || branch?.id || state.user?.branchId;
+      if (!branchIdForPortal) {
+        showToast('Branch is required to create investor portal login.', 'error');
+        return;
+      }
+      const dbRes = await dbAddInvestorAction(newInvestor, {
+        password,
+        branchId: branchIdForPortal,
+      });
       if (dbRes.success) {
         setState(s => ({ ...s, investors: [newInvestor, ...s.investors] }));
         showToast(`Investor "${newInvestor.name}" added successfully`);
@@ -687,7 +785,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('DB addInvestor failed', e);
       showToast('Failed to add investor', 'error');
     }
-  }, [showToast, state.branches]);
+  }, [showToast, state.branches, state.user?.branchId]);
 
   const updateInvestor = useCallback(async (updatedInvestor: Investor) => {
     const branch = updatedInvestor.assignedBranchId
@@ -2117,7 +2215,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let filterBranchId: string | undefined = undefined;
 
     if (!state.isInitialLoading && state.user) {
-    if (isBranchScopedUser(state.user) && state.user.branchId) {
+    if (isInvestorRole(state.user.role) && state.user.branchId) {
+      filteredState = {
+        ...state,
+        branches: state.branches.filter(b => b.id === state.user!.branchId),
+      };
+    } else if (isBranchScopedUser(state.user) && state.user.branchId) {
       filterBranchId = state.user.branchId;
     } else if (state.user.role === 'admin' && activeSlug) {
         const matchingBranch = state.branches.find(b => 
@@ -2130,14 +2233,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (filterBranchId) {
         const branchName = state.branches.find(b => b.id === filterBranchId)?.name || filterBranchId;
-        const deals = state.deals.filter(d => {
-          const matchManaging = d.managingBranchId === filterBranchId;
-          const matchInvestor = d.investors.some(di => {
-            const inv = state.investors.find(i => i.id === di.investorId);
-            return inv && inv.assignedBranchId === filterBranchId;
-          });
-          return matchManaging || matchInvestor;
-        });
+        const deals = filterDealsForStaff(
+          state.deals.filter(d => {
+            const matchManaging = d.managingBranchId === filterBranchId;
+            const matchInvestor = d.investors.some(di => {
+              const inv = state.investors.find(i => i.id === di.investorId);
+              return inv && inv.assignedBranchId === filterBranchId;
+            });
+            return matchManaging || matchInvestor;
+          }),
+          state.user,
+        );
         const dealIds = new Set(deals.map(d => d.id));
 
         filteredState = {
@@ -2218,19 +2324,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       enabledCurrencies,
       login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds,
       addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor,
-      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, getTotalCapital, getNetPL, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic,
+      updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, getTotalCapital, getNetPL, setActiveCurrency, refetchData, upsertDealTransaction, refetchCurrencyRates, removePhysicalBuyOptimistic,
       addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction,
       addLedger, updateLedger, deleteLedger, addTransactionTag,
       addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, updateICTransferSalesEnabled, updateICTransferAutoRateReset, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale,
     };
-  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, setActiveCurrency, refetchData, refetchCurrencyRates, removePhysicalBuyOptimistic, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, updateICTransferSalesEnabled, updateICTransferAutoRateReset, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale]);
+  }, [state, pathname, currentSlug, login, logout, setPage, setDateRange, addBranch, updateBranch, updateBranchPages, updateBranchInitialFund, updateBranchInitialGold, updateHqBalance, deleteBranch, transferFunds, addInvoice, addExpense, showToast, toggleSidebar, toggleSidebarCollapsed, setSidebarCollapsed, selectBranch, selectInvestor, addInvestor, updateInvestor, deleteInvestor, addDeal, updateDeal, deleteDeal, addDealTransaction, updateDealTransaction, deleteDealTransaction, addDealTransactionBuy, updateDealTransactionBuy, deleteDealTransactionBuy, setActiveCurrency, refetchData, upsertDealTransaction, refetchCurrencyRates, removePhysicalBuyOptimistic, addEntity, updateEntity, deleteEntity, processLedgerTransaction, updateLedgerTransaction, updateTransactionMeta, deleteLedgerTransaction, addLedger, updateLedger, deleteLedger, addTransactionTag, addICRegion, updateICRegion, deleteICRegion, addICSupplier, updateICSupplier, deleteICSupplier, addICWarehouse, updateICWarehouse, deleteICWarehouse, addICRateGroup, updateICRateGroup, bulkUpdateICRateGroupRates, updateICRateGroupPricing, deleteICRateGroup, setICRateGroupCustomers, setICRateGroupBranches, updateICTransferSalesEnabled, updateICTransferAutoRateReset, addICPurchase, updateICPurchase, addICSale, updateICSale, resubmitICSale, branchDeleteICSale, branchRequestCancelICSale, deleteICPurchase, deleteICSale]);
 
   useEffect(() => {
     const enabled = contextValue.enabledCurrencies;
-    if (!enabled.includes(contextValue.activeCurrency)) {
+    const active = contextValue.activeCurrency;
+    if (enabled.length > 0 && !enabled.includes(active)) {
       setActiveCurrency(enabled[0]);
     }
-  }, [contextValue.enabledCurrencies, contextValue.activeCurrency, setActiveCurrency]);
+  }, [
+    contextValue.enabledCurrencies.join(','),
+    contextValue.activeCurrency,
+    setActiveCurrency,
+  ]);
 
   return (
     <AppContext.Provider value={contextValue}>

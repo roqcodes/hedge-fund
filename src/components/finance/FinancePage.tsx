@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { isBranchPageEnabled } from '@/lib/branchPages';
 import { pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
 
 type ModuleCard = {
   id: string;
@@ -79,7 +80,10 @@ export default function FinancePage() {
       <header className={pageHeader}>
         <div className="min-w-0 space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Branch finance</p>
-          <h1 className={pageTitle}>Finance Reports</h1>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className={pageTitle}>Finance Reports</h1>
+            <ReadOnlyPill />
+          </div>
           <p className={pageSubtitle}>
             Select a module to view and export reports for {branchName}
           </p>

@@ -1,6 +1,6 @@
 import type { Branch, User } from '@/types';
 import { isBranchPageEnabled } from '@/lib/branchPages';
-import { canReadPage, isCustomerRole } from '@/lib/rbac';
+import { canReadPage, isCustomerRole, isInvestorRole } from '@/lib/rbac';
 
 export type MainNavItem = {
   id: string;
@@ -69,11 +69,14 @@ export function getVisibleMainNavItems({ currentSlug, user, branch }: VisibleNav
         return item.id === 'ic-transfer';
       }
 
+      if (isInvestorRole(user?.role)) {
+        return item.id === 'deals';
+      }
+
       if (!BRANCH_PAGE_IDS.has(item.id)) return false;
       if (branch && !isBranchPageEnabled(item.id, branch.hiddenPages)) return false;
-      if (user?.role === 'branch_manager' && item.id === 'warehouse') return false;
       if (
-        user?.role === 'staff' &&
+        (user?.role === 'staff' || user?.role === 'branch_manager') &&
         !canReadPage(user, item.id as import('@/lib/branchPages').BranchPageId, branch?.hiddenPages)
       ) {
         return false;

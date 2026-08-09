@@ -5,9 +5,9 @@ import {
   filterBranchNavPages,
   isBranchPageEnabled,
 } from '@/lib/branchPages';
-import type { PageAccessLevel, PagePermissionMap, User, UserRole } from '@/types';
+import type { DealAccessLevel, DealPermissionMap, DealStaffAssignment, PageAccessLevel, PagePermissionMap, User, UserRole } from '@/types';
 
-export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff', 'delivery', 'customer'];
+export const BRANCH_PORTAL_ROLES: UserRole[] = ['branch_manager', 'staff', 'delivery', 'customer', 'investor'];
 
 /** Shown on disabled write controls for read-only staff. */
 export const READ_ONLY_ACCESS_MESSAGE =
@@ -22,11 +22,16 @@ export function isCustomerRole(role: UserRole | string | undefined): boolean {
   return role === 'customer';
 }
 
+export function isInvestorRole(role: UserRole | string | undefined): boolean {
+  return role === 'investor';
+}
+
 export function isBranchPortalRole(role: UserRole | string): boolean {
   return (
     role === 'branch_manager' ||
     role === 'staff' ||
     role === 'customer' ||
+    role === 'investor' ||
     role.startsWith('delivery') ||
     role.startsWith('warehouse_')
   );
@@ -61,6 +66,10 @@ export function getEffectivePageAccess(
     return CUSTOMER_PORTAL_PAGE_IDS.includes(pageId) ? 'write' : 'none';
   }
 
+  if (isInvestorRole(user.role)) {
+    return pageId === 'deals' ? 'read' : 'none';
+  }
+
   if (user.role === 'branch_manager' && pageId === 'warehouse') return 'none';
 
   if (user.role === 'admin' || user.role === 'branch_manager') return 'write';
@@ -69,12 +78,19 @@ export function getEffectivePageAccess(
     return pageId === 'warehouse' ? 'write' : 'none';
   }
 
-  if (pageId === 'dashboard') {
-    return user.permissions?.dashboard ?? 'read';
-  }
-
-  if (pageId === 'settings') {
-    return 'write';
+  if (user.role === 'staff') {
+    if (pageId === 'dashboard') {
+      return user.permissions?.dashboard ?? 'read';
+    }
+    if (pageId === 'settings') {
+      return 'write';
+    }
+    const level = user.permissions?.[pageId];
+    if (level === 'read' || level === 'write' || level === 'none') {
+      return level;
+    }
+    // Non-managed pages (e.g. warehouse) are hidden unless explicitly granted.
+    return 'none';
   }
 
   const level = user.permissions?.[pageId];
@@ -96,6 +112,52 @@ export function canWritePage(
   hiddenPages?: string[] | null,
 ): boolean {
   return getEffectivePageAccess(user, pageId, hiddenPages) === 'write';
+}
+
+export function canReadDeal(
+  user: Pick<User, 'role' | 'id' | 'dealPermissions'> | null | undefined,
+  dealId: string,
+  deal?: { staffAssignments?: DealStaffAssignment[] },
+): boolean {
+  if (!user) return false;
+  if (hasFullBranchAccess(user)) return true;
+  if (user.role !== 'staff' || !user.id) return false;
+  if (deal?.staffAssignments?.some(a => a.userId === user.id)) return true;
+  return !!user.dealPermissions?.[dealId];
+}
+
+export function canWriteDeal(
+  user: Pick<User, 'role' | 'id' | 'dealPermissions'> | null | undefined,
+  dealId: string,
+  deal?: { staffAssignments?: DealStaffAssignment[] },
+): boolean {
+  if (!user) return false;
+  if (hasFullBranchAccess(user)) return true;
+  if (user.role !== 'staff' || !user.id) return false;
+  const assignment = deal?.staffAssignments?.find(a => a.userId === user.id);
+  if (assignment) return assignment.accessLevel === 'write';
+  return user.dealPermissions?.[dealId] === 'write';
+}
+
+export function getDealAccessLevel(
+  user: Pick<User, 'role' | 'dealPermissions'> | null | undefined,
+  dealId: string,
+): DealAccessLevel | null {
+  if (!user) return null;
+  if (hasFullBranchAccess(user)) return 'write';
+  if (user.role !== 'staff') return null;
+  return user.dealPermissions?.[dealId] ?? null;
+}
+
+export function filterDealsForStaff<T extends { id: string; staffAssignments?: DealStaffAssignment[] }>(
+  deals: T[],
+  user: Pick<User, 'role' | 'id' | 'dealPermissions'> | null | undefined,
+): T[] {
+  if (!user || user.role !== 'staff' || !user.id) return deals;
+  return deals.filter(d => {
+    if (d.staffAssignments?.some(a => a.userId === user.id)) return true;
+    return !!user.dealPermissions?.[d.id];
+  });
 }
 
 export function filterNavPagesForUser(

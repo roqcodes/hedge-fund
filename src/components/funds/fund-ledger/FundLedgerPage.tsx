@@ -14,6 +14,7 @@ import ExpenseEntryModal from './ExpenseEntryModal';
 import EntryDetailModal from './EntryDetailModal';
 import FundExportModal from './FundExportModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
 import { useApp } from '@/context/AppContext';
 import { createBranchExpenseAction, deleteBranchExpenseAction } from '@/app/actions/fundActions';
 import { sumPendingUsdt } from '@/lib/fundLedgerCurrency';
@@ -140,13 +141,14 @@ export default function FundLedgerPage() {
       <header className={pageHeader}>
         <div className="min-w-0 space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Branch operations</p>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2">
             <h1 className={pageTitle}>Funds</h1>
             {branch?.name && (
               <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
                 {branch.name}
               </span>
             )}
+            <ReadOnlyPill className="ml-auto" />
           </div>
         </div>
 
@@ -308,11 +310,6 @@ export default function FundLedgerPage() {
         customEndDate={customEndDate}
       />
 
-      {!canWrite && writeBlockedReason && (
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700">
-          {writeBlockedReason}
-        </div>
-      )}
     </div>
   );
 }

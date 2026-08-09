@@ -1,5 +1,6 @@
 import 'server-only';
 import { query } from '@/lib/db';
+import { deleteUserDealPermissions } from '@/lib/dealPermissions';
 import { defaultStaffPermissions, migrateLegacyPermissionMap } from '@/lib/rbac';
 import type { PageAccessLevel, PagePermissionMap } from '@/types';
 
@@ -61,4 +62,5 @@ export async function seedDefaultStaffPermissions(
 
 export async function deleteUserPermissions(userId: string): Promise<void> {
   await query(`DELETE FROM user_page_permissions WHERE user_id = $1`, [userId]);
+  await deleteUserDealPermissions(userId);
 }

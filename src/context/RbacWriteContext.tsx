@@ -9,6 +9,8 @@ import {
   READ_ONLY_ACCESS_MESSAGE,
   canReadPage,
   canWritePage,
+  isCustomerRole,
+  isInvestorRole,
 } from '@/lib/rbac';
 
 type WriteButtonExtra = {
@@ -56,13 +58,17 @@ export function RbacWriteProvider({ children }: { children: React.ReactNode }) {
   }, [pathname, currentSlug]);
 
   const canWrite = useMemo(() => {
-    if (!user || user.role !== 'staff') return true;
+    if (!user) return true;
+    if (isInvestorRole(user.role) || isCustomerRole(user.role)) return false;
+    if (user.role !== 'staff') return true;
     if (!pageId) return true;
     return canWritePage(user, pageId, hiddenPages);
   }, [user, pageId, hiddenPages]);
 
   const isReadOnly = useMemo(() => {
-    if (!user || user.role !== 'staff' || !pageId) return false;
+    if (!user || !pageId) return false;
+    if (isInvestorRole(user.role) || isCustomerRole(user.role)) return true;
+    if (user.role !== 'staff') return false;
     return canReadPage(user, pageId, hiddenPages) && !canWritePage(user, pageId, hiddenPages);
   }, [user, pageId, hiddenPages]);
 

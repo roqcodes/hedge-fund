@@ -21,6 +21,7 @@ import {
   sectionEyebrow,
   tableWrap,
 } from '@/lib/ui';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
 
 export default function BranchDashboard() {
   const { branches, deals, entities, currentSlug } = useApp();
@@ -75,8 +76,11 @@ export default function BranchDashboard() {
     <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
       <div className={pageHeader}>
         <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className={pageTitle}>{branch.name}</h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className={pageTitle}>{branch.name}</h2>
+              <ReadOnlyPill />
+            </div>
             <div className="mt-1 flex items-center gap-2">
               <span
                 className="size-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(15,169,88,0.45)] animate-[pulse-green_2s_infinite]"

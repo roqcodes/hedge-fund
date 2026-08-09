@@ -9,6 +9,10 @@ import { badgeClass } from '@/lib/badgeClass';
 import CreateDealModal from './CreateDealModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
 import { useDateFilter } from '@/hooks/useDateFilter';
+import { useTransactionsByDealId } from '@/hooks/useTransactionsByDealId';
+import { useInvestorPortalView } from '@/hooks/useInvestorPortalView';
+import ReadOnlyPill from '@/components/rbac/ReadOnlyPill';
+import { investorDealShareRatio, investorTotalBuyInvestment } from '@/lib/investorDealMetrics';
 import DateFilterBar from '@/components/ui/DateFilterBar';
 import {
   btnPrimary,
@@ -26,6 +30,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function DealsManagement() {
   const { deals, dealTransactions, isBranchView, branches, currentSlug } = useApp();
+  const { isInvestorView } = useInvestorPortalView();
   const basePath = currentSlug && currentSlug !== 'superadmin' ? `/${currentSlug}` : '';
   const router = useRouter();
   const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
@@ -41,20 +46,31 @@ export default function DealsManagement() {
     filteredData: filteredTransactions
   } = useDateFilter(dealTransactions);
 
+  const txByDealId = useTransactionsByDealId(filteredTransactions);
+
   const totalGroups = new Set(deals.map(d => d.groupName || 'General')).size;
 
   const processedDeals = useMemo(() => {
     return deals.map((deal) => {
-      const groupDeals = filteredTransactions.filter(t => t.dealId === deal.id);
+      const groupDeals = txByDealId.get(deal.id) ?? [];
       const totalDealsInGroup = groupDeals.length;
-      const completedDeals = groupDeals.filter(t => t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0).length;
+      const completedDeals = groupDeals.filter(t =>
+        isInvestorView
+          ? t.fixOrUnfix === 'fixed'
+          : t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== 0,
+      ).length;
       const onTransitDeals = totalDealsInGroup - completedDeals;
       const unsettledDeals = groupDeals.filter(t => t.fixOrUnfix === 'unfixed');
       
-      const totalGrossProfit = groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+      const totalGrossProfit = isInvestorView
+        ? groupDeals.reduce((sum, t) => sum + (t.myPayoutAmount || 0), 0)
+        : groupDeals.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
       
+      const investorShare = isInvestorView ? investorDealShareRatio(deal) : 0;
       const unsettledCost = unsettledDeals.reduce((sum, t) => sum + (t.pureCostAed || 0), 0);
-      const currentCapital = deal.amount - unsettledCost;
+      const currentCapital = isInvestorView
+        ? investorTotalBuyInvestment(groupDeals, investorShare)
+        : deal.amount - unsettledCost;
       const unsettledGoldVolume = unsettledDeals.reduce((sum, t) => sum + (t.weight || 0), 0);
 
       return {
@@ -65,30 +81,31 @@ export default function DealsManagement() {
         totalDeals: totalDealsInGroup,
         completedDeals,
         onTransitDeals,
-        grossProfit: totalGrossProfit || deal.totalPL || 0,
+        grossProfit: isInvestorView ? totalGrossProfit : (totalGrossProfit || deal.totalPL || 0),
+        unsettledCost,
+        groupDeals,
       };
     });
-  }, [deals, filteredTransactions]);
+  }, [deals, txByDealId, isInvestorView]);
 
   const totalDeals = processedDeals.reduce((acc, d) => acc + d.totalDeals, 0);
-  const totalDealAmount = deals.reduce((acc, deal) => {
-    const unsettledDeals = filteredTransactions.filter(t => t.dealId === deal.id && t.fixOrUnfix === 'unfixed');
-    const unsettledCost = unsettledDeals.reduce((sum, t) => sum + (t.pureCostAed || 0), 0);
-    return acc + (deal.amount - unsettledCost);
-  }, 0);
+  const totalDealAmount = processedDeals.reduce((acc, d) => acc + (d.amount), 0);
   const totalPL = processedDeals.reduce((acc, d) => acc + d.grossProfit, 0);
-  const totalExpense = deals.reduce((acc, deal) => {
-    const groupDeals = filteredTransactions.filter(t => t.dealId === deal.id);
-    if (groupDeals.length > 0) {
-      return acc + groupDeals.reduce((sum, txn) => sum + (txn.expenses || 0), 0);
-    }
-    return acc + (deal.expense || 0);
-  }, 0);
+  const totalExpense = isInvestorView
+    ? 0
+    : processedDeals.reduce((acc, deal) => {
+      if (deal.groupDeals.length > 0) {
+        return acc + deal.groupDeals.reduce((sum, txn) => sum + (txn.expenses || 0), 0);
+      }
+      return acc + (deal.expense || 0);
+    }, 0);
 
-  const totalGoldGrams = deals.reduce((acc, deal) => {
-    const unsettledDeals = filteredTransactions.filter(t => t.dealId === deal.id && t.fixOrUnfix === 'unfixed');
-    return acc + unsettledDeals.reduce((sum, t) => sum + t.weight, 0);
-  }, 0);
+  const totalGoldGrams = isInvestorView
+    ? 0
+    : processedDeals.reduce((acc, d) => {
+      const unsettledDeals = d.groupDeals.filter(t => t.fixOrUnfix === 'unfixed');
+      return acc + unsettledDeals.reduce((sum, t) => sum + t.weight, 0);
+    }, 0);
   const totalGoldKg = (totalGoldGrams / 1000).toFixed(4);
 
   const handleSort = (field: SortField) => {
@@ -163,10 +180,16 @@ export default function DealsManagement() {
     <>
       <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both]">
         <div className="mb-5 flex items-start justify-between border-b border-slate-200/80 pb-5 sm:items-end">
-          <div>
-            <h2 className={pageTitle}>Groups</h2>
-            <p className={pageSubtitle}>Manage investments and track deal allocations</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className={pageTitle}>Groups</h2>
+              <ReadOnlyPill />
+            </div>
+            <p className={pageSubtitle}>
+              {isInvestorView ? 'Your groups and investment performance' : 'Manage investments and track deal allocations'}
+            </p>
           </div>
+          {!isInvestorView && (
           <div className="flex items-center">
             <button 
               type="button" 
@@ -181,6 +204,7 @@ export default function DealsManagement() {
               <span className="hidden sm:inline">Create New Group</span>
             </button>
           </div>
+          )}
         </div>
 
         <DateFilterBar
@@ -221,7 +245,7 @@ export default function DealsManagement() {
             bgColor="#dbeafe"
           />
           <KPICard
-            label="Total Capital Amount"
+            label={isInvestorView ? 'My Investment' : 'Total Capital Amount'}
             value={formatAED(totalDealAmount)}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -231,6 +255,7 @@ export default function DealsManagement() {
             color="var(--accent)"
             bgColor="var(--accent-light)"
           />
+          {!isInvestorView && (
           <KPICard
             label="Total Gold Value"
             value={`${totalGoldKg} kg`}
@@ -242,8 +267,9 @@ export default function DealsManagement() {
             color="var(--warning)"
             bgColor="var(--warning-light)"
           />
+          )}
           <KPICard
-            label="Total P & L"
+            label={isInvestorView ? 'My P & L' : 'Total P & L'}
             value={formatAED(totalPL)}
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -255,6 +281,7 @@ export default function DealsManagement() {
             bgColor={totalPL >= 0 ? 'var(--profit-light)' : 'var(--loss-light)'}
             cardClassName={totalPL >= 0 ? 'bg-gradient-to-br from-emerald-50/50 to-emerald-100/30 border-emerald-100' : 'bg-gradient-to-br from-rose-50/50 to-rose-100/30 border-rose-100'}
           />
+          {!isInvestorView && (
           <KPICard
             label="Total Expense"
             value={formatAED(totalExpense)}
@@ -267,6 +294,7 @@ export default function DealsManagement() {
             color="#ef4444"
             bgColor="#fee2e2"
           />
+          )}
         </div>
 
         <div className="animate-[fade-in-up_0.55s_cubic-bezier(0.16,1,0.3,1)_both] md:overflow-hidden md:rounded-3xl md:border md:border-slate-100 md:bg-white md:shadow-surface md:transition-[box-shadow] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:motion-safe:hover:shadow-surface-hover">
@@ -326,7 +354,7 @@ export default function DealsManagement() {
                       </th>
                     )}
                     <th className={getThClass('center')} onClick={() => handleSort('amount')}>
-                      <div className="flex items-center justify-center gap-2">Capital <SortIcon field="amount" /></div>
+                      <div className="flex items-center justify-center gap-2">{isInvestorView ? 'My Investment' : 'Capital'} <SortIcon field="amount" /></div>
                     </th>
 
                     <th className={getThClass('center')} onClick={() => handleSort('totalDeals')}>
@@ -339,12 +367,14 @@ export default function DealsManagement() {
                       <div className="flex items-center justify-center gap-2">Unsettled Deals <SortIcon field="onTransitDeals" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('grossProfit')}>
-                      <div className="flex items-center justify-center gap-2">Gross P&L <SortIcon field="grossProfit" /></div>
+                      <div className="flex items-center justify-center gap-2">{isInvestorView ? 'My P&L' : 'Gross P&L'} <SortIcon field="grossProfit" /></div>
                     </th>
                     <th className={getThClass('center')} onClick={() => handleSort('groupType')}>
                       <div className="flex items-center justify-center gap-2">Type <SortIcon field="groupType" /></div>
                     </th>
+                    {!isInvestorView && (
                     <th className="px-3 pb-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-400 sm:px-5">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -392,6 +422,7 @@ export default function DealsManagement() {
                             <span className="text-xs font-medium text-slate-600 capitalize">{deal.groupType === 'currency' ? 'Currency' : 'Gold'}</span>
                           </div>
                         </td>
+                        {!isInvestorView && (
                         <td className="border-y border-r border-black/5 bg-white px-3 py-3.5 text-center last:rounded-r-2xl sm:px-5 sm:py-4">
                           <button
                             type="button"
@@ -406,13 +437,14 @@ export default function DealsManagement() {
                             </svg>
                           </button>
                         </td>
+                        )}
                       </tr>
                     );
                   })}
                   {filteredAndSortedDeals.length === 0 && (
                     <tr>
                       <td colSpan={8} className="border-y border-black/5 bg-white px-5 py-8 text-center text-sm text-slate-500">
-                        {searchTerm ? 'No groups found matching your search query.' : 'No groups found. Create a new group to get started.'}
+                        {searchTerm ? 'No groups found matching your search query.' : isInvestorView ? 'No groups found for your account.' : 'No groups found. Create a new group to get started.'}
                       </td>
                     </tr>
                   )}
@@ -475,7 +507,7 @@ export default function DealsManagement() {
                 })}
                 {filteredAndSortedDeals.length === 0 && (
                   <div className="p-8 text-center text-sm text-slate-500">
-                    {searchTerm ? 'No groups found matching your search query.' : 'No groups found. Create a new group to get started.'}
+                    {searchTerm ? 'No groups found matching your search query.' : isInvestorView ? 'No groups found for your account.' : 'No groups found. Create a new group to get started.'}
                   </div>
                 )}
               </div>

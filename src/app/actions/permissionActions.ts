@@ -13,6 +13,9 @@ import {
   hasFullBranchAccess,
   normalizePermissionMap,
   canWritePage,
+  canWriteDeal,
+  isCustomerRole,
+  isInvestorRole,
 } from '@/lib/rbac';
 import {
   fetchBranchHiddenPages,
@@ -270,6 +273,13 @@ export async function changeOwnPasswordAction(
   }
 }
 
+function denyNonStaffPortalRoles(user: User): string | null {
+  if (isInvestorRole(user.role)) return 'Investors cannot modify this section.';
+  if (isCustomerRole(user.role)) return 'You do not have permission to modify this section.';
+  if (user.role !== 'staff') return 'You do not have permission to modify this section.';
+  return null;
+}
+
 /** Server-side write guard for staff mutations. Returns error message or null if allowed. */
 export async function assertStaffWriteAccess(
   user: User | null | undefined,
@@ -278,11 +288,27 @@ export async function assertStaffWriteAccess(
 ): Promise<string | null> {
   if (!user) return 'You must be signed in.';
   if (hasFullBranchAccess(user)) return null;
-  if (user.role !== 'staff') return null;
+  const roleErr = denyNonStaffPortalRoles(user);
+  if (roleErr) return roleErr;
 
   const hiddenPages = branchId ? await fetchBranchHiddenPages(branchId) : [];
   if (!canWritePage(user, pageId, hiddenPages)) {
     return 'You do not have permission to modify this section.';
+  }
+  return null;
+}
+
+/** Server-side deal-level write guard for staff. */
+export async function assertStaffDealWriteAccess(
+  user: User | null | undefined,
+  dealId: string,
+  branchId?: string,
+): Promise<string | null> {
+  const pageErr = await assertStaffWriteAccess(user, 'deals', branchId);
+  if (pageErr) return pageErr;
+  if (!user || hasFullBranchAccess(user)) return null;
+  if (!canWriteDeal(user, dealId)) {
+    return 'You do not have write access to this group.';
   }
   return null;
 }

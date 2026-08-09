@@ -129,7 +129,12 @@ export default function UserPermissionsPanel({ open, onClose, branchSlug, branch
               {pageIds.map((pageId, idx) => (
                 <tr key={pageId}>
                   <td className={`border-y border-l border-black/5 bg-white px-3 py-3 text-sm font-medium text-slate-900 ${idx === pageIds.length - 1 ? 'first:rounded-bl-2xl' : ''}`}>
-                    {pageLabel(pageId)}
+                    <div>{pageLabel(pageId)}</div>
+                    {pageId === 'deals' && (
+                      <p className="mt-1 text-xs font-normal text-slate-500">
+                        Staff with access here can be assigned to specific groups when creating or editing groups.
+                      </p>
+                    )}
                   </td>
                   <td className={`border-y border-r border-black/5 bg-white px-3 py-3 ${idx === pageIds.length - 1 ? 'last:rounded-br-2xl' : ''}`}>
                     <PageAccessRadioGroup

@@ -6,7 +6,6 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import PortalSubNav from '@/components/layout/PortalSubNav';
 import BranchPageGuard from '@/components/layout/BranchPageGuard';
-import ReadOnlyPageBanner from '@/components/rbac/ReadOnlyPageBanner';
 import { RbacWriteProvider } from '@/context/RbacWriteContext';
 import { usePathname } from 'next/navigation';
 
@@ -45,7 +44,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
         <main className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
           <RbacWriteProvider>
-            <ReadOnlyPageBanner />
             {children}
           </RbacWriteProvider>
         </main>
