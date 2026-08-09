@@ -21,6 +21,7 @@ import {
 } from '@/lib/sql/businessDateSql';
 import { filterBranchLedgers } from '@/lib/ledgers';
 import { computeDealBuyAggregates, type DealBuyAggregates } from '@/lib/dealCalculations';
+import { computeDealSettlement } from '@/lib/dealSettlementCalculations';
 import { mapPhysicalBuyRow, mapPhysicalSellRow, mapPhysicalBulkSellRow } from '@/lib/physicalMappers';
 import { mapUsdtBuyRow, mapUsdtSellRow, mapUsdtSettingsRow } from '@/lib/usdtMappers';
 import {
@@ -2313,17 +2314,120 @@ export async function dbDeleteDealTransactionBuyAction(
   }
 }
 
+async function loadDealTransactionDetailRow(
+  dealTransactionId: string,
+): Promise<DealTransaction | null> {
+  const res = await query(SQL_DEAL_TRANSACTION_DETAIL, [dealTransactionId]);
+  if (!res.rows.length) return null;
+  return mapDealTransactionDetailRow(res.rows[0] as Record<string, unknown>);
+}
+
+/** Sync expense total and, for settled deals, recalculate profit and investor payouts. */
+async function syncDealTransactionAfterExpenseChange(
+  client: import('pg').PoolClient,
+  dealTransactionId: string,
+): Promise<void> {
+  const expenseSumRes = await client.query(
+    `SELECT COALESCE(SUM(value), 0) AS total FROM deal_transaction_expenses WHERE deal_transaction_id = $1`,
+    [dealTransactionId],
+  );
+  const expenses = parseFloat(expenseSumRes.rows[0].total);
+
+  const txnRes = await client.query(
+    `SELECT dt.id, dt.deal_id, dt.fix_or_unfix, dt.sales_aed, dt.pure_cost_aed, dt.weight,
+            d.amount AS deal_amount, COALESCE(d.manager_share, 20) AS manager_share
+     FROM deal_transactions dt
+     JOIN deals d ON d.id = dt.deal_id
+     WHERE dt.id = $1`,
+    [dealTransactionId],
+  );
+  if (!txnRes.rows.length) return;
+
+  const row = txnRes.rows[0];
+  const fixOrUnfix = row.fix_or_unfix as string;
+  const salesAed = parseFloat(row.sales_aed || '0');
+  const pureCostAed = parseFloat(row.pure_cost_aed || '0');
+  const weight = parseFloat(row.weight || '0');
+  const dealId = row.deal_id as string;
+  const dealAmount = parseFloat(row.deal_amount || '0');
+  const managerShare = parseFloat(row.manager_share || '20');
+
+  if (fixOrUnfix === 'fixed' && salesAed > 0) {
+    const investorsRes = await client.query(
+      `SELECT investor_id, investor_name, amount FROM deal_investors WHERE deal_id = $1`,
+      [dealId],
+    );
+    const investors = investorsRes.rows.map((r) => ({
+      investorId: r.investor_id as string,
+      investorName: r.investor_name as string,
+      amount: parseFloat(r.amount || '0'),
+    }));
+
+    const settlement = computeDealSettlement({
+      salesAed,
+      pureCostAed,
+      expenses,
+      weight,
+      managerShare,
+      dealAmount,
+      investors,
+    });
+
+    await client.query(
+      `UPDATE deal_transactions SET
+        expenses = $1, gross_profit = $2, net_profit_per_gram = $3, management_profit = $4
+       WHERE id = $5`,
+      [
+        settlement.expenses,
+        settlement.grossProfit,
+        settlement.netProfitPerGram,
+        settlement.managementProfit,
+        dealTransactionId,
+      ],
+    );
+
+    await client.query(
+      `DELETE FROM deal_transaction_payouts WHERE deal_transaction_id = $1`,
+      [dealTransactionId],
+    );
+
+    for (const p of settlement.payouts) {
+      const payoutId = `payout-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      await client.query(
+        `INSERT INTO deal_transaction_payouts (id, deal_transaction_id, investor_id, investor_name, payout_amount)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [payoutId, dealTransactionId, p.investorId, p.investorName, p.payoutAmount],
+      );
+    }
+
+    const plRes = await client.query(
+      `SELECT COALESCE(SUM(gross_profit), 0) AS total_pl FROM deal_transactions WHERE deal_id = $1`,
+      [dealId],
+    );
+    await client.query(
+      `UPDATE deals SET total_pl = $1 WHERE id = $2`,
+      [parseFloat(plRes.rows[0].total_pl), dealId],
+    );
+  } else {
+    await client.query(
+      `UPDATE deal_transactions SET expenses = $1 WHERE id = $2`,
+      [expenses, dealTransactionId],
+    );
+  }
+}
+
 /**
  * Adds a batch of key-value expense entries for a deal transaction.
  * Uses ON CONFLICT to upsert so re-saving the same items is safe.
  */
 export async function dbAddDealExpensesAction(
   expenses: DealTransactionExpense[]
-): Promise<DbActionResult<DealTransactionExpense[]>> {
+): Promise<DbActionResult<{ expenses: DealTransactionExpense[]; transaction: DealTransaction }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
-  if (!expenses.length) return { success: true, data: [] };
+  if (!expenses.length) return { success: false, error: 'No expenses provided.' };
 
-  const denied = await guardStaffDealWriteByTxn(expenses[0].dealTransactionId);
+  const dealTransactionId = expenses[0].dealTransactionId;
+  const denied = await guardStaffDealWriteByTxn(dealTransactionId);
   if (denied) return denied;
 
   const client = await pool.connect();
@@ -2341,8 +2445,15 @@ export async function dbAddDealExpensesAction(
       inserted.push(exp);
     }
 
+    await syncDealTransactionAfterExpenseChange(client, dealTransactionId);
     await client.query('COMMIT');
-    return { success: true, data: inserted };
+
+    const transaction = await loadDealTransactionDetailRow(dealTransactionId);
+    if (!transaction) {
+      return { success: false, error: 'Failed to load updated deal transaction.' };
+    }
+
+    return { success: true, data: { expenses: inserted, transaction } };
   } catch (error: unknown) {
     await client.query('ROLLBACK');
     const message = formatPgError(error);
@@ -2392,26 +2503,37 @@ export async function dbFetchDealExpensesAction(
  */
 export async function dbDeleteDealExpenseAction(
   id: string
-): Promise<DbActionResult<{ id: string }>> {
+): Promise<DbActionResult<{ id: string; transaction?: DealTransaction }>> {
   if (!pool) return { success: false, error: 'Database not connected.' };
 
+  const client = await pool.connect();
   try {
-    const txnRes = await query(
+    const txnRes = await client.query(
       `SELECT deal_transaction_id FROM deal_transaction_expenses WHERE id = $1 LIMIT 1`,
       [id],
     );
     const dealTransactionId = txnRes.rows[0]?.deal_transaction_id as string | undefined;
-    if (dealTransactionId) {
-      const denied = await guardStaffDealWriteByTxn(dealTransactionId);
-      if (denied) return denied;
+    if (!dealTransactionId) {
+      return { success: false, error: 'Expense not found.' };
     }
 
-    await query(`DELETE FROM deal_transaction_expenses WHERE id = $1`, [id]);
-    return { success: true, data: { id } };
+    const denied = await guardStaffDealWriteByTxn(dealTransactionId);
+    if (denied) return denied;
+
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM deal_transaction_expenses WHERE id = $1`, [id]);
+    await syncDealTransactionAfterExpenseChange(client, dealTransactionId);
+    await client.query('COMMIT');
+
+    const transaction = await loadDealTransactionDetailRow(dealTransactionId);
+    return { success: true, data: { id, transaction: transaction ?? undefined } };
   } catch (error: unknown) {
+    await client.query('ROLLBACK');
     const message = formatPgError(error);
     logger.error({ error, id }, 'Error deleting deal transaction expense');
     return { success: false, error: message };
+  } finally {
+    client.release();
   }
 }
 

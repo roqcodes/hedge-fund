@@ -484,12 +484,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [currentSlug, pathname, refetchCurrencyRates, state.user]);
 
   const upsertDealTransaction = useCallback((txn: DealTransaction) => {
-    setState(s => ({
-      ...s,
-      dealTransactions: s.dealTransactions.some(t => t.id === txn.id)
+    setState(s => {
+      const dealTransactions = s.dealTransactions.some(t => t.id === txn.id)
         ? s.dealTransactions.map(t => (t.id === txn.id ? txn : t))
-        : [...s.dealTransactions, txn],
-    }));
+        : [...s.dealTransactions, txn];
+      const dealTxnsForThisDeal = dealTransactions.filter(t => t.dealId === txn.dealId);
+      const totalPL = dealTxnsForThisDeal.reduce((sum, t) => sum + (t.grossProfit || 0), 0);
+
+      return {
+        ...s,
+        dealTransactions,
+        deals: txn.dealId
+          ? s.deals.map(d => (d.id === txn.dealId ? { ...d, totalPL } : d))
+          : s.deals,
+      };
+    });
   }, []);
 
   useAutoRefreshData({

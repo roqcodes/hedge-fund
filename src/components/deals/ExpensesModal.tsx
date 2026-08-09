@@ -7,6 +7,7 @@ import {
   dbFetchDealExpensesAction,
   dbDeleteDealExpenseAction,
 } from '@/app/actions/dbActions';
+import { useApp } from '@/context/AppContext';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ export default function ExpensesModal({
   dealLabel,
   readOnly = false,
 }: ExpensesModalProps) {
+  const { upsertDealTransaction } = useApp();
   const [rows, setRows] = useState<Row[]>([makeBlankRow()]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -137,8 +139,14 @@ export default function ExpensesModal({
 
   const removeRow = async (localId: string, dbId: string | null) => {
     if (dbId) {
-      // soft-delete from DB
-      await dbDeleteDealExpenseAction(dbId);
+      const res = await dbDeleteDealExpenseAction(dbId);
+      if (!res.success) {
+        setError(res.error ?? 'Failed to delete expense.');
+        return;
+      }
+      if (res.data?.transaction) {
+        upsertDealTransaction(res.data.transaction);
+      }
     }
     setRows((prev) => {
       const next = prev.filter((r) => r.localId !== localId);
@@ -179,13 +187,15 @@ export default function ExpensesModal({
     const res = await dbAddDealExpensesAction(payload);
     setSaving(false);
 
-    if (res.success) {
+    if (res.success && res.data) {
+      upsertDealTransaction(res.data.transaction);
       setSuccess(true);
+      const savedExpenses = res.data.expenses;
       // Mark rows as saved and update their dbIds
       setRows((prev) =>
         prev.map((r) => {
           if (r.key.trim() === '' && r.value.trim() === '') return r;
-          const saved = payload.find((p) => p.key === r.key.trim() && p.value === parseFloat(r.value));
+          const saved = savedExpenses.find((p) => p.key === r.key.trim() && p.value === parseFloat(r.value));
           return saved ? { ...r, dbId: saved.id, saved: true } : r;
         })
       );
@@ -226,7 +236,7 @@ export default function ExpensesModal({
             </div>
             <div>
               <h2 className="text-base font-black text-slate-900">{readOnly ? 'View Expenses' : 'Add Expenses'}</h2>
-              <p className="text-xs text-slate-400">{dealLabel} {readOnly && '(Settled)'}</p>
+              <p className="text-xs text-slate-400">{dealLabel}</p>
             </div>
           </div>
           <button

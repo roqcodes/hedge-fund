@@ -671,7 +671,7 @@ export default function TransactionDetails({ dealId, txnId }: { dealId: string; 
         onClose={() => setShowExpensesModal(false)}
         dealTransactionId={txn.id}
         dealLabel={`Deal #${txn.deal} — ${deal.groupName || deal.name}`}
-        readOnly={txn.fixOrUnfix === 'fixed' || !canWrite}
+        readOnly={!canWrite}
       />
     </>
   );
