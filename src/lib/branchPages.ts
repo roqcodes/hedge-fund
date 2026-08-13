@@ -4,6 +4,7 @@ export type BranchPageId =
   | 'funds'
   | 'transactions-beta'
   | 'ic-transfer-admin'
+  | 'ic-funds'
   | 'ic-transfer'
   | 'finance'
   | 'physical'
@@ -30,6 +31,7 @@ export const BRANCH_NAV_PAGES: BranchNavPage[] = [
   { id: 'funds', label: 'Transaction', path: '/funds', hideable: true },
   { id: 'transactions-beta', label: 'Daily Ledger', path: '/transactions', hideable: true },
   { id: 'ic-transfer-admin', label: 'IC Transfer (Admin)', path: '/ic-transfer-admin', hideable: true },
+  { id: 'ic-funds', label: 'IC Funds', path: '/ic-funds', hideable: true },
   { id: 'finance', label: 'Finance - Reports', path: '/finance', hideable: true },
   { id: 'physical', label: 'Physical Deals', path: '/physical-deals', hideable: true },
   { id: 'marketplace', label: 'Physical', path: '/physical', hideable: true },
@@ -54,6 +56,7 @@ const PATH_SEGMENT_TO_PAGE_ID: Record<string, BranchPageId> = {
   funds: 'funds',
   transactions: 'transactions-beta',
   'ic-transfer-admin': 'ic-transfer-admin',
+  'ic-funds': 'ic-funds',
   'ic-transfer': 'ic-transfer',
   finance: 'finance',
   physical: 'marketplace',

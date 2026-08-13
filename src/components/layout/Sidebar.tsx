@@ -80,6 +80,8 @@ export default function Sidebar() {
             const isActive =
               item.id === 'ic-transfer-admin'
                 ? pathname.includes('/ic-transfer-admin')
+                : item.id === 'ic-funds'
+                  ? pathname.includes('/ic-funds')
                 : item.id === 'ic-transfer'
                   ? pathname.includes('/ic-transfer') && !pathname.includes('/ic-transfer-admin')
                   : item.id === 'warehouse'

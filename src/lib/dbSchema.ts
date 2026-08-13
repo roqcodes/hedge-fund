@@ -2,6 +2,7 @@ import 'server-only';
 import { query } from '@/lib/db';
 import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { SQL_ENSURE_IC_TRANSFER_SETTINGS } from '@/lib/sql/icTransferSettingsSql';
+import { SQL_ENSURE_IC_FUNDS_SCHEMA } from '@/lib/sql/icFundsSchemaSql';
 
 let schemaReady: Promise<void> | null = null;
 
@@ -69,6 +70,7 @@ async function runSchemaMigrations(): Promise<void> {
     query(`CREATE INDEX IF NOT EXISTS idx_investors_cognito_user ON investors(cognito_user_id);`),
     query(SQL_ENSURE_USDT_SCHEMA),
     query(SQL_ENSURE_IC_TRANSFER_SETTINGS),
+    query(SQL_ENSURE_IC_FUNDS_SCHEMA),
   ]);
 
   await Promise.all([

@@ -791,3 +791,64 @@ export interface ICWarehouseTransaction {
   referenceId?: string;
   createdAt?: string;
 }
+
+export type ICFundAccountType = 'bank' | 'personal' | 'income' | 'profit' | 'expense' | 'd_expense';
+export type ICFundAccountStatus = 'active' | 'inactive';
+export type ICFundVoucherType = 'payment' | 'receipt' | 'journal' | 'contra';
+export type ICFundVoucherStatus = 'active' | 'void';
+
+export interface ICFundAccount {
+  id: string;
+  branchId: string;
+  name: string;
+  accountType: ICFundAccountType;
+  status: ICFundAccountStatus;
+  openingBalance: number;
+  notes: string;
+  createdAt: string;
+  balance: number;
+}
+
+export interface ICFundVoucher {
+  id: string;
+  branchId: string;
+  voucherNo: number;
+  voucherType: ICFundVoucherType;
+  voucherDate: string;
+  debitAccountId: string;
+  creditAccountId: string;
+  debitAccountName: string;
+  creditAccountName: string;
+  debitAccountType: ICFundAccountType;
+  creditAccountType: ICFundAccountType;
+  amount: number;
+  notes: string;
+  createdBy?: string;
+  createdByName?: string;
+  createdByUserId?: string;
+  createdAt: string;
+  status: ICFundVoucherStatus;
+  voidedAt?: string;
+  voidedByName?: string;
+}
+
+export interface ICFundTrialBalanceLine {
+  accountId: string;
+  accountName: string;
+  accountType: ICFundAccountType;
+  debit: number;
+  credit: number;
+}
+
+export interface ICFundStatementLine {
+  date: string;
+  voucherNo: number;
+  voucherType: ICFundVoucherType;
+  particulars: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  notes: string;
+  userName?: string;
+  userAt?: string;
+}

@@ -1,16 +1,26 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import { useApp } from '@/context/AppContext';
 import KPICard from '@/components/ui/KPICard';
-import { kpiGrid } from '@/lib/ui';
+import { btnPrimary, kpiGrid } from '@/lib/ui';
 import { PageHeader, PageShell, SectionCard } from '../ui';
 
 export default function ICTransferFinance() {
+  const { currentSlug } = useApp();
+  const fundsHref = currentSlug ? `/${currentSlug}/ic-funds/reports` : '/ic-funds/reports';
+
   return (
     <PageShell>
       <PageHeader
         title="Finance & Report"
-        subtitle="Financial summaries and reporting for IC Transfer"
+        subtitle="IC Transfer money lives in IC Funds — a separate book from gold Funds."
+        actions={
+          <Link href={fundsHref} className={`${btnPrimary} no-underline`}>
+            Open IC Funds
+          </Link>
+        }
       />
 
       <div className={kpiGrid}>
@@ -18,7 +28,7 @@ export default function ICTransferFinance() {
           <KPICard
             key={label}
             label={label}
-            value="0"
+            value="—"
             icon={
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -31,8 +41,8 @@ export default function ICTransferFinance() {
       </div>
 
       <SectionCard>
-        <div className="px-6 py-12 text-center text-sm text-slate-400">
-          Reports will appear here once transactions are recorded.
+        <div className="px-6 py-12 text-center text-sm text-slate-500">
+          Payments, receipts, journal, contra, cash &amp; bank, and P&amp;L are in IC Funds.
         </div>
       </SectionCard>
     </PageShell>

@@ -54,6 +54,7 @@ export const SEARCH_PAGE_ITEMS: {
   { id: 'funds', label: 'Transaction', path: '/funds', keywords: ['funds', 'transfer', 'ledger', 'capital'] },
   { id: 'transactions-beta', label: 'Daily Ledger', path: '/transactions', keywords: ['daily ledger', 'z-report', 'beta'], branchOnly: true },
   { id: 'ic-transfer-admin', label: 'IC Transfer (Admin)', path: '/ic-transfer-admin', keywords: ['intercompany', 'ic', 'admin'], branchOnly: true },
+  { id: 'ic-funds', label: 'IC Funds', path: '/ic-funds', keywords: ['ic funds', 'payments', 'receipts', 'journal', 'contra', 'tradex'], branchOnly: true },
   { id: 'ic-transfer', label: 'IC Transfer', path: '/ic-transfer', keywords: ['intercompany', 'ic', 'customer', 'orders'], branchOnly: true },
   { id: 'finance', label: 'Finance - Reports', path: '/finance', keywords: ['finance', 'reports', 'expense', 'invoice'] },
   { id: 'physical', label: 'Physical Deals', path: '/physical-deals', keywords: ['gold', 'buy', 'sell', 'deals', 'bullion', 'vault'] },
