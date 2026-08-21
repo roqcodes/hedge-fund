@@ -19,6 +19,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ic_fund_accounts_branch_name
 CREATE INDEX IF NOT EXISTS idx_ic_fund_accounts_branch_type
     ON ic_fund_accounts (branch_id, account_type, status);
 
+ALTER TABLE ic_fund_accounts ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_ic_fund_accounts_customer_id ON ic_fund_accounts(customer_id);
+ALTER TABLE ic_fund_accounts ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+ALTER TABLE ic_fund_accounts ADD COLUMN IF NOT EXISTS source_type VARCHAR(30);
+ALTER TABLE ic_fund_accounts ADD COLUMN IF NOT EXISTS source_id VARCHAR(50);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ic_fund_accounts_branch_source
+    ON ic_fund_accounts (branch_id, source_type, source_id)
+    WHERE source_type IS NOT NULL AND source_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS ic_fund_voucher_counters (
     branch_id VARCHAR(50) PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
     last_no INTEGER NOT NULL DEFAULT 0

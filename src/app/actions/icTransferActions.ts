@@ -56,6 +56,7 @@ import {
   removeICSaleFundLedger,
   removeICPurchaseFundLedger,
 } from '@/lib/icTransfer/fundLedgerSync';
+import { syncICSupplierFundAccount, syncICWarehouseFundAccount } from '@/lib/icFunds/icTransferFundSync';
 import {
   addRegionSchema,
   updateRegionSchema,
@@ -272,6 +273,7 @@ export async function dbAddICSupplierAction(
         parsed.branchId || null,
       ],
     );
+    await syncICSupplierFundAccount(id);
     return { success: true, data: mapICSupplierRow(res.rows[0]) };
   } catch (error: unknown) {
     logger.error({ error, name, email }, 'Error in dbAddICSupplierAction');
@@ -299,6 +301,7 @@ export async function dbUpdateICSupplierAction(
       [parsed.name, parsed.phone || null, parsed.commission || 0, parsed.regionId || null, parsed.email || null, parsed.address || null, parsed.id]
     );
     if (res.rowCount === 0) return { success: false, error: 'Supplier not found' };
+    await syncICSupplierFundAccount(parsed.id);
     return { success: true, data: mapICSupplierRow(res.rows[0]) };
   } catch (error: unknown) {
     logger.error({ error, id, name }, 'Error in dbUpdateICSupplierAction');
@@ -359,6 +362,7 @@ export async function dbAddICWarehouseAction(
         parsed.branchId || null,
       ],
     );
+    await syncICWarehouseFundAccount(id);
     return { success: true, data: mapICWarehouseRow(res.rows[0]) };
   } catch (error: unknown) {
     logger.error({ error, name, email }, 'Error in dbAddICWarehouseAction');
@@ -404,6 +408,7 @@ export async function dbUpdateICWarehouseAction(
       ],
     );
     if (res.rowCount === 0) return { success: false, error: 'Warehouse not found' };
+    await syncICWarehouseFundAccount(parsed.id);
     return { success: true, data: mapICWarehouseRow(res.rows[0]) };
   } catch (error: unknown) {
     logger.error({ error, id, name }, 'Error in dbUpdateICWarehouseAction');
@@ -2510,6 +2515,7 @@ export async function autoCompleteByHandOrdersCronAction(): Promise<DbActionResu
       `UPDATE ic_sales
        SET order_status = 'completed',
            collected_units = units,
+           payment_status = 'paid',
            status_updated_at = CURRENT_TIMESTAMP,
            status_updated_by = 'cron:auto-complete-by-hand'
        WHERE transaction_type = 'by_hand'

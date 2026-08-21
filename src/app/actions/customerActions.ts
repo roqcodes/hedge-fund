@@ -5,9 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
 import { getSessionUser } from '@/lib/auth';
 import { assertStaffWriteAccess } from '@/app/actions/permissionActions';
-import { createCustomerCognitoUser, deleteCognitoUserByEmail, updateCognitoUserName } from '@/app/actions/cognitoActions';
+import { createCustomerCognitoUser, deleteCognitoUserByEmail, resetCustomerCognitoPasswordAction, updateCognitoUserName } from '@/app/actions/cognitoActions';
 import { EXCLUDE_PENDING_LEDGER_SQL } from '@/lib/fundLedgerCurrency';
 import { PASSWORD_INVALID_MESSAGE, validatePassword } from '@/lib/passwordValidation';
+import { syncCustomerFundAccount, deactivateCustomerFundAccount } from '@/lib/icFunds/customerFundSync';
 
 const CUSTOMER_DELETE_BLOCKED_MESSAGE =
   'This customer cannot be deleted because they have existing orders or transactions.';
@@ -241,11 +242,45 @@ export async function saveCustomer(
       ],
     );
 
+    await syncCustomerFundAccount(id);
+
     revalidatePath(`/${slug}/customers`);
+    revalidatePath(`/${slug}/ic-funds/accounts`);
     return { success: true, id };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error({ error: err, slug, data }, 'saveCustomer error');
+    return { success: false, error: message };
+  }
+}
+
+export async function resetCustomerPasswordAction(slug: string, customerId: string, passwordRaw: string) {
+  try {
+    const access = await assertCustomerWriteAccess(slug);
+    if ('error' in access && access.error) {
+      return { success: false, error: access.error };
+    }
+    if (!validatePassword(passwordRaw).isValid) {
+      return { success: false, error: PASSWORD_INVALID_MESSAGE };
+    }
+
+    const existing = await query(
+      `SELECT email, cognito_user_id FROM customers WHERE id = $1 AND branch_id = $2 LIMIT 1`,
+      [customerId, access.branchId],
+    );
+    if (existing.rows.length === 0) {
+      return { success: false, error: 'Customer not found' };
+    }
+    const email = existing.rows[0].email ? String(existing.rows[0].email) : '';
+    const cognitoUserId = existing.rows[0].cognito_user_id;
+    if (!email || !cognitoUserId) {
+      return { success: false, error: 'Customer has no portal login account.' };
+    }
+
+    return resetCustomerCognitoPasswordAction(email, passwordRaw, slug);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    logger.error({ error: err, slug, customerId }, 'resetCustomerPasswordAction error');
     return { success: false, error: message };
   }
 }
@@ -275,7 +310,9 @@ export async function deleteCustomer(id: string, slug: string) {
     }
 
     await query(`DELETE FROM customers WHERE id = $1`, [id]);
+    await deactivateCustomerFundAccount(id);
     revalidatePath(`/${slug}/customers`);
+    revalidatePath(`/${slug}/ic-funds/accounts`);
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

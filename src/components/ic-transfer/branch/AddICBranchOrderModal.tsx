@@ -24,6 +24,8 @@ import { DEFAULT_IC_SALE_TRANSACTION_TYPE, transactionTypeRequiresBank, type ICS
 import { resolveBranchOrderRates } from '@/lib/icTransfer/branchRateScope';
 import { resolveCustomerPortalRateGroup } from '@/lib/icTransfer/customerPortalScope';
 import SubCustomerSearchInput from './SubCustomerSearchInput';
+import ImageDropZone from '@/components/ui/ImageDropZone';
+import { uploadImageToCloudinary, deleteCloudinaryImageByToken } from '@/lib/cloudinary';
 
 type Props = {
   open: boolean;
@@ -65,10 +67,6 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     'units' | 'transactionType' | 'address' | 'location' | 'district' | 'imageUrl' | 'bank'
   > | null>(null);
   const [handleAtBranch, setHandleAtBranch] = useState(false);
-
-  // Cloudinary credentials from env
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'finite-x-reality';
-  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'meal_payments';
 
   // Retrieve branch info
   const currentBranch =
@@ -191,25 +189,12 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
     }
   }, [open, initialData, isCustomer, linkedCustomerId, linkedCustomerName]);
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const handleImageUpload = async (file: File) => {
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
-
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
-      setImageUrl(data.secure_url);
-      setDeleteToken(data.delete_token || '');
+      const { secureUrl, deleteToken: token } = await uploadImageToCloudinary(file);
+      setImageUrl(secureUrl);
+      setDeleteToken(token || '');
     } catch (err) {
       console.error(err);
       alert('Failed to upload image. Please try again.');
@@ -221,12 +206,7 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
   const handleDeleteImage = async () => {
     if (deleteToken) {
       try {
-        const formData = new FormData();
-        formData.append('token', deleteToken);
-        await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/delete_by_token`, {
-          method: 'POST',
-          body: formData,
-        });
+        await deleteCloudinaryImageByToken(deleteToken);
       } catch (err) {
         console.error('Failed to delete image from Cloudinary:', err);
       }
@@ -519,42 +499,23 @@ export default function AddICBranchOrderModal({ open, onClose, initialData }: Pr
 
             <InputField label="Captured Image">
               <div className="flex flex-col gap-3">
-                {imageUrl ? (
-                  <div className="relative w-20 h-20 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden group shrink-0">
-                    <img src={imageUrl} alt="Captured proof" className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      className="absolute inset-0 bg-black/60 text-white text-[10px] font-semibold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={handleDeleteImage}
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <label className="w-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 text-slate-400 hover:bg-slate-100/50 cursor-pointer transition-colors">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1 opacity-70">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="17 8 12 3 7 8" />
-                        <line x1="12" y1="3" x2="12" y2="15" />
-                      </svg>
-                      <span className="text-xs font-semibold">{isUploading ? 'Uploading...' : 'Upload Image'}</span>
-                      <input
-                        type="file"
-                        accept="image/png, image/jpeg, image/webp"
-                        className="hidden"
-                        onChange={handleImageUpload}
-                        disabled={isUploading}
-                      />
-                    </label>
-                    <CopyOrderDetailsButton
-                      address={address}
-                      units={unitNum}
-                      onCopySuccess={() => showToast('Details copied')}
-                      onCopyError={msg => showToast(msg, 'error')}
-                    />
-                  </>
-                )}
+                <ImageDropZone
+                  imageUrl={imageUrl}
+                  onUpload={handleImageUpload}
+                  onClear={handleDeleteImage}
+                  isUploading={isUploading}
+                  emptyLabel="Upload address or payment proof image"
+                />
+                {!imageUrl ? (
+                  <CopyOrderDetailsButton
+                    address={address}
+                    units={unitNum}
+                    enableShare
+                    onCopySuccess={() => showToast('Details copied')}
+                    onCopyError={msg => showToast(msg, 'error')}
+                    onShareError={msg => showToast(msg, 'error')}
+                  />
+                ) : null}
               </div>
             </InputField>
           </div>

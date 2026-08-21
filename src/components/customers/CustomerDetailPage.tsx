@@ -2,10 +2,11 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Customer } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { getCustomerById } from '@/app/actions/customerActions';
+import { getICFundAccountByCustomerIdAction } from '@/app/actions/icFundsActions';
 import { getTaxInvoicesBySlug } from '@/app/actions/marketplaceActions';
 import { formatMoneyLabel, formatMoneyValue } from '@/data/mockData';
 import {
@@ -22,17 +23,24 @@ import CustomerModal from './CustomerModal';
 import CustomerPhysicalSalesTab from './customer-detail/CustomerPhysicalSalesTab';
 import CustomerUsdtTab from './customer-detail/CustomerUsdtTab';
 import CustomerMarketplaceTab from './customer-detail/CustomerMarketplaceTab';
+import CustomerICFundsTab from './customer-detail/CustomerICFundsTab';
 import TaxInvoiceModal from '@/components/marketplace/TaxInvoiceModal';
 import USDTBuyModal from '@/components/usdt/USDTBuyModal';
 import USDTSellModal from '@/components/usdt/USDTSellModal';
 import { useWriteAccess } from '@/context/RbacWriteContext';
+import { fmtICAmount } from '@/lib/icFunds/format';
 import { kpiGrid, pageHeader, pageSubtitle, pageTitle } from '@/lib/ui';
+import type { ICFundAccount } from '@/types';
 
 export default function CustomerDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
   const customerId = params.customerId as string;
-  const { branches, physicalBuys, physicalSells, usdtBuys, usdtSells, usdtSettings, refetchData, activeCurrency } = useApp();
+  const fromIcFunds = searchParams.get('from') === 'ic-funds';
+  const backHref = fromIcFunds ? `/${slug}/ic-funds/accounts` : `/${slug}/customers`;
+  const backLabel = fromIcFunds ? 'Back to IC Funds accounts' : 'Back to customers';
+  const { branches, physicalBuys, physicalSells, usdtBuys, usdtSells, usdtSettings, refetchData, activeCurrency, icSales } = useApp();
   const { canWrite, writeBlockedReason, buttonProps: wp } = useWriteAccess();
 
   const branch = branches.find(b => b.slug === slug);
@@ -47,6 +55,7 @@ export default function CustomerDetailPage() {
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isUsdtBuyModalOpen, setIsUsdtBuyModalOpen] = useState(false);
   const [isUsdtSellModalOpen, setIsUsdtSellModalOpen] = useState(false);
+  const [icFundAccount, setIcFundAccount] = useState<ICFundAccount | null>(null);
 
   const presetMargin = usdtSettings.find(s => s.branchId === branchId)?.presetMargin ?? 0.002;
 
@@ -62,6 +71,12 @@ export default function CustomerDetailPage() {
       setActiveTab(enabledTabs[0].id);
     }
   }, [enabledTabs, activeTab]);
+
+  useEffect(() => {
+    if (fromIcFunds && enabledTabs.some(t => t.id === 'ic-funds')) {
+      setActiveTab('ic-funds');
+    }
+  }, [fromIcFunds, enabledTabs]);
 
   const loadCustomer = async () => {
     setLoading(true);
@@ -79,6 +94,16 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     loadCustomer();
   }, [customerId, slug]);
+
+  const showIcFundsKpi = enabledTabs.some(t => t.id === 'ic-funds');
+
+  useEffect(() => {
+    if (!showIcFundsKpi || !branchId) {
+      setIcFundAccount(null);
+      return;
+    }
+    void getICFundAccountByCustomerIdAction(branchId, customerId).then(setIcFundAccount);
+  }, [branchId, customerId, showIcFundsKpi]);
 
   const showMarketplaceKpi = enabledTabs.some(t => t.id === 'marketplace');
 
@@ -158,6 +183,7 @@ export default function CustomerDetailPage() {
 
   const showPhysicalSalesKpi = enabledTabs.some(t => t.id === 'physical');
   const showUsdtKpi = enabledTabs.some(t => t.id === 'usdt');
+  const showIcFundsTab = enabledTabs.some(t => t.id === 'ic-funds');
 
   const fmtUsd = (n: number) =>
     `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -168,9 +194,9 @@ export default function CustomerDetailPage() {
         <div>
           <div className="mb-2 flex items-center gap-3">
             <Link
-              href={`/${slug}/customers`}
+              href={backHref}
               className="group flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900"
-              aria-label="Back to customers"
+              aria-label={backLabel}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -209,6 +235,21 @@ export default function CustomerDetailPage() {
           color="#f59e0b"
           bgColor="#fef3c7"
         />
+
+        {showIcFundsKpi && icFundAccount ? (
+          <KPICard
+            label="IC Funds balance"
+            value={fmtICAmount(icFundAccount.balance)}
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <path d="M2 10h20" />
+              </svg>
+            }
+            color="#0ea5e9"
+            bgColor="#e0f2fe"
+          />
+        ) : null}
 
         {showPhysicalSalesKpi && (
           <PhysicalSplitKPICard
@@ -393,6 +434,14 @@ export default function CustomerDetailPage() {
                 activeCurrency={activeCurrency}
               />
             )}
+            {activeTab === 'ic-funds' && showIcFundsTab && branchId ? (
+              <CustomerICFundsTab
+                slug={slug}
+                branchId={branchId}
+                customer={customer}
+                icSales={icSales}
+              />
+            ) : null}
           </div>
         </div>
       )}

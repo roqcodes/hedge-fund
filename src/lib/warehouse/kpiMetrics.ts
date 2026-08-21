@@ -20,7 +20,7 @@ function sumOrderUnits(orders: WarehouseOrder[]): number {
 
 function computeAvailableStock(currentStock: number | null, reserved: number): number {
   if (currentStock === null) return 0;
-  return Math.max(0, currentStock - reserved);
+  return currentStock - reserved;
 }
 
 /** Warehouse manager view — pending = active, non-rejected orders. */

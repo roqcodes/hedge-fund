@@ -3,6 +3,8 @@ import { query } from '@/lib/db';
 import { SQL_ENSURE_USDT_SCHEMA } from '@/lib/sql/usdtSchemaSql';
 import { SQL_ENSURE_IC_TRANSFER_SETTINGS } from '@/lib/sql/icTransferSettingsSql';
 import { SQL_ENSURE_IC_FUNDS_SCHEMA } from '@/lib/sql/icFundsSchemaSql';
+import { backfillICTransferFundAccounts } from '@/lib/icFunds/icTransferFundSync';
+import { backfillCustomerFundAccounts } from '@/lib/icFunds/customerFundSync';
 
 let schemaReady: Promise<void> | null = null;
 
@@ -80,4 +82,7 @@ async function runSchemaMigrations(): Promise<void> {
     query(`CREATE INDEX IF NOT EXISTS idx_deal_transaction_expenses_txn ON deal_transaction_expenses(deal_transaction_id);`),
     query(`CREATE INDEX IF NOT EXISTS idx_deal_transaction_buys_txn ON deal_transaction_buys(deal_transaction_id);`),
   ]);
+
+  await backfillICTransferFundAccounts();
+  await backfillCustomerFundAccounts();
 }

@@ -807,6 +807,12 @@ export interface ICFundAccount {
   notes: string;
   createdAt: string;
   balance: number;
+  customerId?: string;
+  email?: string;
+  phone?: string;
+  hasPortalLogin?: boolean;
+  sourceType?: string;
+  sourceId?: string;
 }
 
 export interface ICFundVoucher {
@@ -830,6 +836,8 @@ export interface ICFundVoucher {
   status: ICFundVoucherStatus;
   voidedAt?: string;
   voidedByName?: string;
+  referenceType?: string;
+  referenceId?: string;
 }
 
 export interface ICFundTrialBalanceLine {

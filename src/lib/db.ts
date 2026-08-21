@@ -3,11 +3,17 @@ import { env } from '@/lib/env';
 
 // ── Connection Pool ──────────────────────────────────────────────────
 
-// Parse the URL to safely strip query parameters (like ?sslmode=require) 
+// Parse the URL to safely strip query parameters (like ?sslmode=require)
 // which can interfere with our explicit ssl configuration below.
 const parsedUrl = new URL(env.DATABASE_URL);
 parsedUrl.search = '';
 const cleanUrl = parsedUrl.toString();
+
+/** Default cap keeps dev + prod from exhausting small RDS instances (often ~80 conns). */
+const DEFAULT_POOL_MAX = env.NODE_ENV === 'production' ? 10 : 4;
+const parsedPoolMax = Number.parseInt(process.env.DATABASE_POOL_MAX ?? '', 10);
+const poolMax =
+  Number.isFinite(parsedPoolMax) && parsedPoolMax > 0 ? parsedPoolMax : DEFAULT_POOL_MAX;
 
 let pool: Pool;
 
@@ -18,8 +24,8 @@ const poolConfig = {
     env.DATABASE_URL.includes('127.0.0.1')
       ? false
       : { rejectUnauthorized: false },
-  max: 20,
-  idleTimeoutMillis: 30_000,
+  max: poolMax,
+  idleTimeoutMillis: 10_000,
   // Remote RDS (e.g. us-east-1 from Asia) can take 5–8s to establish TLS; 10s was too tight.
   connectionTimeoutMillis: 30_000,
   keepAlive: true,
@@ -41,6 +47,10 @@ if (process.env.NODE_ENV === 'production') {
 pool.on('error', (err) => {
   console.error('Unexpected database pool error:', err);
 });
+
+if (process.env.NODE_ENV !== 'production') {
+  console.info(`[db] Pool max connections: ${poolMax}`);
+}
 
 /**
  * Execute a query against the PostgreSQL database.

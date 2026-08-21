@@ -85,7 +85,7 @@ function computeRow(
     regionName,
     currentStock,
     reserved,
-    available: Math.max(0, currentStock - reserved),
+    available: currentStock - reserved,
     totalOrders: inRangeSales.length,
     pendingOrders: inRangeSales.filter(isActiveOrder).length,
     deliveredUnits: computeDeliveredUnits(inRangeSales),
@@ -126,7 +126,7 @@ export function computeWarehouseMatrix(options: {
   const totals: WarehouseMatrixResult['totals'] = {
     currentStock,
     reserved,
-    remaining: Math.max(0, currentStock - reserved),
+    remaining: currentStock - reserved,
     totalOrders: inRangeSales.length,
     totalPending: inRangeSales.filter(isActiveOrder).length,
     totalCompleted: inRangeSales.filter(s => isSaleCompleted(s.orderStatus)).length,

@@ -1,22 +1,23 @@
-import { deleteAutoLedgerEntryByReference } from '@/app/actions/fundActions';
+import {
+  syncICSaleToICFunds,
+  syncICPurchaseToICFunds,
+  removeICSaleFromICFunds,
+  removeICPurchaseFromICFunds,
+} from '@/lib/icFunds/icTransferFundSync';
 
-/**
- * IC Transfer is disconnected from the gold Funds ledger.
- * These helpers only remove leftover auto-rows if any still exist.
- */
-
+/** Bridge IC Transfer lifecycle events into the IC Funds cash book. */
 export async function syncICSaleFundLedger(saleId: string): Promise<void> {
-  await deleteAutoLedgerEntryByReference('ic_sale', saleId);
+  await syncICSaleToICFunds(saleId);
 }
 
 export async function syncICPurchaseFundLedger(purchaseId: string): Promise<void> {
-  await deleteAutoLedgerEntryByReference('ic_purchase', purchaseId);
+  await syncICPurchaseToICFunds(purchaseId);
 }
 
 export async function removeICSaleFundLedger(saleId: string): Promise<void> {
-  await deleteAutoLedgerEntryByReference('ic_sale', saleId);
+  await removeICSaleFromICFunds(saleId);
 }
 
 export async function removeICPurchaseFundLedger(purchaseId: string): Promise<void> {
-  await deleteAutoLedgerEntryByReference('ic_purchase', purchaseId);
+  await removeICPurchaseFromICFunds(purchaseId);
 }

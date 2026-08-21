@@ -3,8 +3,8 @@ import Modal from '@/components/ui/Modal';
 import PasswordInput from '@/components/ui/PasswordInput';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 import { btnPrimary, btnSecondary, formInput } from '@/lib/ui';
-import { saveCustomer } from '@/app/actions/customerActions';
-import { PasswordRequirements } from '@/components/users/UserModals';
+import { saveCustomer, resetCustomerPasswordAction } from '@/app/actions/customerActions';
+import { PasswordRequirements, ResetPasswordModal } from '@/components/users/UserModals';
 import { validatePassword } from '@/lib/passwordValidation';
 import { WORLD_CURRENCIES } from '@/lib/worldCurrencies';
 
@@ -36,6 +36,7 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
     currency: 'AED',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const isNew = !customer;
 
   useEffect(() => {
@@ -102,7 +103,20 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
     }
   };
 
+  const handleResetPassword = async (newPassword: string) => {
+    if (!customer?.id) return;
+    const res = await resetCustomerPasswordAction(slug, customer.id, newPassword);
+    if (res.success) {
+      setShowResetPassword(false);
+      alert('Portal password reset successfully.');
+    } else {
+      alert(res.error || 'Failed to reset password');
+      throw new Error(res.error || 'Failed to reset password');
+    }
+  };
+
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -193,6 +207,22 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
           </div>
         ) : null}
 
+        {!isNew && customer?.cognitoUserId && customer.email ? (
+          <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Portal password</p>
+            <p className="mt-1 text-xs text-amber-700">
+              Set a new password for <strong>{customer.email}</strong>. The customer does not need their current password.
+            </p>
+            <button
+              type="button"
+              className="mt-3 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-800 transition-colors hover:bg-amber-50"
+              onClick={() => setShowResetPassword(true)}
+            >
+              Reset portal password
+            </button>
+          </div>
+        ) : null}
+
         <div>
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
             Balance (AED)
@@ -233,5 +263,15 @@ export default function CustomerModal({ slug, open, customer, onClose, onSave }:
         </div>
       </div>
     </Modal>
+
+    {customer?.email ? (
+      <ResetPasswordModal
+        open={showResetPassword}
+        onClose={() => setShowResetPassword(false)}
+        email={customer.email}
+        onReset={handleResetPassword}
+      />
+    ) : null}
+    </>
   );
 }

@@ -1,11 +1,14 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { completeDeliveryWithUnits, deliveryAgentRejectOrder, warehouseRejectOrder } from '@/app/actions/warehouseActions';
 import { getFormattedTxnId } from '@/lib/icTransferMappers';
 import Modal from '@/components/ui/Modal';
+import ImageDropZone from '@/components/ui/ImageDropZone';
 import RejectRemarkModal from '@/components/ic-transfer/shared/RejectRemarkModal';
+import CopyOrderDetailsButton from '@/components/ic-transfer/shared/CopyOrderDetailsButton';
+import ProofImageActions from '@/components/ic-transfer/shared/ProofImageActions';
 import { canDeliveryAgentAct } from '@/lib/icTransfer/orderStatus';
 import { PriorityBadge } from '@/components/warehouse/shared';
 import { formatUnits, getRemainingUnits, isDeliveryAgentFinished } from '@/lib/icTransfer/saleUnits';
@@ -37,128 +40,6 @@ function MetricCell({
       <p className={`mt-1 text-base font-bold tabular-nums leading-none sm:text-lg md:text-xl ${valueClassName}`}>
         {value}
       </p>
-    </div>
-  );
-}
-
-function ImagePanel({
-  title,
-  imageUrl,
-  emptyLabel,
-  editable,
-  isUploading,
-  onUpload,
-  onClear,
-  showCapture = false,
-}: {
-  title: string;
-  imageUrl?: string | null;
-  emptyLabel: string;
-  editable?: boolean;
-  isUploading?: boolean;
-  onUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onClear?: () => void;
-  showCapture?: boolean;
-}) {
-  const galleryInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-
-  const fileInputs = onUpload ? (
-    <>
-      <input
-        ref={galleryInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={onUpload}
-        disabled={isUploading}
-      />
-      {showCapture ? (
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={onUpload}
-          disabled={isUploading}
-        />
-      ) : null}
-    </>
-  ) : null;
-
-  const uploadButtons = editable && onUpload ? (
-    <div className="flex flex-wrap gap-2">
-      {showCapture ? (
-        <button
-          type="button"
-          disabled={isUploading}
-          onClick={() => cameraInputRef.current?.click()}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-            <circle cx="12" cy="13" r="4" />
-          </svg>
-          {isUploading ? 'Uploading…' : 'Capture'}
-        </button>
-      ) : null}
-      <button
-        type="button"
-        disabled={isUploading}
-        onClick={() => galleryInputRef.current?.click()}
-        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="17 8 12 3 7 8" />
-          <line x1="12" y1="3" x2="12" y2="15" />
-        </svg>
-        {isUploading ? 'Uploading…' : 'Upload'}
-      </button>
-    </div>
-  ) : null;
-
-  return (
-    <div className="min-w-0">
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{title}</p>
-      {imageUrl ? (
-        <div className="space-y-2">
-          <div className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt={title} className="absolute inset-0 h-full w-full object-contain" />
-          </div>
-          {editable && onClear ? (
-            <>
-              {uploadButtons}
-              <button
-                type="button"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
-                onClick={onClear}
-                disabled={isUploading}
-              >
-                Remove image
-              </button>
-            </>
-          ) : null}
-          {fileInputs}
-        </div>
-      ) : editable && onUpload ? (
-        <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 text-slate-400">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-70" aria-hidden>
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <p className="text-center text-xs font-medium text-slate-500">Add payment proof image</p>
-          {uploadButtons}
-          {fileInputs}
-        </div>
-      ) : (
-        <div className="flex aspect-[4/3] items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-xs font-medium text-slate-400">
-          {emptyLabel}
-        </div>
-      )}
     </div>
   );
 }
@@ -202,9 +83,7 @@ export default function OrderDetailsModal({
     ? getFormattedTxnId(order.derived_from_sale_id, 'sale', null, branches)
     : null;
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleImageUpload = async (file: File) => {
     setIsUploading(true);
     try {
       const { secureUrl, deleteToken: token } = await uploadImageToCloudinary(file);
@@ -216,7 +95,6 @@ export default function OrderDetailsModal({
       showToast(message === 'Upload failed' ? 'Failed to upload image. Please try again.' : message, 'error');
     } finally {
       setIsUploading(false);
-      e.target.value = '';
     }
   };
 
@@ -380,6 +258,31 @@ export default function OrderDetailsModal({
             </div>
           </section>
 
+          <section className="rounded-2xl border border-slate-200/90 px-4 py-4 sm:px-5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Delivery address</p>
+            {order.address?.trim() ? (
+              <>
+                <p className="mt-2 whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">
+                  {order.address}
+                </p>
+                <div className="mt-2">
+                  <CopyOrderDetailsButton
+                    address={order.address}
+                    units={totalUnits}
+                    enableShare
+                    onCopySuccess={() => showToast('Address details copied')}
+                    onCopyError={msg => showToast(msg, 'error')}
+                    onShareError={msg => showToast(msg, 'error')}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="mt-2 flex aspect-[4/3] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-xs font-medium text-slate-400">
+                No address text provided
+              </div>
+            )}
+          </section>
+
           {isEditable ? (
             <section className="rounded-2xl border border-slate-200/90 px-4 py-4 sm:px-5">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Record delivery</p>
@@ -411,21 +314,75 @@ export default function OrderDetailsModal({
           ) : null}
 
           <section className="grid gap-4 sm:grid-cols-2">
-            <ImagePanel
-              title="Original order"
-              imageUrl={order.image_url}
-              emptyLabel="No original image"
-            />
-            <ImagePanel
-              title="Payment proof"
-              imageUrl={deliveryImageUrl}
-              emptyLabel="No payment proof"
-              editable={isEditable}
-              isUploading={isUploading}
-              onUpload={isEditable ? handleImageUpload : undefined}
-              onClear={isEditable ? handleDeleteImage : undefined}
-              showCapture
-            />
+            <div className="min-w-0">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Original order</p>
+              {order.image_url ? (
+                <>
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={order.image_url} alt="Original order" className="absolute inset-0 h-full w-full object-contain" />
+                  </div>
+                  <ProofImageActions
+                    imageUrl={order.image_url}
+                    downloadFilename={`order-${formattedId}`}
+                    enableShare
+                    shareTitle="Original order image"
+                    shareText={`Original order image for ${formattedId}`}
+                    onCopySuccess={() => showToast('Image copied')}
+                    onCopyError={msg => showToast(msg, 'error')}
+                    onDownloadError={msg => showToast(msg, 'error')}
+                    onShareError={msg => showToast(msg, 'error')}
+                  />
+                </>
+              ) : (
+                <div className="flex aspect-[4/3] flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-xs font-medium text-slate-400">
+                  <span>No original image</span>
+                  <CopyOrderDetailsButton
+                    address={order.address ?? undefined}
+                    units={totalUnits}
+                    enableShare
+                    onCopySuccess={() => showToast('Details copied')}
+                    onCopyError={msg => showToast(msg, 'error')}
+                    onShareError={msg => showToast(msg, 'error')}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Payment proof</p>
+              {isEditable ? (
+                <ImageDropZone
+                  imageUrl={deliveryImageUrl}
+                  onUpload={handleImageUpload}
+                  onClear={handleDeleteImage}
+                  isUploading={isUploading}
+                  showCapture
+                  emptyLabel="Add payment proof image"
+                />
+              ) : deliveryImageUrl ? (
+                <>
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={deliveryImageUrl} alt="Payment proof" className="absolute inset-0 h-full w-full object-contain" />
+                  </div>
+                  <ProofImageActions
+                    imageUrl={deliveryImageUrl}
+                    downloadFilename={`payment-proof-${formattedId}`}
+                    enableShare
+                    shareTitle="Payment proof"
+                    shareText={`Payment proof for ${formattedId}`}
+                    onCopySuccess={() => showToast('Image copied')}
+                    onCopyError={msg => showToast(msg, 'error')}
+                    onDownloadError={msg => showToast(msg, 'error')}
+                    onShareError={msg => showToast(msg, 'error')}
+                  />
+                </>
+              ) : (
+                <div className="flex aspect-[4/3] items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 text-xs font-medium text-slate-400">
+                  No payment proof
+                </div>
+              )}
+            </div>
           </section>
         </div>
       </Modal>

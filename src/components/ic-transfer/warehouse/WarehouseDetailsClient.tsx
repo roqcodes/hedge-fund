@@ -98,7 +98,11 @@ export default function WarehouseDetailsClient({
           />
           <DetailRow
             label="Current stock"
-            value={(warehouse.currentStock ?? 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}
+            value={
+              <span className={(warehouse.currentStock ?? 0) < 0 ? 'text-red-600' : undefined}>
+                {(warehouse.currentStock ?? 0).toLocaleString('en-US', { maximumFractionDigits: 4 })}
+              </span>
+            }
           />
         </div>
       </SectionCard>

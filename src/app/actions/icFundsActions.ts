@@ -2,15 +2,24 @@
 
 import { query, pool } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { revalidatePath } from 'next/cache';
+import { createCustomerCognitoUser, resetCustomerCognitoPasswordAction, updateCognitoUserName } from '@/app/actions/cognitoActions';
 import { requireICFundsAccess } from '@/lib/icFunds/requireAccess';
 import { accountBalanceSql, trialBalanceSplit } from '@/lib/icFunds/accountBalance';
 import { validateVoucherAccounts } from '@/lib/icFunds/voucherRules';
+import {
+  buildAccountDetailStats,
+  type ICFundAccountDetail,
+  type ICFundAccountRelatedPurchase,
+  type ICFundAccountRelatedSale,
+} from '@/lib/icFunds/accountDetailAnalytics';
 import {
   createICFundAccountSchema,
   icFundsDateRangeSchema,
   postICFundVoucherSchema,
   updateICFundAccountSchema,
 } from '@/lib/validations/icFunds';
+import { PASSWORD_INVALID_MESSAGE, validatePassword } from '@/lib/passwordValidation';
 import type {
   ICFundAccount,
   ICFundAccountType,
@@ -46,6 +55,12 @@ function mapAccount(row: Record<string, unknown>): ICFundAccount {
     notes: String(row.notes ?? ''),
     createdAt: row.created_at ? String(row.created_at) : new Date().toISOString(),
     balance: Number(row.balance) || 0,
+    customerId: row.customer_id ? String(row.customer_id) : undefined,
+    email: row.customer_email ? String(row.customer_email) : undefined,
+    phone: row.customer_phone ? String(row.customer_phone) : undefined,
+    hasPortalLogin: Boolean(row.customer_cognito_user_id),
+    sourceType: row.source_type ? String(row.source_type) : undefined,
+    sourceId: row.source_id ? String(row.source_id) : undefined,
   };
 }
 
@@ -71,11 +86,18 @@ function mapVoucher(row: Record<string, unknown>): ICFundVoucher {
     status: row.status === 'void' ? 'void' : 'active',
     voidedAt: row.voided_at ? String(row.voided_at) : undefined,
     voidedByName: row.voided_by_name ? String(row.voided_by_name) : undefined,
+    referenceType: row.reference_type ? String(row.reference_type) : undefined,
+    referenceId: row.reference_id ? String(row.reference_id) : undefined,
   };
 }
 
 function accountBalanceSelectSql(asOfParam: string | null): string {
-  return `SELECT a.*, ${accountBalanceSql(asOfParam)} AS balance FROM ic_fund_accounts a`;
+  return `SELECT a.*, ${accountBalanceSql(asOfParam)} AS balance,
+    c.email AS customer_email,
+    COALESCE(c.phone, a.phone) AS customer_phone,
+    c.cognito_user_id AS customer_cognito_user_id
+    FROM ic_fund_accounts a
+    LEFT JOIN customers c ON c.id = a.customer_id`;
 }
 
 async function fetchAccountsWithBalances(
@@ -125,6 +147,27 @@ export async function listICFundAccountsAction(branchId: string): Promise<ICFund
   }
 }
 
+export async function getICFundAccountByCustomerIdAction(
+  branchId: string,
+  customerId: string,
+): Promise<ICFundAccount | null> {
+  const access = await requireICFundsAccess(branchId, 'read');
+  if (!access.ok) return null;
+  try {
+    const res = await query(
+      `${accountBalanceSelectSql(null)} WHERE a.branch_id = $1 AND (
+        a.customer_id = $2 OR (a.source_type = 'ic_customer' AND a.source_id = $2)
+      ) LIMIT 1`,
+      [branchId, customerId],
+    );
+    if (res.rows.length === 0) return null;
+    return mapAccount(res.rows[0] as Record<string, unknown>);
+  } catch (err) {
+    logger.error({ err, branchId, customerId }, 'Failed to load IC fund account by customer');
+    return null;
+  }
+}
+
 export async function createICFundAccountAction(
   input: unknown,
 ): Promise<ActionResult<ICFundAccount>> {
@@ -135,20 +178,55 @@ export async function createICFundAccountAction(
   if (!access.ok) return { success: false, error: access.error };
 
   const id = `ICFA-${crypto.randomUUID().slice(0, 10).toUpperCase()}`;
+  const email = parsed.data.email?.trim() || '';
+  const password = parsed.data.password?.trim() || '';
+  const phone = parsed.data.phone?.trim() || null;
+
+  if (parsed.data.requireSignIn && !validatePassword(password).isValid) {
+    return { success: false, error: PASSWORD_INVALID_MESSAGE };
+  }
+
+  let customerId: string | null = null;
+
   try {
-    await query(
-      `INSERT INTO ic_fund_accounts (id, branch_id, name, account_type, opening_balance, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        id,
-        parsed.data.branchId,
-        parsed.data.name.trim(),
-        parsed.data.accountType,
-        Number(parsed.data.openingBalance.toFixed(2)),
-        parsed.data.notes?.trim() ?? '',
-      ],
-    );
+    if (parsed.data.requireSignIn) {
+      customerId = `cust_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const cognitoRes = await createCustomerCognitoUser({
+        email,
+        name: parsed.data.name.trim(),
+        branchId: parsed.data.branchId,
+        password,
+      });
+      if (!cognitoRes.success || !cognitoRes.userId) {
+        return { success: false, error: cognitoRes.error || 'Failed to create portal login account.' };
+      }
+
+      await query(
+        `INSERT INTO customers (id, branch_id, name, phone, email, balance, status, cognito_user_id, currency)
+         VALUES ($1, $2, $3, $4, $5, 0, 'active', $6, 'AED')`,
+        [customerId, parsed.data.branchId, parsed.data.name.trim(), phone, email, cognitoRes.userId],
+      );
+    }
+
+      await query(
+        `INSERT INTO ic_fund_accounts (id, branch_id, name, account_type, opening_balance, notes, customer_id, phone, source_type, source_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          id,
+          parsed.data.branchId,
+          parsed.data.name.trim(),
+          parsed.data.accountType,
+          Number(parsed.data.openingBalance.toFixed(2)),
+          parsed.data.notes?.trim() ?? '',
+          customerId,
+          phone,
+          customerId ? 'ic_customer' : null,
+          customerId,
+        ],
+      );
     const res = await query(`${accountBalanceSelectSql(null)} WHERE a.id = $1`, [id]);
+    revalidatePath(`/${access.slug}/ic-funds/accounts`);
+    revalidatePath(`/${access.slug}/customers`);
     return { success: true, data: mapAccount(res.rows[0] as Record<string, unknown>) };
   } catch (err) {
     const code = (err as { code?: string }).code;
@@ -248,20 +326,88 @@ export async function updateICFundAccountAction(input: unknown): Promise<ActionR
     if (parsed.data.openingBalance !== undefined) push('opening_balance', Number(parsed.data.openingBalance.toFixed(2)));
     if (parsed.data.notes !== undefined) push('notes', parsed.data.notes.trim());
 
-    if (sets.length === 0) return { success: false, error: 'No fields to update' };
+    if (parsed.data.phone !== undefined) {
+      push('phone', parsed.data.phone.trim() || null);
+      const customerId = existing.rows[0].customer_id ? String(existing.rows[0].customer_id) : null;
+      if (customerId) {
+        await query(`UPDATE customers SET phone = $1 WHERE id = $2`, [
+          parsed.data.phone.trim() || null,
+          customerId,
+        ]);
+      }
+    }
 
-    values.push(parsed.data.id, parsed.data.branchId);
-    await query(
-      `UPDATE ic_fund_accounts SET ${sets.join(', ')} WHERE id = $${idx} AND branch_id = $${idx + 1}`,
-      values,
-    );
+    if (sets.length === 0 && parsed.data.phone === undefined) {
+      return { success: false, error: 'No fields to update' };
+    }
+
+    if (sets.length > 0) {
+      values.push(parsed.data.id, parsed.data.branchId);
+      await query(
+        `UPDATE ic_fund_accounts SET ${sets.join(', ')} WHERE id = $${idx} AND branch_id = $${idx + 1}`,
+        values,
+      );
+    }
+
+    const accountName = parsed.data.name?.trim();
+    const customerId = existing.rows[0].customer_id ? String(existing.rows[0].customer_id) : null;
+    if (accountName && customerId) {
+      const customerRes = await query(
+        `SELECT email, cognito_user_id FROM customers WHERE id = $1 LIMIT 1`,
+        [customerId],
+      );
+      const customerEmail = customerRes.rows[0]?.email ? String(customerRes.rows[0].email) : '';
+      const cognitoUserId = customerRes.rows[0]?.cognito_user_id;
+      await query(`UPDATE customers SET name = $1 WHERE id = $2`, [accountName, customerId]);
+      if (cognitoUserId && customerEmail) {
+        await updateCognitoUserName(customerEmail, accountName);
+      }
+    }
+
     const res = await query(`${accountBalanceSelectSql(null)} WHERE a.id = $1`, [parsed.data.id]);
+    revalidatePath(`/${access.slug}/ic-funds/accounts`);
     return { success: true, data: mapAccount(res.rows[0] as Record<string, unknown>) };
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code === '23505') return { success: false, error: 'An account with this name already exists' };
     logger.error({ err }, 'Failed to update IC fund account');
     return { success: false, error: 'Failed to update account' };
+  }
+}
+
+export async function resetICFundAccountPasswordAction(
+  branchId: string,
+  accountId: string,
+  passwordRaw: string,
+): Promise<ActionResult<void>> {
+  const access = await requireICFundsAccess(branchId, 'write');
+  if (!access.ok) return { success: false, error: access.error };
+  if (!validatePassword(passwordRaw).isValid) {
+    return { success: false, error: PASSWORD_INVALID_MESSAGE };
+  }
+
+  try {
+    const res = await query(
+      `SELECT a.customer_id, c.email, c.cognito_user_id
+       FROM ic_fund_accounts a
+       LEFT JOIN customers c ON c.id = a.customer_id
+       WHERE a.id = $1 AND a.branch_id = $2
+       LIMIT 1`,
+      [accountId, branchId],
+    );
+    if (res.rows.length === 0) return { success: false, error: 'Account not found' };
+    const email = res.rows[0].email ? String(res.rows[0].email) : '';
+    const cognitoUserId = res.rows[0].cognito_user_id;
+    if (!email || !cognitoUserId) {
+      return { success: false, error: 'This account has no portal login.' };
+    }
+
+    const reset = await resetCustomerCognitoPasswordAction(email, passwordRaw, access.slug);
+    if (!reset.success) return { success: false, error: reset.error || 'Failed to reset password' };
+    return { success: true, data: undefined };
+  } catch (err) {
+    logger.error({ err, branchId, accountId }, 'Failed to reset IC fund account password');
+    return { success: false, error: 'Failed to reset password' };
   }
 }
 
@@ -561,6 +707,114 @@ export async function getICFundStatementAction(params: {
   } catch (err) {
     logger.error({ err, params }, 'Failed to load IC fund statement');
     return { success: false, error: 'Failed to load statement' };
+  }
+}
+
+export async function getICFundAccountDetailAction(params: {
+  branchId: string;
+  accountId: string;
+}): Promise<ActionResult<ICFundAccountDetail>> {
+  const access = await requireICFundsAccess(params.branchId, 'read');
+  if (!access.ok) return { success: false, error: access.error };
+
+  try {
+    const accRes = await query(`${accountBalanceSelectSql(null)} WHERE a.id = $1 AND a.branch_id = $2`, [
+      params.accountId,
+      params.branchId,
+    ]);
+    if (accRes.rows.length === 0) return { success: false, error: 'Account not found' };
+    const account = mapAccount(accRes.rows[0] as Record<string, unknown>);
+
+    const vRes = await query(
+      `${VOUCHER_SELECT_SQL}
+       WHERE (v.debit_account_id = $1 OR v.credit_account_id = $1)
+         AND COALESCE(v.status, 'active') = 'active'
+       ORDER BY v.voucher_date ASC, v.voucher_no ASC`,
+      [params.accountId],
+    );
+    const vouchers = vRes.rows.map(r => mapVoucher(r as Record<string, unknown>));
+    const stats = buildAccountDetailStats(vouchers, params.accountId);
+
+    const statementResult = await getICFundStatementAction({
+      branchId: params.branchId,
+      accountId: params.accountId,
+    });
+    if (!statementResult.success) return { success: false, error: statementResult.error };
+
+    const detail: ICFundAccountDetail = {
+      account,
+      statement: {
+        opening: statementResult.data.opening,
+        lines: statementResult.data.lines,
+        closing: statementResult.data.closing,
+      },
+      vouchers: [...vouchers].reverse(),
+      stats,
+    };
+
+    if (account.sourceType === 'ic_supplier' && account.sourceId) {
+      const purchases = await query(
+        `SELECT p.id, p.created_at, p.units, p.aed_total, p.payment_method, w.name AS warehouse_name
+         FROM ic_purchases p
+         LEFT JOIN ic_warehouses w ON w.id = p.warehouse_id
+         WHERE p.supplier_id = $1
+         ORDER BY p.created_at DESC
+         LIMIT 100`,
+        [account.sourceId],
+      );
+      detail.relatedPurchases = purchases.rows.map(row => ({
+        id: String(row.id),
+        date: row.created_at ? String(row.created_at) : '',
+        units: Number(row.units) || 0,
+        aedAmount: Number(row.aed_total) || 0,
+        paymentMethod: row.payment_method ? String(row.payment_method) : undefined,
+        warehouseName: row.warehouse_name ? String(row.warehouse_name) : undefined,
+      })) as ICFundAccountRelatedPurchase[];
+
+      const supplier = await query(`SELECT commission FROM ic_suppliers WHERE id = $1 LIMIT 1`, [
+        account.sourceId,
+      ]);
+      if (supplier.rows[0]) {
+        detail.relatedMeta = {
+          commission: Number(supplier.rows[0].commission) || 0,
+        };
+      }
+    }
+
+    if (account.sourceType === 'ic_warehouse' && account.sourceId) {
+      const sales = await query(
+        `SELECT id, created_at, units, aed_amount, order_status, payment_status, order_customer_name
+         FROM ic_sales
+         WHERE warehouse_id = $1
+         ORDER BY created_at DESC
+         LIMIT 100`,
+        [account.sourceId],
+      );
+      detail.relatedSales = sales.rows.map(row => ({
+        id: String(row.id),
+        date: row.created_at ? String(row.created_at) : '',
+        units: Number(row.units) || 0,
+        aedAmount: Number(row.aed_amount) || 0,
+        orderStatus: row.order_status ? String(row.order_status) : undefined,
+        paymentStatus: row.payment_status ? String(row.payment_status) : undefined,
+        customerName: row.order_customer_name ? String(row.order_customer_name) : undefined,
+      })) as ICFundAccountRelatedSale[];
+
+      const warehouse = await query(`SELECT current_stock FROM ic_warehouses WHERE id = $1 LIMIT 1`, [
+        account.sourceId,
+      ]);
+      if (warehouse.rows[0]) {
+        detail.relatedMeta = {
+          ...detail.relatedMeta,
+          stock: Number(warehouse.rows[0].current_stock) || 0,
+        };
+      }
+    }
+
+    return { success: true, data: detail };
+  } catch (err) {
+    logger.error({ err, params }, 'Failed to load IC fund account detail');
+    return { success: false, error: 'Failed to load account detail' };
   }
 }
 

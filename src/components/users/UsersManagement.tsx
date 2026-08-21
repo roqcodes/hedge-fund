@@ -328,7 +328,7 @@ export default function UsersManagement({
                             <button onClick={() => setEditingUser(u)} className={`${btnGhost} ${btnSm} text-slate-600`}>
                               Edit
                             </button>
-                            {isBranchManager && u.role === 'staff' && (
+                            {((isSuperAdmin && u.email !== currentUser?.email) || (isBranchManager && u.role === 'staff')) && (
                               <button
                                 onClick={() => setResetPasswordUser(u)}
                                 className={`${btnGhost} ${btnSm} text-amber-700 hover:bg-amber-50 hover:text-amber-800`}
@@ -393,7 +393,7 @@ export default function UsersManagement({
                         <button onClick={() => setPermissionsUser(u)} className="text-xs font-bold text-accent">Access</button>
                       )}
                       <button onClick={() => setEditingUser(u)} className="text-xs font-bold text-slate-600">Edit</button>
-                      {isBranchManager && u.role === 'staff' && (
+                      {((isSuperAdmin && u.email !== currentUser?.email) || (isBranchManager && u.role === 'staff')) && (
                         <button onClick={() => setResetPasswordUser(u)} className="text-xs font-bold text-amber-700">
                           Reset password
                         </button>

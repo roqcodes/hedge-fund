@@ -287,6 +287,10 @@ export async function resetCognitoUserPasswordAction(email: string, passwordRaw:
       if (targetRole !== 'staff' || targetBranch !== access.user.branchId) {
         return { success: false, error: 'You can only reset passwords for staff in your branch.' };
       }
+    } else if (access.user?.role === 'admin') {
+      if (targetRole === CUSTOMER_ROLE || targetRole === INVESTOR_ROLE) {
+        return { success: false, error: 'Use customer or investor management to reset this account.' };
+      }
     }
 
     const setPasswordCommand = new AdminSetUserPasswordCommand({
@@ -300,6 +304,62 @@ export async function resetCognitoUserPasswordAction(email: string, passwordRaw:
     return { success: true };
   } catch (error: unknown) {
     logger.error({ error, email, branchSlug }, 'Error resetting Cognito user password');
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to reset password' };
+  }
+}
+
+/** Reset a customer portal password (no existing password required). */
+export async function resetCustomerCognitoPasswordAction(email: string, passwordRaw: string, branchSlug: string) {
+  const user = await getSessionUser(branchSlug);
+  if (!user) {
+    return { success: false, error: 'You must be signed in.' };
+  }
+  if (user.role === 'customer' || user.role === 'delivery' || user.role.startsWith('warehouse_')) {
+    return { success: false, error: 'Access denied.' };
+  }
+
+  if (!cognitoClient || !env.COGNITO_USER_POOL_ID) {
+    return { success: false, error: 'Cognito Client or User Pool ID is not configured.' };
+  }
+
+  try {
+    const { query } = await import('@/lib/db');
+    const branchRes = await query(`SELECT id FROM branches WHERE slug = $1 LIMIT 1`, [branchSlug]);
+    if (branchRes.rows.length === 0) {
+      return { success: false, error: 'Branch not found.' };
+    }
+    const branchId = String(branchRes.rows[0].id);
+    if (user.branchId && user.branchId !== branchId) {
+      return { success: false, error: 'You are not authorized for this branch.' };
+    }
+
+    const custRes = await query(
+      `SELECT id FROM customers WHERE LOWER(email) = LOWER($1) AND branch_id = $2 LIMIT 1`,
+      [email.trim(), branchId],
+    );
+    if (custRes.rows.length === 0) {
+      return { success: false, error: 'Customer not found in this branch.' };
+    }
+
+    const target = await lookupCognitoUserByEmail(email);
+    if (!target) {
+      return { success: false, error: 'Portal account not found.' };
+    }
+    const targetRole = getAttribute(target.Attributes, 'custom:role');
+    if (targetRole !== CUSTOMER_ROLE) {
+      return { success: false, error: 'This email is not a customer portal account.' };
+    }
+
+    await cognitoClient.send(new AdminSetUserPasswordCommand({
+      UserPoolId: env.COGNITO_USER_POOL_ID,
+      Username: email,
+      Password: passwordRaw,
+      Permanent: true,
+    }));
+
+    return { success: true };
+  } catch (error: unknown) {
+    logger.error({ error, email, branchSlug }, 'Error resetting customer password');
     return { success: false, error: error instanceof Error ? error.message : 'Failed to reset password' };
   }
 }
